@@ -32,7 +32,17 @@ class Config:
             "postgres://", "postgresql://", 1
         )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True, "pool_recycle": 280}
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        # Une connexion inactive est testée avant réemploi : les hébergeurs
+        # mutualisés coupent les connexions dormantes sans prévenir.
+        "pool_pre_ping": True,
+        "pool_recycle": 280,
+        # Le pool est volontairement petit : l'offre gratuite de Supabase
+        # plafonne le nombre de connexions simultanées, et chaque worker
+        # gunicorn possède son propre pool.
+        "pool_size": 5,
+        "max_overflow": 5,
+    }
 
     # ─── JWT ────────────────────────────────────────────────
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-jwt-secret-a-changer")
@@ -72,6 +82,18 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     DEBUG = False
 
+    def __init__(self):
+        # Sans DATABASE_URL, la classe de base retombe sur SQLite. En
+        # production, cela écrirait sur un disque éphémère : les comptes et
+        # les paiements disparaîtraient au premier redémarrage, sans erreur
+        # visible. Mieux vaut refuser de démarrer.
+        if not os.getenv("DATABASE_URL"):
+            raise RuntimeError(
+                "DATABASE_URL est absent. En production, la base PostgreSQL "
+                "est obligatoire : le repli SQLite perdrait les données à "
+                "chaque redémarrage."
+            )
+
 
 class TestingConfig(Config):
     TESTING = True
@@ -86,5 +108,10 @@ CONFIGS = {
 
 
 def get_config():
-    """Sélectionne la configuration via FLASK_ENV (défaut : production)."""
-    return CONFIGS.get(os.getenv("FLASK_ENV", "production"), ProductionConfig)
+    """Sélectionne la configuration via FLASK_ENV (défaut : production).
+
+    Retourne une instance et non la classe : ProductionConfig valide sa
+    configuration dans son __init__. `Flask.config.from_object` accepte
+    indifféremment une classe ou une instance.
+    """
+    return CONFIGS.get(os.getenv("FLASK_ENV", "production"), ProductionConfig)()

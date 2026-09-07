@@ -1,8 +1,11 @@
 # render.yaml — Déploiement Tcheyna (API Flask + frontend statique)
-# Documentation : https://render.com/docs/blueprint-spec
 #
-# Le dépôt contient deux applications ; `rootDirectory` indique à chaque
-# service où se trouve la sienne.
+# Ce fichier décrit la configuration réellement en production. Il permet de
+# recréer les deux services à l'identique via un Blueprint Render, notamment
+# la règle de réécriture du frontend, qui ne peut pas être définie autrement
+# que par ce fichier ou par le tableau de bord.
+#
+# Documentation : https://render.com/docs/blueprint-spec
 
 services:
   # ─── API Flask ───────────────────────────────────────────
@@ -12,13 +15,17 @@ services:
     region: frankfurt
     plan: free
     branch: main
-    rootDirectory: backend
 
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn run:app --workers 2 --timeout 60
+    # Le code de l'API vit dans backend/ ; les commandes s'y déplacent plutôt
+    # que d'utiliser rootDirectory, afin de rester alignées sur les services
+    # existants, créés par l'API Render.
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && gunicorn run:app --workers 2 --timeout 60
     healthCheckPath: /health
 
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
       - key: FLASK_ENV
         value: production
       - key: FLASK_DEBUG
@@ -28,18 +35,25 @@ services:
       - key: JWT_SECRET_KEY
         generateValue: true
 
-      # Base PostgreSQL (Supabase) — à renseigner dans le tableau de bord Render
+      # Chaîne de connexion PostgreSQL (Supabase) — à renseigner dans le
+      # tableau de bord. Sans elle, l'API refuse de démarrer : le repli SQLite
+      # perdrait les données à chaque redémarrage.
       - key: DATABASE_URL
         sync: false
 
-      # Doit correspondre à l'URL publique du frontend
+      # Doit reproduire exactement l'URL du frontend, sans barre oblique finale.
       - key: CORS_ORIGINS
         value: https://tcheyna.onrender.com
 
+      # Attention : l'offre gratuite n'a pas de disque persistant. Les pièces
+      # téléversées sont perdues au redémarrage. Passer à une offre payante
+      # avec un disque monté avant toute mise en service réelle.
       - key: UPLOAD_FOLDER
-        value: /var/data/uploads
+        value: uploads
 
-      # Africa's Talking — vérification OTP par SMS
+      # Africa's Talking — vérification par SMS.
+      # Sans clé, le code OTP n'est pas envoyé ; il est renvoyé par l'API en
+      # mode développement uniquement.
       - key: AT_API_KEY
         sync: false
       - key: AT_USERNAME
@@ -47,7 +61,8 @@ services:
       - key: AT_SENDER_ID
         value: TCHEYNA
 
-      # CinetPay — paiements Mobile Money
+      # CinetPay — Mobile Money.
+      # Sans clé, un paiement reste au statut « en attente » au lieu d'échouer.
       - key: CINETPAY_API_KEY
         sync: false
       - key: CINETPAY_SITE_ID
@@ -57,29 +72,24 @@ services:
       - key: CINETPAY_RETURN_URL
         value: https://tcheyna.onrender.com/paiements
 
-    # Les CNI et justificatifs téléversés doivent survivre aux redéploiements.
-    disk:
-      name: tcheyna-uploads
-      mountPath: /var/data
-      sizeGB: 1
-
   # ─── Frontend React ──────────────────────────────────────
   - type: web
     name: tcheyna
     runtime: static
-    region: frankfurt
     branch: main
-    rootDirectory: frontend
 
-    buildCommand: npm ci && npm run build
-    staticPublishPath: dist
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: frontend/dist
 
     envVars:
+      - key: NODE_VERSION
+        value: "20.18.0"
       - key: VITE_API_URL
         value: https://tcheyna-api.onrender.com/api
 
-    # Application monopage : toute route inconnue est servie par index.html,
-    # sinon un rechargement sur /tenant/dashboard renverrait un 404.
+    # Application monopage : toute route inconnue doit servir index.html.
+    # Sans cette règle, recharger /tenant/dashboard ou ouvrir un lien partagé
+    # vers une annonce renvoie une erreur 404.
     routes:
       - type: rewrite
         source: /*

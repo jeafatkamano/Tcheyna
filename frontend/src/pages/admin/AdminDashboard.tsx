@@ -19,6 +19,7 @@ import { Link } from "react-router";
 
 import { adminAPI, urlFichier, type Listing } from "../../api";
 import { BadgeVerification } from "../../components/BadgeVerification";
+import { ChangementMotDePasse } from "../../components/ChangementMotDePasse";
 import { Chargement, Erreur, ListeVide, MessageErreur, MessageSucces } from "../../components/Etats";
 import { useAction, useApi } from "../../hooks/useApi";
 import { formatMontant, formatMontantCourt, formatRelatif, initiales } from "../../lib/format";
@@ -252,6 +253,17 @@ export function AdminDashboard() {
               />
             ))
           ))}
+
+        {/* Compte administrateur */}
+        <div
+          className="rounded-2xl p-5 mt-2"
+          style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }}
+        >
+          <h3 className="font-bold mb-3" style={{ color: "#1E293B" }}>
+            Mon compte
+          </h3>
+          <ChangementMotDePasse />
+        </div>
       </div>
     </div>
   );

@@ -14,6 +14,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { passportAPI, type TenantPassport, type TypeDocument } from "../../api";
 import { BadgeVerification, ScoreCircle, VerificationSteps } from "../../components/BadgeVerification";
+import { ChangementMotDePasse } from "../../components/ChangementMotDePasse";
 import { Chargement, Erreur, MessageErreur, MessageSucces } from "../../components/Etats";
 import { PhoneVerification } from "../../components/PhoneVerification";
 import { useAuth } from "../../context/AuthContext";
@@ -162,12 +163,16 @@ export function TenantProfile() {
               valeur={[user?.quartier, user?.ville, user?.pays].filter(Boolean).join(", ") || "—"}
             />
 
+            <div className="pt-4 mt-2 border-t border-gray-100">
+              <ChangementMotDePasse />
+            </div>
+
             <button
               onClick={() => {
                 deconnecter();
                 navigate("/");
               }}
-              className="w-full mt-4 py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2"
+              className="w-full mt-2 py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2"
               style={{ background: "#FEE2E2", color: "#DC2626" }}
             >
               <LogOut size={17} />
