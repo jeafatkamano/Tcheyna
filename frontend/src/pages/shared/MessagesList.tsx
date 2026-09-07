@@ -2,10 +2,11 @@ import { MessageSquare } from "lucide-react";
 import { Link } from "react-router";
 
 import { messagesAPI } from "../../api";
+import { Avatar } from "../../components/Avatar";
 import { Erreur, ListeVide, SqueletteCartes } from "../../components/Etats";
 import { useAuth } from "../../context/AuthContext";
 import { useApi } from "../../hooks/useApi";
-import { formatMontantCourt, formatRelatif, initiales } from "../../lib/format";
+import { formatMontantCourt, formatRelatif } from "../../lib/format";
 
 export function MessagesList() {
   const { user } = useAuth();
@@ -58,12 +59,11 @@ export function MessagesList() {
                   border: nonLus ? "1.5px solid #FED7AA" : "1.5px solid transparent",
                 }}
               >
-                <div
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 font-bold text-white"
-                  style={{ background: "#1E3A5F" }}
-                >
-                  {initiales(conversation.interlocuteur?.full_name)}
-                </div>
+                <Avatar
+                  nom={conversation.interlocuteur?.full_name}
+                  url={conversation.interlocuteur?.avatar_url}
+                  taille={48}
+                />
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2 mb-0.5">

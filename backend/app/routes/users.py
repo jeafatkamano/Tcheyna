@@ -1,9 +1,10 @@
-"""routes/users.py — Profil public et édition du compte."""
+"""routes/users.py — Profil public, édition du compte et photo de profil."""
 from flask import Blueprint, jsonify, request
 
 from app import db
 from app.models import Listing, Review, User
 from app.routes import current_user_required
+from app.services import stockage
 
 users_bp = Blueprint("users", __name__)
 
@@ -41,8 +42,11 @@ def get_user(user_id):
 def update_profile(current_user):
     data = request.get_json() or {}
 
+    # avatar_url est volontairement absent : la photo de profil se change
+    # par téléversement (POST /api/users/me/avatar), pas en soumettant une URL
+    # arbitraire, qui permettrait de pointer vers n'importe quelle image.
     for champ in ("full_name", "pays", "ville", "quartier",
-                  "preferred_lang", "avatar_url", "bio"):
+                  "preferred_lang", "bio"):
         if champ in data:
             valeur = data[champ]
             setattr(current_user, champ,
@@ -70,3 +74,56 @@ def desactiver_compte(current_user):
 
     db.session.commit()
     return jsonify({"message": "Compte désactivé"}), 200
+
+
+# ─── POST /api/users/me/avatar ───────────────────────────────
+
+@users_bp.route("/me/avatar", methods=["POST"])
+@current_user_required
+def televerser_avatar(current_user):
+    """Enregistre la photo de profil.
+
+    Elle est publique : elle apparaît sur les annonces du propriétaire et
+    auprès des candidats, où mettre un visage sur un nom fait partie du
+    dispositif de confiance.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "Aucune image fournie"}), 400
+
+    ancien = current_user.avatar_url
+
+    try:
+        url = stockage.televerser(request.files["file"], "avatars",
+                                  f"profil-{current_user.id}", stockage.IMAGES)
+    except stockage.ErreurStockage as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    current_user.avatar_url = url
+    db.session.commit()
+
+    # L'ancienne photo n'a plus d'usage une fois remplacée.
+    if ancien and ancien != url:
+        stockage.supprimer(ancien)
+
+    return jsonify({
+        "message": "Photo de profil enregistrée",
+        "avatar_url": url,
+        "user": current_user.to_dict(public=False),
+    }), 200
+
+
+# ─── DELETE /api/users/me/avatar ─────────────────────────────
+
+@users_bp.route("/me/avatar", methods=["DELETE"])
+@current_user_required
+def supprimer_avatar(current_user):
+    ancien = current_user.avatar_url
+    if not ancien:
+        return jsonify({"message": "Aucune photo de profil"}), 200
+
+    current_user.avatar_url = None
+    db.session.commit()
+    stockage.supprimer(ancien)
+
+    return jsonify({"message": "Photo de profil retirée",
+                    "user": current_user.to_dict(public=False)}), 200

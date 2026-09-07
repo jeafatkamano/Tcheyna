@@ -23,7 +23,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router";
 
 import { messagesAPI, notificationsAPI } from "../api";
 import { useAuth } from "../context/AuthContext";
-import { initiales } from "../lib/format";
+import { Avatar } from "./Avatar";
 import { BadgeVerification } from "./BadgeVerification";
 import { Chargement } from "./Etats";
 
@@ -153,9 +153,10 @@ export function Layout() {
           </Link>
           <Link
             to={estAdmin ? "/admin" : estLocataire ? "/tenant/profile" : "/owner/profile"}
-            className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white text-sm font-semibold ml-1"
+            className="ml-1"
+            aria-label="Mon profil"
           >
-            {initiales(user.full_name)}
+            <Avatar nom={user.full_name} url={user.avatar_url} taille={32} forme="rond" surFonce />
           </Link>
         </div>
       </header>
@@ -181,9 +182,7 @@ export function Layout() {
 
             <div className="px-5 py-4 border-b border-white/10">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-lg">
-                  {initiales(user.full_name)}
-                </div>
+                <Avatar nom={user.full_name} url={user.avatar_url} taille={48} forme="rond" surFonce />
                 <div className="min-w-0">
                   <p className="text-white font-semibold truncate">{user.full_name}</p>
                   <p className="text-white/60 text-sm">{libelleRole}</p>

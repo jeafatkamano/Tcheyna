@@ -5,22 +5,22 @@ Inclut le parcours « Annonce Certifiée » : le propriétaire dépose un docume
 propriété, l'annonce passe en `pending`, un administrateur tranche. Une annonce
 certifiée remonte dans les résultats et affiche un badge visible.
 """
-import os
 from datetime import date, datetime
 
-from flask import Blueprint, current_app, jsonify, request
-from flask_jwt_extended import get_jwt_identity, jwt_required, verify_jwt_in_request
-from werkzeug.utils import secure_filename
+from flask import Blueprint, jsonify, request
+from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 
 from app import db
 from app.models import Favorite, Listing, User
 from app.routes import current_user_required, role_required
+from app.services import stockage
 from app.services.matching import score_compatibilite, trier_par_compatibilite
 
 listings_bp = Blueprint("listings", __name__)
 
 TYPES_BIEN = ("appartement", "maison", "studio", "chambre", "villa")
 MAX_IMAGES = 10
+MAX_DOCUMENTS = 6
 
 
 def _bool_arg(nom):
@@ -366,10 +366,10 @@ def demander_certification(current_user, listing_id):
     if listing.is_certified:
         return jsonify({"message": "Cette annonce est déjà certifiée"}), 200
 
-    if not listing.propriete_doc_url:
+    if not listing.documents:
         return jsonify({
-            "error": "Ajoutez d'abord un document de propriété "
-                     "(POST /api/listings/<id>/document)"
+            "error": "Ajoutez au moins un document de propriété (titre foncier, "
+                     "bail ou acte notarié) avant de demander la certification"
         }), 400
     if not listing.images_urls:
         return jsonify({"error": "Ajoutez au moins une photo du bien"}), 400
@@ -386,30 +386,194 @@ def demander_certification(current_user, listing_id):
     }), 200
 
 
-# ─── POST /api/listings/<id>/document ────────────────────────
+# ─── Photos du bien ──────────────────────────────────────────
 
-@listings_bp.route("/<string:listing_id>/document", methods=["POST"])
+@listings_bp.route("/<string:listing_id>/photos", methods=["POST"])
 @role_required("landlord", "agency")
-def upload_document_propriete(current_user, listing_id):
-    """Dépose le titre foncier / bail justifiant la propriété du bien."""
+def televerser_photos(current_user, listing_id):
+    """Ajoute une ou plusieurs photos du bien.
+
+    Ces photos sont publiques : elles s'affichent dans les résultats de
+    recherche, y compris pour un visiteur sans compte.
+    """
     listing = Listing.query.get_or_404(listing_id)
     if listing.landlord_id != current_user.id:
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
 
-    if "file" not in request.files:
-        return jsonify({"error": "Aucun fichier fourni"}), 400
+    fichiers = request.files.getlist("files") or request.files.getlist("file")
+    if not fichiers:
+        return jsonify({"error": "Aucune photo fournie"}), 400
 
-    fichier = request.files["file"]
-    extension = (fichier.filename or "").rsplit(".", 1)[-1].lower()
-    if extension not in current_app.config["ALLOWED_EXTENSIONS"]:
-        return jsonify({"error": "Format non autorisé (jpg, png, pdf)"}), 400
+    existantes = listing.images_urls.split(",") if listing.images_urls else []
+    if len(existantes) + len(fichiers) > MAX_IMAGES:
+        restant = max(MAX_IMAGES - len(existantes), 0)
+        return jsonify({
+            "error": f"{MAX_IMAGES} photos maximum par annonce. "
+                     f"Vous pouvez encore en ajouter {restant}."
+        }), 400
 
-    dossier = current_app.config["UPLOAD_FOLDER"]
-    os.makedirs(dossier, exist_ok=True)
-    nom = secure_filename(f"propriete_{listing.id}.{extension}")
-    fichier.save(os.path.join(dossier, nom))
+    ajoutees = []
+    for fichier in fichiers:
+        try:
+            url = stockage.televerser(fichier, "photos", f"annonce-{listing.id}",
+                                      stockage.IMAGES)
+        except stockage.ErreurStockage as exc:
+            # Les photos déjà enregistrées sont conservées : l'utilisateur n'a
+            # pas à tout recommencer parce qu'un seul fichier pose problème.
+            if ajoutees:
+                listing.images_urls = ",".join(existantes + ajoutees)
+                db.session.commit()
+            return jsonify({"error": str(exc), "ajoutees": len(ajoutees)}), 400
+        ajoutees.append(url)
 
-    listing.propriete_doc_url = f"/uploads/{nom}"
+    listing.images_urls = ",".join(existantes + ajoutees)
     db.session.commit()
 
-    return jsonify({"message": "Document enregistré", "url": listing.propriete_doc_url}), 200
+    return jsonify({
+        "message": f"{len(ajoutees)} photo(s) ajoutée(s)",
+        "images": listing.to_dict()["images"],
+    }), 201
+
+
+@listings_bp.route("/<string:listing_id>/photos", methods=["DELETE"])
+@role_required("landlord", "agency")
+def supprimer_photo(current_user, listing_id):
+    """Retire une photo, désignée par son URL."""
+    listing = Listing.query.get_or_404(listing_id)
+    if listing.landlord_id != current_user.id:
+        return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+
+    url = (request.get_json() or {}).get("url")
+    if not url:
+        return jsonify({"error": "url requise"}), 400
+
+    existantes = listing.images_urls.split(",") if listing.images_urls else []
+    if url not in existantes:
+        return jsonify({"error": "Cette photo n'appartient pas à l'annonce"}), 404
+
+    restantes = [u for u in existantes if u != url]
+    listing.images_urls = ",".join(restantes) if restantes else None
+    db.session.commit()
+
+    stockage.supprimer(url)
+
+    return jsonify({"message": "Photo retirée",
+                    "images": listing.to_dict()["images"]}), 200
+
+
+@listings_bp.route("/<string:listing_id>/photos/ordre", methods=["PUT"])
+@role_required("landlord", "agency")
+def reordonner_photos(current_user, listing_id):
+    """Redéfinit l'ordre des photos ; la première sert de vignette."""
+    listing = Listing.query.get_or_404(listing_id)
+    if listing.landlord_id != current_user.id:
+        return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+
+    ordre = (request.get_json() or {}).get("images")
+    if not isinstance(ordre, list):
+        return jsonify({"error": "images doit être une liste d'URLs"}), 400
+
+    existantes = listing.images_urls.split(",") if listing.images_urls else []
+    if sorted(ordre) != sorted(existantes):
+        return jsonify({"error": "La liste doit contenir exactement les photos "
+                                 "actuelles de l'annonce"}), 400
+
+    listing.images_urls = ",".join(ordre)
+    db.session.commit()
+    return jsonify({"message": "Ordre enregistré", "images": ordre}), 200
+
+
+# ─── Documents administratifs ────────────────────────────────
+
+@listings_bp.route("/<string:listing_id>/documents", methods=["POST"])
+@role_required("landlord", "agency")
+def televerser_documents(current_user, listing_id):
+    """Dépose les pièces établissant la propriété : titre foncier, bail, acte
+    notarié, quittance… Plusieurs documents sont souvent nécessaires.
+
+    Contrairement aux photos, ces pièces ne sont jamais publiques.
+    """
+    listing = Listing.query.get_or_404(listing_id)
+    if listing.landlord_id != current_user.id:
+        return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+
+    fichiers = request.files.getlist("files") or request.files.getlist("file")
+    if not fichiers:
+        return jsonify({"error": "Aucun document fourni"}), 400
+
+    existants = listing.documents
+    if len(existants) + len(fichiers) > MAX_DOCUMENTS:
+        return jsonify({"error": f"{MAX_DOCUMENTS} documents maximum par annonce"}), 400
+
+    ajoutes = []
+    for fichier in fichiers:
+        try:
+            url = stockage.televerser(fichier, "documents", f"propriete-{listing.id}",
+                                      stockage.DOCUMENTS)
+        except stockage.ErreurStockage as exc:
+            if ajoutes:
+                listing.documents_urls = ",".join(existants + ajoutes)
+                db.session.commit()
+            return jsonify({"error": str(exc), "ajoutes": len(ajoutes)}), 400
+        ajoutes.append(url)
+
+    listing.documents_urls = ",".join(existants + ajoutes)
+
+    # Compléter les pièces après un refus permet de redemander la certification.
+    if listing.certification_status == "rejected":
+        listing.certification_status = "none"
+
+    db.session.commit()
+
+    return jsonify({
+        "message": f"{len(ajoutes)} document(s) enregistré(s)",
+        "nb_documents": len(listing.documents),
+    }), 201
+
+
+@listings_bp.route("/<string:listing_id>/documents", methods=["GET"])
+@current_user_required
+def lister_documents(current_user, listing_id):
+    """Retourne des liens temporaires vers les pièces justificatives.
+
+    Réservé au propriétaire du bien et aux administrateurs : ces documents
+    portent des informations patrimoniales.
+    """
+    listing = Listing.query.get_or_404(listing_id)
+    if listing.landlord_id != current_user.id and current_user.role != "admin":
+        return jsonify({"error": "Non autorisé"}), 403
+
+    documents = [
+        {
+            "reference": url,
+            "libelle": f"Document {i}",
+            "url": stockage.url_signee(url) or url,
+        }
+        for i, url in enumerate(listing.documents, start=1)
+    ]
+    return jsonify({"documents": documents, "total": len(documents)}), 200
+
+
+@listings_bp.route("/<string:listing_id>/documents", methods=["DELETE"])
+@role_required("landlord", "agency")
+def supprimer_document(current_user, listing_id):
+    listing = Listing.query.get_or_404(listing_id)
+    if listing.landlord_id != current_user.id:
+        return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+
+    if listing.certification_status == "pending":
+        return jsonify({"error": "Impossible de retirer une pièce pendant "
+                                 "l'examen de la certification"}), 409
+
+    url = (request.get_json() or {}).get("url")
+    existants = listing.documents
+    if not url or url not in existants:
+        return jsonify({"error": "Ce document n'appartient pas à l'annonce"}), 404
+
+    restants = [u for u in existants if u != url]
+    listing.documents_urls = ",".join(restants) if restants else None
+    db.session.commit()
+
+    stockage.supprimer(url)
+
+    return jsonify({"message": "Document retiré", "nb_documents": len(restants)}), 200

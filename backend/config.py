@@ -63,6 +63,14 @@ class Config:
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 Mo
     ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "pdf"}
 
+    # ─── Supabase Storage (photos et pièces justificatives) ─
+    # Sans ces valeurs, les fichiers sont écrits sur le disque local — ce qui
+    # convient au développement, mais pas à Render : son offre gratuite n'a
+    # pas de disque persistant et efface les fichiers à chaque redémarrage.
+    SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+    SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+    SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "tcheyna")
+
     # ─── Africa's Talking (OTP SMS) ─────────────────────────
     AT_API_KEY = os.getenv("AT_API_KEY", "")
     AT_USERNAME = os.getenv("AT_USERNAME", "sandbox")

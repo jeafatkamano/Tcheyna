@@ -3,10 +3,11 @@ import { useState } from "react";
 import { Link } from "react-router";
 
 import { adminAPI, type Role, type User } from "../../api";
+import { Avatar } from "../../components/Avatar";
 import { BadgeVerification } from "../../components/BadgeVerification";
 import { Chargement, Erreur, ListeVide, MessageErreur } from "../../components/Etats";
 import { useAction, useApi } from "../../hooks/useApi";
-import { formatRelatif, initiales } from "../../lib/format";
+import { formatRelatif } from "../../lib/format";
 
 const ROLES: { valeur: Role | undefined; label: string }[] = [
   { valeur: undefined, label: "Tous" },
@@ -115,12 +116,12 @@ export function AdminUsers() {
                   opacity: actif ? 1 : 0.6,
                 }}
               >
-                <Link
-                  to={`/profil/${utilisateur.id}`}
-                  className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 font-bold text-white"
-                  style={{ background: "#1E3A5F" }}
-                >
-                  {initiales(utilisateur.full_name)}
+                <Link to={`/profil/${utilisateur.id}`}>
+                  <Avatar
+                    nom={utilisateur.full_name}
+                    url={utilisateur.avatar_url}
+                    taille={44}
+                  />
                 </Link>
 
                 <div className="flex-1 min-w-0">

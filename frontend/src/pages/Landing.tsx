@@ -90,7 +90,12 @@ export function Landing() {
           ) : (
             <Link
               to="/login"
-              className="text-white/70 hover:text-white font-medium text-sm transition-colors"
+              className="px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
+              style={{
+                background: "rgba(255,255,255,0.10)",
+                color: "white",
+                border: "1.5px solid rgba(255,255,255,0.25)",
+              }}
             >
               Se connecter
             </Link>
@@ -147,6 +152,20 @@ export function Landing() {
               <ArrowRight size={18} />
             </Link>
           </div>
+
+          {/* Un utilisateur qui revient ne doit pas passer par l'inscription */}
+          {!user && (
+            <p className="text-white/50 mt-7" style={{ fontSize: "15px" }}>
+              Vous avez déjà un compte ?{" "}
+              <Link
+                to="/login"
+                className="font-semibold underline underline-offset-4"
+                style={{ color: "#F97316" }}
+              >
+                Connectez-vous
+              </Link>
+            </p>
+          )}
         </div>
 
         {/* Repères du marché — chiffres du recensement RGPH-4 2025 */}
@@ -257,13 +276,21 @@ export function Landing() {
 
         <div className="mt-10 text-center">
           <Link
-            to="/inscription"
+            to={user ? accueilDuRole() : "/inscription"}
             className="inline-flex items-center gap-2 py-4 px-8 rounded-2xl font-semibold text-white transition-transform active:scale-95"
             style={{ background: "#F97316", fontSize: "16px" }}
           >
-            Commencer gratuitement
+            {user ? "Retourner à mon espace" : "Commencer gratuitement"}
             <ArrowRight size={18} />
           </Link>
+          {!user && (
+            <p className="text-white/50 text-sm mt-4">
+              Déjà inscrit ?{" "}
+              <Link to="/login" className="font-semibold underline underline-offset-4 text-white/80">
+                Se connecter
+              </Link>
+            </p>
+          )}
         </div>
       </section>
 

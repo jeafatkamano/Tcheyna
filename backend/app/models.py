@@ -234,7 +234,9 @@ class Listing(db.Model):
     certification_requested_at = db.Column(db.DateTime, nullable=True)
     certified_at   = db.Column(db.DateTime, nullable=True)
     certification_note = db.Column(db.Text, nullable=True)   # motif de refus / remarque admin
-    propriete_doc_url  = db.Column(db.String(300), nullable=True)  # titre foncier / bail
+    # Pièces administratives : titre foncier, bail, quittance… Plusieurs
+    # documents sont souvent nécessaires pour établir la propriété d'un bien.
+    documents_urls = db.Column(db.Text, nullable=True)  # URLs séparées par des virgules
 
     # ─── Mise en avant (annonce premium) ────────────────────
     is_premium    = db.Column(db.Boolean, default=False)
@@ -254,6 +256,10 @@ class Listing(db.Model):
     matches   = db.relationship("Match", back_populates="listing", lazy="dynamic")
     favorites = db.relationship("Favorite", back_populates="listing", lazy="dynamic",
                                 cascade="all, delete-orphan")
+
+    @property
+    def documents(self):
+        return [u for u in (self.documents_urls or "").split(",") if u]
 
     @property
     def is_certified(self):
@@ -298,6 +304,7 @@ class Listing(db.Model):
                 "climatisation": self.has_ac,
             },
             "certification_status": self.certification_status,
+            "nb_documents": len(self.documents),
             "is_certified":  self.is_certified,
             "certified_at":  self.certified_at.isoformat() if self.certified_at else None,
             "is_premium":    self.premium_actif,

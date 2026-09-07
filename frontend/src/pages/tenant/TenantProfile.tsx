@@ -15,12 +15,13 @@ import type { LucideIcon } from "lucide-react";
 import { passportAPI, type TenantPassport, type TypeDocument } from "../../api";
 import { BadgeVerification, ScoreCircle, VerificationSteps } from "../../components/BadgeVerification";
 import { ChangementMotDePasse } from "../../components/ChangementMotDePasse";
+import { TeleversementAvatar } from "../../components/TeleversementAvatar";
 import { Chargement, Erreur, MessageErreur, MessageSucces } from "../../components/Etats";
 import { PhoneVerification } from "../../components/PhoneVerification";
 import { useAuth } from "../../context/AuthContext";
 import { useAction, useApi } from "../../hooks/useApi";
 import { useGeo } from "../../hooks/useGeo";
-import { formatMontant, initiales } from "../../lib/format";
+import { formatMontant } from "../../lib/format";
 
 const DOCUMENTS: { type: TypeDocument; label: string; aide: string }[] = [
   { type: "cni_recto", label: "CNI — recto", aide: "Face avant de votre carte d'identité" },
@@ -79,9 +80,7 @@ export function TenantProfile() {
           className="rounded-2xl p-5 flex items-center gap-4"
           style={{ background: "rgba(255,255,255,0.08)" }}
         >
-          <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
-            {initiales(user?.full_name)}
-          </div>
+          <TeleversementAvatar taille={64} surFonce />
           <div className="flex-1 min-w-0">
             <h2 className="text-white font-bold text-lg truncate">{user?.full_name}</h2>
             <p className="text-white/60 text-sm truncate">

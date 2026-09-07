@@ -127,6 +127,11 @@ export function LoginPage() {
             </Link>
           </p>
 
+          <p className="text-center text-white/35 text-xs mt-3 leading-relaxed">
+            Votre compte reste actif après déconnexion : vos annonces, vos
+            candidatures et vos échanges vous attendent.
+          </p>
+
           <div className="mt-8 pt-6 border-t border-white/10">
             <p className="text-center text-white/40 text-xs mb-3">Vous découvrez Tcheyna ?</p>
             <div className="flex gap-3">

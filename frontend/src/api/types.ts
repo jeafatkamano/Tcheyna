@@ -78,6 +78,7 @@ export interface Listing {
   disponible_a_partir?: string | null;
   equipements: Equipements;
   certification_status: CertificationStatus;
+  nb_documents: number;
   is_certified: boolean;
   certified_at?: string | null;
   is_premium: boolean;
@@ -93,7 +94,6 @@ export interface Listing {
   score_compatibilite?: number;
   details_compatibilite?: DetailCompatibilite[];
   ma_candidature?: { id: string; status: MatchStatus } | null;
-  propriete_doc_url?: string | null;
 }
 
 export type MatchStatus = "pending" | "accepted" | "rejected" | "completed" | "cancelled";
@@ -239,6 +239,14 @@ export interface Tarif {
   montant: number;
   payeur: string;
   description: string;
+}
+
+export interface DocumentPiece {
+  /** Référence interne, utilisée pour supprimer la pièce. */
+  reference: string;
+  libelle: string;
+  /** Lien temporaire de consultation. */
+  url: string;
 }
 
 export interface Pays {

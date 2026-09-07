@@ -6,6 +6,7 @@
 import { api, queryString, tokens, BASE_URL } from "./client";
 import type {
   AvisADonner,
+  DocumentPiece,
   CandidatSuggere,
   Conversation,
   Listing,
@@ -159,11 +160,42 @@ export const listingsAPI = {
   demanderCertification: (id: string) =>
     api.post<{ message: string; listing: Listing }>(`/listings/${id}/certification`),
 
-  televerserDocument: (id: string, fichier: File) => {
+  /* ─── Photos du bien (publiques) ─────────────────────── */
+
+  televerserPhotos: (id: string, fichiers: File[]) => {
     const form = new FormData();
-    form.append("file", fichier);
-    return api.post<{ message: string; url: string }>(`/listings/${id}/document`, form);
+    fichiers.forEach((f) => form.append("files", f));
+    return api.post<{ message: string; images: string[] }>(`/listings/${id}/photos`, form);
   },
+
+  supprimerPhoto: (id: string, url: string) =>
+    api.delete<{ message: string; images: string[] }>(`/listings/${id}/photos`, {
+      body: JSON.stringify({ url }),
+      headers: { "Content-Type": "application/json" },
+    }),
+
+  reordonnerPhotos: (id: string, images: string[]) =>
+    api.put<{ message: string; images: string[] }>(`/listings/${id}/photos/ordre`, { images }),
+
+  /* ─── Pièces administratives (jamais publiques) ──────── */
+
+  televerserDocuments: (id: string, fichiers: File[]) => {
+    const form = new FormData();
+    fichiers.forEach((f) => form.append("files", f));
+    return api.post<{ message: string; nb_documents: number }>(
+      `/listings/${id}/documents`,
+      form,
+    );
+  },
+
+  documents: (id: string) =>
+    api.get<{ documents: DocumentPiece[]; total: number }>(`/listings/${id}/documents`),
+
+  supprimerDocument: (id: string, url: string) =>
+    api.delete<{ message: string; nb_documents: number }>(`/listings/${id}/documents`, {
+      body: JSON.stringify({ url }),
+      headers: { "Content-Type": "application/json" },
+    }),
 };
 
 /* ─── MISES EN RELATION ────────────────────────────────────── */
@@ -364,6 +396,17 @@ export const usersAPI = {
     api.put<{ message: string; user: User }>("/users/me", data),
 
   desactiver: () => api.delete<{ message: string }>("/users/me"),
+
+  televerserAvatar: (fichier: File) => {
+    const form = new FormData();
+    form.append("file", fichier);
+    return api.post<{ message: string; avatar_url: string; user: User }>(
+      "/users/me/avatar",
+      form,
+    );
+  },
+
+  supprimerAvatar: () => api.delete<{ message: string; user: User }>("/users/me/avatar"),
 };
 
 /* ─── GÉOGRAPHIE ───────────────────────────────────────────── */

@@ -9,12 +9,13 @@ import {
 import { Link } from "react-router";
 
 import { favorisAPI, listingsAPI, passportAPI, type Listing } from "../../api";
+import { Avatar } from "../../components/Avatar";
 import { BadgeVerification, ScoreCircle } from "../../components/BadgeVerification";
 import { Erreur, ListeVide, SqueletteCartes } from "../../components/Etats";
 import { ListingCard } from "../../components/ListingCard";
 import { useAuth } from "../../context/AuthContext";
 import { useApi } from "../../hooks/useApi";
-import { initiales } from "../../lib/format";
+
 
 export function TenantDashboard() {
   const { user } = useAuth();
@@ -52,9 +53,7 @@ export function TenantDashboard() {
       {/* En-tête */}
       <div className="px-4 py-6" style={{ background: "#1E3A5F" }}>
         <div className="flex items-center gap-4 mb-6">
-          <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-            {initiales(user?.full_name)}
-          </div>
+          <Avatar nom={user?.full_name} url={user?.avatar_url} taille={56} surFonce />
           <div className="min-w-0">
             <p className="text-white/60 text-sm">Bonjour 👋</p>
             <h1 className="text-white font-bold text-xl truncate">{user?.full_name}</h1>

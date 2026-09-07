@@ -5,12 +5,13 @@ import { useNavigate } from "react-router";
 import { avisAPI, usersAPI } from "../../api";
 import { BadgeVerification, VerificationSteps } from "../../components/BadgeVerification";
 import { ChangementMotDePasse } from "../../components/ChangementMotDePasse";
+import { TeleversementAvatar } from "../../components/TeleversementAvatar";
 import { MessageErreur, MessageSucces } from "../../components/Etats";
 import { PhoneVerification } from "../../components/PhoneVerification";
 import { useAuth } from "../../context/AuthContext";
 import { useAction, useApi } from "../../hooks/useApi";
 import { useGeo } from "../../hooks/useGeo";
-import { formatRelatif, initiales } from "../../lib/format";
+import { formatRelatif } from "../../lib/format";
 import { InfoLigne } from "../tenant/TenantProfile";
 
 const CHAMP = "w-full px-4 py-3 rounded-xl outline-none";
@@ -60,9 +61,7 @@ export function OwnerProfile() {
           className="rounded-2xl p-5 flex items-center gap-4"
           style={{ background: "rgba(255,255,255,0.08)" }}
         >
-          <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
-            {initiales(user?.full_name)}
-          </div>
+          <TeleversementAvatar taille={64} surFonce />
           <div className="flex-1 min-w-0">
             <h2 className="text-white font-bold text-lg truncate">{user?.full_name}</h2>
             <p className="text-white/60 text-sm">

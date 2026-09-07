@@ -4,15 +4,14 @@ routes/passport.py — Passeport Locataire.
 Regroupe le dossier du locataire (documents, revenus, garant) et ses critères de
 recherche, qui alimentent directement le moteur de matching.
 """
-import os
 from datetime import date
 
-from flask import Blueprint, current_app, jsonify, request
-from werkzeug.utils import secure_filename
+from flask import Blueprint, jsonify, request
 
 from app import db
 from app.models import TRUST_LEVELS, TenantPassport
 from app.routes import role_required
+from app.services import stockage
 
 passport_bp = Blueprint("passport", __name__)
 
@@ -174,22 +173,21 @@ def upload_document(current_user, doc_type):
     if "file" not in request.files:
         return jsonify({"error": "Aucun fichier fourni"}), 400
 
-    fichier = request.files["file"]
-    if not fichier.filename:
-        return jsonify({"error": "Aucun fichier sélectionné"}), 400
-
-    extension = fichier.filename.rsplit(".", 1)[-1].lower()
-    if extension not in current_app.config["ALLOWED_EXTENSIONS"]:
-        return jsonify({"error": "Format non autorisé (jpg, jpeg, png, pdf)"}), 400
-
-    dossier = current_app.config["UPLOAD_FOLDER"]
-    os.makedirs(dossier, exist_ok=True)
-    nom = secure_filename(f"{current_user.id}_{doc_type}.{extension}")
-    fichier.save(os.path.join(dossier, nom))
-
     passport = _obtenir_ou_creer(current_user)
-    url = f"/uploads/{nom}"
+
+    # Le document précédent est remplacé : conserver l'ancien fichier
+    # occuperait de l'espace sans jamais servir.
+    ancien = getattr(passport, DOC_TYPES[doc_type])
+
+    try:
+        url = stockage.televerser(request.files["file"], "documents",
+                                  f"{doc_type}-{current_user.id}", stockage.DOCUMENTS)
+    except stockage.ErreurStockage as exc:
+        return jsonify({"error": str(exc)}), 400
+
     setattr(passport, DOC_TYPES[doc_type], url)
+    if ancien and ancien != url:
+        stockage.supprimer(ancien)
 
     # Un nouveau document annule la validation précédente : l'admin doit revoir.
     if doc_type in ("cni_recto", "cni_verso", "passport"):
@@ -221,7 +219,10 @@ def supprimer_document(current_user, doc_type):
         return jsonify({"error": f"Type invalide : {' | '.join(DOC_TYPES)}"}), 400
 
     passport = _obtenir_ou_creer(current_user)
+    ancien = getattr(passport, DOC_TYPES[doc_type])
     setattr(passport, DOC_TYPES[doc_type], None)
+    if ancien:
+        stockage.supprimer(ancien)
 
     if doc_type in ("cni_recto", "cni_verso", "passport"):
         passport.docs_uploaded = bool(passport.cni_recto_url or passport.passport_url)

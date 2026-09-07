@@ -30,11 +30,12 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { favorisAPI, listingsAPI, matchesAPI } from "../api";
+import { Avatar } from "../components/Avatar";
 import { BadgeCertifie, BadgeVerification, ScoreMatch } from "../components/BadgeVerification";
 import { Chargement, Erreur, MessageErreur } from "../components/Etats";
 import { useAuth } from "../context/AuthContext";
 import { useAction, useApi } from "../hooks/useApi";
-import { formatDate, formatMontant, formatMontantCourt, initiales } from "../lib/format";
+import { formatDate, formatMontant, formatMontantCourt } from "../lib/format";
 
 const IMAGE_PAR_DEFAUT = "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1080&q=80";
 
@@ -377,12 +378,11 @@ export function ListingDetail() {
               Propriétaire
             </h2>
             <Link to={`/profil/${listing.landlord.id}`} className="flex items-center gap-4">
-              <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 font-bold text-white"
-                style={{ background: "#1E3A5F", fontSize: "17px" }}
-              >
-                {initiales(listing.landlord.full_name)}
-              </div>
+              <Avatar
+                nom={listing.landlord.full_name}
+                url={listing.landlord.avatar_url}
+                taille={56}
+              />
               <div className="flex-1 min-w-0">
                 <p className="font-bold" style={{ color: "#1E293B" }}>
                   {listing.landlord.full_name}

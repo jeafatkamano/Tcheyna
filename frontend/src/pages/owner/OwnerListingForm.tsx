@@ -4,20 +4,18 @@
  * En édition, la page porte aussi le parcours de certification : dépôt du
  * document de propriété, demande, et suivi de la décision.
  */
-import {
-  ArrowLeft,
-  Check,
-  Plus,
-  ShieldCheck,
-  Trash2,
-  Upload,
-  X,
-} from "lucide-react";
+import { ArrowLeft, Check, ShieldCheck, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { listingsAPI, type DonneesAnnonce, type Listing } from "../../api";
 import { Chargement, Erreur, MessageErreur, MessageSucces } from "../../components/Etats";
+import { TeleversementDocuments } from "../../components/TeleversementDocuments";
+import {
+  envoyerPhotosEnAttente,
+  TeleversementPhotos,
+  type PhotoEnAttente,
+} from "../../components/TeleversementPhotos";
 import { useAction, useApi } from "../../hooks/useApi";
 import { useGeo } from "../../hooks/useGeo";
 import { formatMontant } from "../../lib/format";
@@ -117,7 +115,9 @@ function Formulaire({
   const geo = useGeo("Guinée", "Conakry");
   const [succes, setSucces] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>(existante?.images ?? []);
-  const [nouvelleImage, setNouvelleImage] = useState("");
+  // En création, l'annonce n'a pas encore d'identifiant : les photos sont
+  // retenues ici puis envoyées juste après l'enregistrement.
+  const [photosEnAttente, setPhotosEnAttente] = useState<PhotoEnAttente[]>([]);
 
   const [form, setForm] = useState<Formulaire>(
     existante
@@ -146,10 +146,10 @@ function Formulaire({
       : VIDE,
   );
 
+  const [erreurPhotos, setErreurPhotos] = useState<string | null>(null);
   const creation = useAction(listingsAPI.creer);
   const modification = useAction(listingsAPI.modifier);
   const retrait = useAction(listingsAPI.retirer);
-  const televersementDoc = useAction(listingsAPI.televerserDocument);
   const demandeCertification = useAction(listingsAPI.demanderCertification);
 
   const enCours = creation.enCours || modification.enCours;
@@ -158,14 +158,6 @@ function Formulaire({
   function confirmer(message: string) {
     setSucces(message);
     setTimeout(() => setSucces(null), 3000);
-  }
-
-  function ajouterImage() {
-    const url = nouvelleImage.trim();
-    if (!url) return;
-    if (images.length >= 10) return;
-    setImages((p) => [...p, url]);
-    setNouvelleImage("");
   }
 
   function donnees(): DonneesAnnonce {
@@ -192,7 +184,6 @@ function Formulaire({
       is_secured: form.is_secured,
       has_parking: form.has_parking,
       has_ac: form.has_ac,
-      images,
     };
   }
 
@@ -201,10 +192,26 @@ function Formulaire({
     const reponse = existante
       ? await modification.executer(existante.id, donnees())
       : await creation.executer(donnees());
-    if (reponse) {
-      confirmer(existante ? "Annonce mise à jour" : "Annonce publiée");
-      onSauvegarde(reponse.listing);
+    if (!reponse) return;
+
+    // Les photos choisies avant la création partent maintenant que
+    // l'annonce possède un identifiant.
+    if (photosEnAttente.length) {
+      try {
+        const envoyees = await envoyerPhotosEnAttente(reponse.listing.id, photosEnAttente);
+        setImages(envoyees);
+        setPhotosEnAttente([]);
+      } catch (err) {
+        // L'annonce est enregistrée : on le dit, et on signale ce qui manque.
+        confirmer("Annonce publiée, mais les photos n'ont pas pu être envoyées");
+        onSauvegarde(reponse.listing);
+        setErreurPhotos(err instanceof Error ? err.message : "Envoi des photos impossible");
+        return;
+      }
     }
+
+    confirmer(existante ? "Annonce mise à jour" : "Annonce publiée");
+    onSauvegarde(reponse.listing);
   }
 
   async function supprimer() {
@@ -237,7 +244,6 @@ function Formulaire({
         {existante && (
           <BlocCertification
             listing={existante}
-            televersement={televersementDoc}
             demande={demandeCertification}
             onChangement={async (message) => {
               confirmer(message);
@@ -559,63 +565,17 @@ function Formulaire({
             className="rounded-2xl p-5 space-y-3"
             style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }}
           >
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold" style={{ color: "#1E293B" }}>
-                Photos
-              </h2>
-              <span className="text-xs text-gray-400">{images.length}/10</span>
-            </div>
-            <p className="text-xs text-gray-500 -mt-1">
-              Collez l'adresse d'une photo hébergée en ligne. Une photo est obligatoire pour demander
-              la certification.
-            </p>
-
-            {images.length > 0 && (
-              <div className="grid grid-cols-3 gap-2">
-                {images.map((url, i) => (
-                  <div key={`${url}-${i}`} className="relative aspect-square rounded-xl overflow-hidden">
-                    <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => setImages((p) => p.filter((_, index) => index !== i))}
-                      className="absolute top-1 right-1 p-1 rounded-lg"
-                      style={{ background: "rgba(0,0,0,0.6)", color: "white" }}
-                      aria-label={`Retirer la photo ${i + 1}`}
-                    >
-                      <X size={13} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <input
-                type="url"
-                value={nouvelleImage}
-                onChange={(e) => setNouvelleImage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    ajouterImage();
-                  }
-                }}
-                placeholder="https://…"
-                aria-label="Adresse de la photo"
-                className={`${CHAMP} flex-1`}
-                style={STYLE_CHAMP}
-              />
-              <button
-                type="button"
-                onClick={ajouterImage}
-                disabled={!nouvelleImage.trim() || images.length >= 10}
-                className="px-4 rounded-xl font-semibold text-white disabled:opacity-40"
-                style={{ background: "#1E3A5F" }}
-                aria-label="Ajouter la photo"
-              >
-                <Plus size={18} />
-              </button>
-            </div>
+            <h2 className="font-bold" style={{ color: "#1E293B" }}>
+              Photos du bien
+            </h2>
+            <TeleversementPhotos
+              listingId={existante?.id}
+              images={images}
+              onImagesChange={setImages}
+              enAttente={photosEnAttente}
+              onEnAttenteChange={setPhotosEnAttente}
+            />
+            <MessageErreur message={erreurPhotos} />
           </section>
 
           <MessageErreur message={erreur} />
@@ -651,16 +611,14 @@ function Formulaire({
 
 function BlocCertification({
   listing,
-  televersement,
   demande,
   onChangement,
 }: {
   listing: Listing;
-  televersement: ReturnType<typeof useAction<[string, File], { message: string; url: string }>>;
   demande: ReturnType<typeof useAction<[string], { message: string; listing: Listing }>>;
   onChangement: (message: string) => Promise<void> | void;
 }) {
-  const [docEnvoye, setDocEnvoye] = useState(Boolean(listing.propriete_doc_url));
+  const [nbDocuments, setNbDocuments] = useState(listing.nb_documents);
 
   const CONFIGS = {
     certified: {
@@ -678,7 +636,7 @@ function BlocCertification({
       titre: "#92400E",
       texte: "#B45309",
       libelle: "Certification en cours d'examen",
-      message: "Un vérificateur Tcheyna examine votre dossier. Réponse sous 48 h.",
+      message: "Un vérificateur Tcheyna examine vos pièces. Réponse sous 48 h.",
     },
     rejected: {
       fond: "#FEE2E2",
@@ -686,7 +644,9 @@ function BlocCertification({
       titre: "#991B1B",
       texte: "#B91C1C",
       libelle: "Certification refusée",
-      message: listing.certification_status === "rejected" ? "Corrigez le point signalé, puis redemandez la certification." : "",
+      message:
+        "Complétez ou remplacez les pièces demandées, puis relancez la certification. "
+        + "Le motif du refus figure dans vos notifications.",
     },
     none: {
       fond: "#EFF6FF",
@@ -695,12 +655,15 @@ function BlocCertification({
       texte: "#1D4ED8",
       libelle: "Faire certifier cette annonce",
       message:
-        "Une annonce certifiée est mise en avant dans les résultats et accessible aux locataires vérifiés niveau 2 et plus.",
+        "Une annonce certifiée est mise en avant dans les résultats et accessible aux "
+        + "locataires vérifiés niveau 2 et plus.",
     },
   };
 
   const config = CONFIGS[listing.certification_status];
-  const peutDemander = listing.certification_status === "none" || listing.certification_status === "rejected";
+  const enExamen = listing.certification_status === "pending";
+  const peutDemander =
+    listing.certification_status === "none" || listing.certification_status === "rejected";
 
   return (
     <div
@@ -718,70 +681,40 @@ function BlocCertification({
         {config.message}
       </p>
 
-      {listing.certification_status === "rejected" && (
-        <div className="px-3 py-2.5 rounded-xl" style={{ background: "white" }}>
-          <p className="text-xs font-semibold mb-0.5" style={{ color: "#991B1B" }}>
-            Motif du refus
-          </p>
-          <p className="text-xs" style={{ color: "#64748B" }}>
-            Consultez vos notifications pour le détail.
-          </p>
-        </div>
-      )}
+      <div>
+        <p className="text-xs font-semibold mb-2" style={{ color: config.titre }}>
+          Documents administratifs
+        </p>
+        <TeleversementDocuments
+          listingId={listing.id}
+          verrouille={enExamen}
+          onChangement={setNbDocuments}
+        />
+      </div>
 
       {peutDemander && (
         <>
-          <label
-            className="flex items-center gap-3 p-3 rounded-xl cursor-pointer"
-            style={{ background: "white", border: `1.5px solid ${docEnvoye ? "#A7F3D0" : "#E2E8F0"}` }}
-          >
-            <input
-              type="file"
-              accept=".jpg,.jpeg,.png,.pdf"
-              className="sr-only"
-              onChange={async (e) => {
-                const fichier = e.target.files?.[0];
-                e.target.value = "";
-                if (!fichier) return;
-                const ok = await televersement.executer(listing.id, fichier);
-                if (ok) {
-                  setDocEnvoye(true);
-                  await onChangement("Document de propriété enregistré");
-                }
-              }}
-            />
-            {docEnvoye ? (
-              <Check size={18} style={{ color: "#10B981", flexShrink: 0 }} />
-            ) : (
-              <Upload size={18} style={{ color: "#94A3B8", flexShrink: 0 }} />
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm" style={{ color: "#1E293B" }}>
-                Document de propriété
-              </p>
-              <p className="text-xs text-gray-400">
-                {docEnvoye ? "Enregistré" : "Titre foncier, bail ou acte de propriété"}
-              </p>
-            </div>
-          </label>
-
-          <MessageErreur message={televersement.erreur ?? demande.erreur} />
+          <MessageErreur message={demande.erreur} />
 
           <button
             onClick={async () => {
               const ok = await demande.executer(listing.id);
               if (ok) await onChangement("Demande de certification envoyée");
             }}
-            disabled={!docEnvoye || !listing.images.length || demande.enCours}
+            disabled={!nbDocuments || !listing.images.length || demande.enCours}
             className="w-full py-3.5 rounded-2xl font-semibold text-white disabled:opacity-50"
             style={{ background: "#1E3A5F" }}
           >
             {demande.enCours ? "Envoi…" : "Demander la certification"}
           </button>
 
-          {!listing.images.length && (
+          {(!nbDocuments || !listing.images.length) && (
             <p className="text-xs text-center" style={{ color: config.texte }}>
-              Ajoutez au moins une photo pour pouvoir demander la certification.
+              {!listing.images.length && !nbDocuments
+                ? "Ajoutez au moins une photo et une pièce administrative."
+                : !listing.images.length
+                  ? "Ajoutez au moins une photo du bien."
+                  : "Ajoutez au moins une pièce administrative."}
             </p>
           )}
         </>

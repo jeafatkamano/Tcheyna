@@ -18,11 +18,12 @@ import { useState } from "react";
 import { Link } from "react-router";
 
 import { adminAPI, urlFichier, type Listing } from "../../api";
+import { Avatar } from "../../components/Avatar";
 import { BadgeVerification } from "../../components/BadgeVerification";
 import { ChangementMotDePasse } from "../../components/ChangementMotDePasse";
 import { Chargement, Erreur, ListeVide, MessageErreur, MessageSucces } from "../../components/Etats";
 import { useAction, useApi } from "../../hooks/useApi";
-import { formatMontant, formatMontantCourt, formatRelatif, initiales } from "../../lib/format";
+import { formatMontant, formatMontantCourt, formatRelatif } from "../../lib/format";
 
 type Onglet = "identites" | "revenus" | "annonces";
 
@@ -301,12 +302,7 @@ function FicheVerification({
       style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }}
     >
       <div className="flex items-center gap-3 mb-3">
-        <div
-          className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 font-bold text-white"
-          style={{ background: "#1E3A5F" }}
-        >
-          {initiales(titre)}
-        </div>
+        <Avatar nom={titre} taille={44} />
         <div className="flex-1 min-w-0">
           <p className="font-bold text-sm truncate" style={{ color: "#1E293B" }}>
             {titre}

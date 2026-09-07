@@ -8,11 +8,12 @@ import { ArrowLeft, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { messagesAPI, type Message } from "../../api";
+import { messagesAPI, type Message, type User } from "../../api";
+import { Avatar } from "../../components/Avatar";
 import { Chargement, Erreur, MessageErreur } from "../../components/Etats";
 import { useAuth } from "../../context/AuthContext";
 import { useAction, useApi } from "../../hooks/useApi";
-import { formatMontantCourt, initiales } from "../../lib/format";
+import { formatMontantCourt } from "../../lib/format";
 
 const INTERVALLE_RAFRAICHISSEMENT = 15_000;
 
@@ -94,12 +95,13 @@ export function ConversationPage() {
           <ArrowLeft size={18} />
         </button>
 
-        <Link
-          to={`/profil/${interlocuteur?.id}`}
-          className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 font-bold text-white"
-          style={{ background: "rgba(255,255,255,0.2)" }}
-        >
-          {initiales(interlocuteur?.full_name)}
+        <Link to={`/profil/${interlocuteur?.id}`} aria-label="Voir le profil">
+          <Avatar
+            nom={interlocuteur?.full_name}
+            url={interlocuteur?.avatar_url}
+            taille={40}
+            surFonce
+          />
         </Link>
 
         <div className="flex-1 min-w-0">
@@ -139,7 +141,7 @@ export function ConversationPage() {
             message={message}
             estMien={message.sender_id === user?.id}
             precedent={messages[i - 1]}
-            initialesAutre={initiales(interlocuteur?.full_name)}
+            interlocuteur={interlocuteur}
           />
         ))}
         <div ref={finDuFil} />
@@ -187,12 +189,12 @@ function Bulle({
   message,
   estMien,
   precedent,
-  initialesAutre,
+  interlocuteur,
 }: {
   message: Message;
   estMien: boolean;
   precedent?: Message;
-  initialesAutre: string;
+  interlocuteur?: User;
 }) {
   const date = message.created_at ? new Date(message.created_at) : new Date();
   const nouveauJour =
@@ -215,12 +217,14 @@ function Bulle({
 
       <div className={`flex items-end gap-2 ${estMien ? "flex-row-reverse" : "flex-row"}`}>
         {!estMien && (
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mb-1 text-white font-semibold"
-            style={{ background: "#1E3A5F", fontSize: "10px" }}
-          >
-            {initialesAutre}
-          </div>
+          <span className="mb-1">
+            <Avatar
+              nom={interlocuteur?.full_name}
+              url={interlocuteur?.avatar_url}
+              taille={28}
+              forme="rond"
+            />
+          </span>
         )}
 
         <div

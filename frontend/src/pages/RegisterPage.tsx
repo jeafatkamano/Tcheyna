@@ -1,4 +1,4 @@
-import { ArrowLeft, Eye, EyeOff, Home, Users } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Home, LogIn, Users } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
@@ -81,9 +81,25 @@ export function RegisterPage({ roleImpose, onInscrit }: Props = {}) {
           <h1 className="text-white font-bold mb-2" style={{ fontSize: "26px", lineHeight: 1.2 }}>
             Créer votre compte
           </h1>
-          <p className="text-white/60 mb-6" style={{ fontSize: "15px" }}>
+          <p className="text-white/60 mb-4" style={{ fontSize: "15px" }}>
             Gratuit. Vous construirez votre niveau de confiance étape par étape.
           </p>
+
+          {/* Placé avant le formulaire : quelqu'un qui revient s'en rend
+              compte avant d'avoir commencé à remplir des champs. */}
+          <Link
+            to="/login"
+            className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold mb-6 transition-colors"
+            style={{
+              background: "rgba(255,255,255,0.08)",
+              color: "white",
+              border: "1.5px solid rgba(255,255,255,0.2)",
+              fontSize: "14px",
+            }}
+          >
+            <LogIn size={16} />
+            J'ai déjà un compte — se connecter
+          </Link>
 
           {/* Choix du rôle — masqué quand le parcours l'impose déjà */}
           <div className="grid grid-cols-2 gap-3 mb-6" hidden={Boolean(roleImpose)}>

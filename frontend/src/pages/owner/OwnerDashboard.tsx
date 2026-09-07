@@ -10,12 +10,13 @@ import {
 import { Link } from "react-router";
 
 import { listingsAPI, matchesAPI } from "../../api";
+import { Avatar } from "../../components/Avatar";
 import { BadgeVerification, ScoreCircle } from "../../components/BadgeVerification";
 import { Erreur, ListeVide, SqueletteCartes } from "../../components/Etats";
 import { ListingCard } from "../../components/ListingCard";
 import { useAuth } from "../../context/AuthContext";
 import { useApi } from "../../hooks/useApi";
-import { formatRelatif, initiales } from "../../lib/format";
+import { formatRelatif } from "../../lib/format";
 
 export function OwnerDashboard() {
   const { user } = useAuth();
@@ -34,9 +35,7 @@ export function OwnerDashboard() {
       {/* En-tête */}
       <div className="px-4 pt-6 pb-8" style={{ background: "#1E3A5F" }}>
         <div className="flex items-center gap-4 mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-            {initiales(user?.full_name)}
-          </div>
+          <Avatar nom={user?.full_name} url={user?.avatar_url} taille={48} surFonce />
           <div className="min-w-0">
             <p className="text-white/60 text-sm">Bonjour 👋</p>
             <h1 className="text-white font-bold text-xl truncate">{user?.full_name}</h1>
@@ -157,12 +156,11 @@ export function OwnerDashboard() {
                   className="flex items-center gap-4 p-4 rounded-2xl transition-transform active:scale-[0.98]"
                   style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }}
                 >
-                  <div
-                    className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 font-bold text-white"
-                    style={{ background: "#1E3A5F" }}
-                  >
-                    {initiales(match.tenant?.full_name)}
-                  </div>
+                  <Avatar
+                    nom={match.tenant?.full_name}
+                    url={match.tenant?.avatar_url}
+                    taille={48}
+                  />
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-sm truncate" style={{ color: "#1E293B" }}>
                       {match.tenant?.full_name}

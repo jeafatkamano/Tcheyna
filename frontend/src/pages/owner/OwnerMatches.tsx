@@ -13,10 +13,11 @@ import { useState } from "react";
 import { Link } from "react-router";
 
 import { listingsAPI, matchesAPI, type Match, type MatchStatus } from "../../api";
+import { Avatar } from "../../components/Avatar";
 import { BadgeVerification, ScoreCircle, ScoreMatch } from "../../components/BadgeVerification";
 import { Erreur, ListeVide, MessageErreur, SqueletteCartes } from "../../components/Etats";
 import { useAction, useApi } from "../../hooks/useApi";
-import { formatDateHeure, formatMontantCourt, formatRelatif, initiales } from "../../lib/format";
+import { formatDateHeure, formatMontantCourt, formatRelatif } from "../../lib/format";
 import { ModaleAvis } from "../tenant/TenantMatches";
 
 const STATUTS: Record<MatchStatus, { label: string; couleur: string; fond: string }> = {
@@ -191,12 +192,12 @@ export function OwnerMatches() {
                     {/* Candidat */}
                     <div className="px-4 py-4">
                       <div className="flex items-center gap-3 mb-3">
-                        <Link
-                          to={`/profil/${match.tenant?.id}`}
-                          className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 font-bold text-white"
-                          style={{ background: "#1E3A5F" }}
-                        >
-                          {initiales(match.tenant?.full_name)}
+                        <Link to={`/profil/${match.tenant?.id}`}>
+                          <Avatar
+                            nom={match.tenant?.full_name}
+                            url={match.tenant?.avatar_url}
+                            taille={48}
+                          />
                         </Link>
                         <div className="flex-1 min-w-0">
                           <Link to={`/profil/${match.tenant?.id}`} className="flex items-center gap-2">
@@ -435,12 +436,12 @@ function OngletSuggestions() {
             style={{ background: "white", boxShadow: "0 2px 16px rgba(30,58,95,0.08)" }}
           >
             <div className="flex items-center gap-3 mb-3">
-              <Link
-                to={`/profil/${candidat.tenant.id}`}
-                className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 font-bold text-white"
-                style={{ background: "#1E3A5F" }}
-              >
-                {initiales(candidat.tenant.full_name)}
+              <Link to={`/profil/${candidat.tenant.id}`}>
+                <Avatar
+                  nom={candidat.tenant.full_name}
+                  url={candidat.tenant.avatar_url}
+                  taille={48}
+                />
               </Link>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-sm truncate" style={{ color: "#1E293B" }}>

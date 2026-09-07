@@ -19,10 +19,11 @@ import type { LucideIcon } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 
 import { usersAPI } from "../../api";
+import { Avatar } from "../../components/Avatar";
 import { BadgeVerification, ScoreCircle } from "../../components/BadgeVerification";
 import { Chargement, Erreur } from "../../components/Etats";
 import { ListingCard } from "../../components/ListingCard";
-import { formatDate, formatMontantCourt, initiales, labelTypeBien } from "../../lib/format";
+import { formatDate, formatMontantCourt, labelTypeBien } from "../../lib/format";
 import { useApi } from "../../hooks/useApi";
 
 export function TenantProfileView() {
@@ -63,9 +64,12 @@ export function TenantProfileView() {
         </button>
 
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
-            {initiales(utilisateur.full_name)}
-          </div>
+          <Avatar
+            nom={utilisateur.full_name}
+            url={utilisateur.avatar_url}
+            taille={64}
+            surFonce
+          />
           <div className="flex-1 min-w-0">
             <h1 className="text-white font-bold text-lg truncate">{utilisateur.full_name}</h1>
             <p className="text-white/60 text-sm">

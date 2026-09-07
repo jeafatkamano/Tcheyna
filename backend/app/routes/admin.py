@@ -20,10 +20,29 @@ from app.models import (
 )
 from app.routes import role_required
 from app.services import notifications as notify
+from app.services import stockage
 
 admin_bp = Blueprint("admin", __name__)
 
 admin_required = role_required("admin")
+
+
+def _liens_pieces(passport):
+    """Liens temporaires vers les pièces d'un passeport.
+
+    Un vérificateur doit pouvoir ouvrir la CNI qu'il valide ; ces documents ne
+    sont pour autant jamais accessibles publiquement.
+    """
+    if not passport:
+        return {}
+    champs = {
+        "cni_recto": passport.cni_recto_url,
+        "cni_verso": passport.cni_verso_url,
+        "passport": passport.passport_url,
+        "income": passport.income_doc_url,
+    }
+    return {cle: stockage.url_signee(url) or url
+            for cle, url in champs.items() if url}
 
 
 # ─── GET /api/admin/stats ────────────────────────────────────
@@ -86,6 +105,7 @@ def cni_pending(current_user):
         {
             "user": u.to_dict(public=False),
             "passport": u.passport.to_dict() if u.passport else None,
+            "pieces": _liens_pieces(u.passport),
         }
         for u in users
     ]), 200
@@ -144,7 +164,11 @@ def revenus_pending(current_user):
         TenantPassport.income_verified.is_(False),
     ).all()
     return jsonify([
-        {"passport": p.to_dict(), "user": p.tenant.to_dict(public=False) if p.tenant else None}
+        {
+            "passport": p.to_dict(),
+            "user": p.tenant.to_dict(public=False) if p.tenant else None,
+            "pieces": _liens_pieces(p),
+        }
         for p in passports
     ]), 200
 
@@ -191,7 +215,8 @@ def certifications_pending(current_user):
     return jsonify([
         {
             **a.to_dict(),
-            "propriete_doc_url": a.propriete_doc_url,
+            # Liens temporaires : les pièces de propriété ne sont pas publiques.
+            "documents": [stockage.url_signee(u) or u for u in a.documents],
             "demande_le": (a.certification_requested_at.isoformat()
                            if a.certification_requested_at else None),
         }
