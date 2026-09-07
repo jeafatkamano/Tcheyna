@@ -1,0 +1,100 @@
+/**
+ * theme.css — Identité visuelle Tcheyna.
+ *
+ * Le bleu nuit porte la confiance et l'institutionnel, l'orange l'action.
+ * Les composants référencent ces couleurs en dur (styles inline) ; ces
+ * variables servent de source unique quand la palette doit évoluer.
+ */
+
+:root {
+  /* Bleu nuit — fond des en-têtes et de la navigation */
+  --tcheyna-nuit-fonce: #0f2040;
+  --tcheyna-nuit: #1e3a5f;
+
+  /* Orange — actions principales et éléments mis en avant */
+  --tcheyna-orange: #f97316;
+  --tcheyna-orange-clair: #fff7ed;
+
+  /* Fonds */
+  --tcheyna-fond: #f0f4fa;
+  --tcheyna-surface: #ffffff;
+  --tcheyna-surface-douce: #f8fafc;
+
+  /* Texte */
+  --tcheyna-texte: #1e293b;
+  --tcheyna-texte-doux: #64748b;
+  --tcheyna-texte-tenu: #94a3b8;
+
+  /* États — repris par les badges de niveau de confiance */
+  --tcheyna-succes: #10b981;
+  --tcheyna-attention: #f59e0b;
+  --tcheyna-erreur: #dc2626;
+  --tcheyna-info: #3b82f6;
+
+  --tcheyna-bordure: #e2e8f0;
+
+  --rayon: 1rem;
+  --ombre-carte: 0 2px 12px rgba(30, 58, 95, 0.07);
+  --ombre-carte-forte: 0 2px 16px rgba(30, 58, 95, 0.08);
+}
+
+@layer base {
+  html {
+    /* Empêche iOS d'agrandir le texte en mode paysage */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--tcheyna-fond);
+    color: var(--tcheyna-texte);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Les champs héritent de la police du document plutôt que de celle du système */
+  input,
+  textarea,
+  select,
+  button {
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+  }
+
+  /* Focus visible au clavier uniquement : ne gêne pas la navigation tactile */
+  :focus-visible {
+    outline: 2px solid var(--tcheyna-orange);
+    outline-offset: 2px;
+  }
+
+  /* Les champs de saisie signalent le focus par leur bordure */
+  input:focus,
+  textarea:focus,
+  select:focus {
+    border-color: var(--tcheyna-orange) !important;
+    outline: none;
+  }
+
+  /* Respecte le réglage système de réduction des animations */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Barres de défilement discrètes sur les listes horizontales (filtres, quartiers) */
+.overflow-x-auto::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar {
+  height: 4px;
+  width: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb,
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 4px;
+}

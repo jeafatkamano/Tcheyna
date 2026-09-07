@@ -1,0 +1,8 @@
+@import "./fonts.css";
+@import "./tailwind.css";
+@import "./theme.css";
+
+body {
+  font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  margin: 0;
+}

@@ -1,0 +1,91 @@
+# render.yaml — Déploiement Tcheyna (API Flask + frontend statique)
+# Documentation : https://render.com/docs/blueprint-spec
+#
+# Le dépôt contient deux applications ; `rootDirectory` indique à chaque
+# service où se trouve la sienne.
+
+services:
+  # ─── API Flask ───────────────────────────────────────────
+  - type: web
+    name: tcheyna-api
+    runtime: python
+    region: frankfurt
+    plan: free
+    branch: main
+    rootDirectory: backend
+
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn run:app --workers 2 --timeout 60
+    healthCheckPath: /health
+
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+
+      # Base PostgreSQL (Supabase) — à renseigner dans le tableau de bord Render
+      - key: DATABASE_URL
+        sync: false
+
+      # Doit correspondre à l'URL publique du frontend
+      - key: CORS_ORIGINS
+        value: https://tcheyna.onrender.com
+
+      - key: UPLOAD_FOLDER
+        value: /var/data/uploads
+
+      # Africa's Talking — vérification OTP par SMS
+      - key: AT_API_KEY
+        sync: false
+      - key: AT_USERNAME
+        value: sandbox
+      - key: AT_SENDER_ID
+        value: TCHEYNA
+
+      # CinetPay — paiements Mobile Money
+      - key: CINETPAY_API_KEY
+        sync: false
+      - key: CINETPAY_SITE_ID
+        sync: false
+      - key: CINETPAY_NOTIFY_URL
+        value: https://tcheyna-api.onrender.com/api/payments/callback
+      - key: CINETPAY_RETURN_URL
+        value: https://tcheyna.onrender.com/paiements
+
+    # Les CNI et justificatifs téléversés doivent survivre aux redéploiements.
+    disk:
+      name: tcheyna-uploads
+      mountPath: /var/data
+      sizeGB: 1
+
+  # ─── Frontend React ──────────────────────────────────────
+  - type: web
+    name: tcheyna
+    runtime: static
+    region: frankfurt
+    branch: main
+    rootDirectory: frontend
+
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+
+    envVars:
+      - key: VITE_API_URL
+        value: https://tcheyna-api.onrender.com/api
+
+    # Application monopage : toute route inconnue est servie par index.html,
+    # sinon un rechargement sur /tenant/dashboard renverrait un 404.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
