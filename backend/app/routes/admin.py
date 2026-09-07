@@ -45,6 +45,60 @@ def _liens_pieces(passport):
             for cle, url in champs.items() if url}
 
 
+# ─── GET /api/admin/diagnostic ───────────────────────────────
+
+@admin_bp.route("/diagnostic", methods=["GET"])
+@admin_required
+def diagnostic(current_user):
+    """État de la configuration serveur, sans jamais révéler de secret.
+
+    L'offre gratuite de Render ne donne pas d'accès shell : sans cette route,
+    vérifier qu'une variable d'environnement est bien arrivée demanderait de
+    déduire la réponse d'un message d'erreur.
+    """
+    from flask import current_app
+
+    def renseigne(cle):
+        return bool(current_app.config.get(cle))
+
+    stockage_pret = stockage.supabase_configure()
+
+    return jsonify({
+        "stockage": {
+            "operationnel": stockage_pret,
+            "supabase_url": renseigne("SUPABASE_URL"),
+            "supabase_service_key": renseigne("SUPABASE_SERVICE_KEY"),
+            "compartiment_public": current_app.config.get("SUPABASE_BUCKET_PUBLIC"),
+            "compartiment_prive": current_app.config.get("SUPABASE_BUCKET_PRIVE"),
+            "consequence": (
+                "Les téléversements fonctionnent."
+                if stockage_pret
+                else "Les téléversements sont refusés : renseignez SUPABASE_URL "
+                     "et SUPABASE_SERVICE_KEY."
+            ),
+        },
+        "sms": {
+            "operationnel": renseigne("AT_API_KEY"),
+            "consequence": (
+                "Les codes OTP partent par SMS."
+                if renseigne("AT_API_KEY")
+                else "Aucun SMS envoyé : personne ne peut dépasser le niveau 0."
+            ),
+        },
+        "paiements": {
+            "operationnel": renseigne("CINETPAY_API_KEY") and renseigne("CINETPAY_SITE_ID"),
+            "consequence": (
+                "Les paiements Mobile Money sont actifs."
+                if renseigne("CINETPAY_API_KEY") and renseigne("CINETPAY_SITE_ID")
+                else "Les paiements restent au statut « en attente »."
+            ),
+        },
+        "base_de_donnees": {
+            "moteur": current_app.config["SQLALCHEMY_DATABASE_URI"].split("://")[0],
+        },
+    }), 200
+
+
 # ─── GET /api/admin/stats ────────────────────────────────────
 
 @admin_bp.route("/stats", methods=["GET"])
