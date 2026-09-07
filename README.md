@@ -73,9 +73,15 @@ Aucune variable d'environnement n'est nécessaire côté frontend en local : Vit
 relaie `/api` et `/uploads` vers Flask (voir `vite.config.ts`), ce qui évite
 également tout problème de CORS.
 
-### Comptes de démonstration
+### Comptes de démonstration — développement local uniquement
 
 Mot de passe commun : `tcheyna2026`
+
+> `seed.py` **efface toutes les données** avant de recréer ce jeu, et crée un
+> administrateur dont le mot de passe figure ci-dessous. Le script refuse donc
+> de s'exécuter sur une base distante. La démonstration en ligne utilise des
+> comptes distincts (`@tcheyna.demo`), sans compte administrateur et avec un
+> autre mot de passe — ceux-ci ne donnent aucun accès à la production.
 
 | Compte | Rôle | Particularité |
 |---|---|---|

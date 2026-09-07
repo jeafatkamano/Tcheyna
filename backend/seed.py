@@ -56,6 +56,36 @@ PHOTOS = {
 }
 
 
+BASES_LOCALES = ("sqlite", "localhost", "127.0.0.1", "::1")
+
+
+def verifier_base_locale():
+    """Refuse de s'exécuter sur une base distante.
+
+    Ce script supprime *toutes* les annonces, candidatures, conversations,
+    avis et favoris — pas seulement ceux qu'il a créés — et crée un compte
+    administrateur dont le mot de passe est publié dans le README. Lancé par
+    mégarde sur la production, il détruirait les données réelles et ouvrirait
+    le back-office à quiconque lit le dépôt.
+    """
+    uri = app.config["SQLALCHEMY_DATABASE_URI"]
+    if any(marqueur in uri for marqueur in BASES_LOCALES):
+        return
+
+    hote = uri.split("@")[-1].split("/")[0] if "@" in uri else uri[:40]
+    print(f"""
+⛔ Base de données distante détectée : {hote}
+
+   seed.py est réservé au développement local. Il efface toutes les données
+   existantes et crée un administrateur au mot de passe public.
+
+   Pour peupler une base distante, insérez les données vous-même, sans le
+   compte administrateur et avec un mot de passe qui ne soit pas celui
+   documenté dans le README.
+""")
+    sys.exit(1)
+
+
 def creer_utilisateur(email, nom, role, phone, quartier, **kwargs):
     return User(
         email=email,
@@ -73,6 +103,8 @@ def creer_utilisateur(email, nom, role, phone, quartier, **kwargs):
 
 def seed():
     with app.app_context():
+        verifier_base_locale()
+
         print("🗄️  Création des tables…")
         db.create_all()
 
@@ -396,6 +428,9 @@ def seed():
    Propriétaire     mariama@tcheyna.test      (2 annonces, 1 en attente)
 
    {len(annonces)} annonces · 3 candidatures · 1 conversation · 2 avis
+
+   Ces comptes sont réservés au développement local : leur mot de passe
+   est publié dans le README.
 """)
 
 
