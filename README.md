@@ -34,6 +34,7 @@ Tcheyna/
 │       ├── lib/            Formatage GNF et dates
 │       └── pages/          tenant/ · owner/ · admin/ · shared/
 │
+├── docs/               Guide d'installation au format PDF et son générateur
 └── render.yaml         Déploiement des deux services
 ```
 
@@ -190,6 +191,21 @@ Le produit reste testable de bout en bout sans compte tiers :
 cd frontend && npm run typecheck   # TypeScript strict
 cd frontend && npm run build       # build de production
 ```
+
+---
+
+## Documentation
+
+`Tcheyna-Guide-Installation-Deploiement.pdf`, à la racine, reprend ces
+procédures sous une forme imprimable, à destination de quelqu'un qui découvre
+le projet. Il se régénère depuis `docs/` :
+
+```bash
+pip install -r docs/requirements.txt
+python docs/generer_guide.py
+```
+
+Le guide et ce README couvrent les mêmes étapes : **les faire évoluer ensemble**.
 
 ---
 

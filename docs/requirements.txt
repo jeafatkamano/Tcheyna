@@ -1,0 +1,4 @@
+# Dépendances de la documentation uniquement.
+# Elles ne sont pas nécessaires pour faire tourner l'application :
+# le backend a ses propres dépendances dans backend/requirements.txt.
+reportlab==5.0.1
