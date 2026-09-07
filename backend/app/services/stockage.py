@@ -31,8 +31,9 @@ TAILLE_MAX = {
     "documents": 8 * 1024 * 1024,   # 8 Mo pour une pièce justificative
 }
 
-# Les documents d'identité et de propriété ne doivent jamais être servis
-# publiquement : seuls leur propriétaire et les administrateurs y accèdent.
+# Les pièces d'identité et de propriété ne partagent pas le compartiment des
+# photos : un compartiment public sert ses fichiers à qui en connaît l'URL, et
+# un nom difficile à deviner n'est pas une protection.
 DOSSIERS_PRIVES = {"documents"}
 
 
@@ -79,8 +80,12 @@ def supabase_configure():
                 and current_app.config.get("SUPABASE_SERVICE_KEY"))
 
 
-def _bucket():
-    return current_app.config.get("SUPABASE_BUCKET", "tcheyna")
+def _bucket(dossier):
+    """Compartiment correspondant à l'usage : public pour ce qui s'affiche,
+    privé pour ce qui se consulte sur autorisation."""
+    cle = "SUPABASE_BUCKET_PRIVE" if dossier in DOSSIERS_PRIVES else "SUPABASE_BUCKET_PUBLIC"
+    defaut = "tcheyna-documents" if dossier in DOSSIERS_PRIVES else "tcheyna-photos"
+    return current_app.config.get(cle, defaut)
 
 
 def _entetes(type_contenu=None):
@@ -108,12 +113,13 @@ def televerser(fichier, dossier, prefixe, extensions_permises=None):
     chemin = f"{dossier}/{nom}"
 
     if supabase_configure():
-        return _televerser_supabase(fichier, chemin, ext)
+        return _televerser_supabase(fichier, dossier, chemin, ext)
     return _televerser_disque(fichier, nom)
 
 
-def _televerser_supabase(fichier, chemin, ext):
-    url = f"{current_app.config['SUPABASE_URL']}/storage/v1/object/{_bucket()}/{chemin}"
+def _televerser_supabase(fichier, dossier, chemin, ext):
+    bucket = _bucket(dossier)
+    url = f"{current_app.config['SUPABASE_URL']}/storage/v1/object/{bucket}/{chemin}"
     type_contenu = mimetypes.types_map.get(f".{ext}", "application/octet-stream")
 
     try:
@@ -132,12 +138,11 @@ def _televerser_supabase(fichier, chemin, ext):
                                  reponse.status_code, reponse.text[:200])
         raise ErreurStockage("Le fichier n'a pas pu être enregistré")
 
-    dossier = chemin.split("/", 1)[0]
     if dossier in DOSSIERS_PRIVES:
-        # Chemin conservé tel quel : l'accès passera par une URL signée,
-        # générée à la demande pour la personne autorisée.
+        # Référence interne : l'accès se fera par une URL signée, générée à la
+        # demande pour la seule personne autorisée.
         return f"supabase://{chemin}"
-    return f"{current_app.config['SUPABASE_URL']}/storage/v1/object/public/{_bucket()}/{chemin}"
+    return f"{current_app.config['SUPABASE_URL']}/storage/v1/object/public/{bucket}/{chemin}"
 
 
 def _televerser_disque(fichier, nom):
@@ -166,8 +171,10 @@ def supprimer(url):
 
     if url.startswith("supabase://"):
         chemin = url[len("supabase://"):]
+        bucket = _bucket(chemin.split("/", 1)[0])
     elif "/storage/v1/object/public/" in url:
-        chemin = url.split(f"/{_bucket()}/", 1)[-1]
+        apres = url.split("/storage/v1/object/public/", 1)[-1]
+        bucket, chemin = apres.split("/", 1)
     elif url.startswith("/uploads/"):
         cible = os.path.join(current_app.config["UPLOAD_FOLDER"], os.path.basename(url))
         try:
@@ -180,7 +187,7 @@ def supprimer(url):
 
     try:
         reponse = requests.delete(
-            f"{current_app.config['SUPABASE_URL']}/storage/v1/object/{_bucket()}/{chemin}",
+            f"{current_app.config['SUPABASE_URL']}/storage/v1/object/{bucket}/{chemin}",
             headers=_entetes(), timeout=30,
         )
         return reponse.status_code in (200, 204)
@@ -201,9 +208,10 @@ def url_signee(url, duree_secondes=300):
         return url
 
     chemin = url[len("supabase://"):]
+    bucket = _bucket(chemin.split("/", 1)[0])
     try:
         reponse = requests.post(
-            f"{current_app.config['SUPABASE_URL']}/storage/v1/object/sign/{_bucket()}/{chemin}",
+            f"{current_app.config['SUPABASE_URL']}/storage/v1/object/sign/{bucket}/{chemin}",
             headers=_entetes("application/json"),
             json={"expiresIn": duree_secondes},
             timeout=30,

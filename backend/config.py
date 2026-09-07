@@ -69,7 +69,11 @@ class Config:
     # pas de disque persistant et efface les fichiers à chaque redémarrage.
     SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
     SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
-    SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "tcheyna")
+    # Deux compartiments, et non un seul : un compartiment public rendrait
+    # lisibles par leur URL les CNI et les titres de propriété qu'il
+    # contiendrait, quel que soit le dossier.
+    SUPABASE_BUCKET_PUBLIC = os.getenv("SUPABASE_BUCKET_PUBLIC", "tcheyna-photos")
+    SUPABASE_BUCKET_PRIVE = os.getenv("SUPABASE_BUCKET_PRIVE", "tcheyna-documents")
 
     # ─── Africa's Talking (OTP SMS) ─────────────────────────
     AT_API_KEY = os.getenv("AT_API_KEY", "")

@@ -45,9 +45,20 @@ services:
       - key: CORS_ORIGINS
         value: https://tcheyna.onrender.com
 
-      # Attention : l'offre gratuite n'a pas de disque persistant. Les pièces
-      # téléversées sont perdues au redémarrage. Passer à une offre payante
-      # avec un disque monté avant toute mise en service réelle.
+      # Stockage des fichiers (Supabase Storage). Sans SUPABASE_SERVICE_KEY,
+      # l'API refuse les téléversements en production plutôt que de les
+      # écrire sur le disque de l'instance, qui est effacé à chaque
+      # redémarrage.
+      - key: SUPABASE_URL
+        value: https://uhvlqdnxzkatlxidbwhb.supabase.co
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET_PUBLIC
+        value: tcheyna-photos
+      - key: SUPABASE_BUCKET_PRIVE
+        value: tcheyna-documents
+
+      # Uniquement utilisé en développement local.
       - key: UPLOAD_FOLDER
         value: uploads
 
