@@ -11,14 +11,21 @@ from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 
 from app import db
-from app.models import Favorite, Listing, Payment, User
+from app.models import (
+    TYPES_BIEN,
+    TYPES_BIEN_SANS_PIECES,
+    TYPES_TRANSACTION,
+    Favorite,
+    Listing,
+    Payment,
+    User,
+)
 from app.routes import current_user_required, role_required
 from app.services import stockage
 from app.services.matching import score_compatibilite, trier_par_compatibilite
 
 listings_bp = Blueprint("listings", __name__)
 
-TYPES_BIEN = ("appartement", "maison", "studio", "chambre", "villa")
 MAX_IMAGES = 10
 MAX_DOCUMENTS = 6
 
@@ -58,7 +65,8 @@ def get_listings():
     query = Listing.query.filter_by(status="active", is_visible=True)
 
     for champ, arg in (("pays", "pays"), ("ville", "ville"),
-                       ("quartier", "quartier"), ("type_bien", "type")):
+                       ("quartier", "quartier"), ("type_bien", "type"),
+                       ("type_transaction", "transaction")):
         valeur = request.args.get(arg)
         if valeur:
             query = query.filter(getattr(Listing, champ) == valeur)
@@ -146,7 +154,10 @@ def recommandations(current_user):
     lang = request.args.get("lang", "fr")
     passport = current_user.passport
 
-    query = Listing.query.filter_by(status="active", is_visible=True)
+    # Le Passeport Locataire exprime un budget de loyer mensuel : le confronter
+    # à un prix de vente n'aurait aucun sens.
+    query = Listing.query.filter_by(status="active", is_visible=True,
+                                    type_transaction="location")
     if passport and passport.ville_souhaitee:
         query = query.filter(Listing.ville == passport.ville_souhaitee)
     elif current_user.ville:
@@ -244,6 +255,11 @@ def create_listing(current_user):
     if data["type_bien"] not in TYPES_BIEN:
         return jsonify({"error": f"Type de bien invalide : {' | '.join(TYPES_BIEN)}"}), 400
 
+    transaction = data.get("type_transaction", "location")
+    if transaction not in TYPES_TRANSACTION:
+        return jsonify({"error": f"Type de transaction invalide : "
+                                 f"{' | '.join(TYPES_TRANSACTION)}"}), 400
+
     try:
         prix = int(data["prix"])
     except (TypeError, ValueError):
@@ -265,15 +281,19 @@ def create_listing(current_user):
         ville=data["ville"],
         quartier=data.get("quartier"),
         adresse=data.get("adresse"),
+        type_transaction=transaction,
         type_bien=data["type_bien"],
         prix=prix,
-        charges=data.get("charges", 0) or 0,
-        caution=data.get("caution"),
+        # Charges et caution n'existent que dans un bail ; un terrain ou un
+        # hangar ne se décrit pas en pièces, en étage ni en ameublement.
+        charges=0 if transaction == "vente" else (data.get("charges", 0) or 0),
+        caution=None if transaction == "vente" else data.get("caution"),
         devise=data["devise"],
-        nb_pieces=data.get("nb_pieces", 1),
+        nb_pieces=(None if data["type_bien"] in TYPES_BIEN_SANS_PIECES
+                   else data.get("nb_pieces", 1)),
         superficie=data.get("superficie"),
-        etage=data.get("etage"),
-        meuble=data.get("meuble", False),
+        etage=None if data["type_bien"] in TYPES_BIEN_SANS_PIECES else data.get("etage"),
+        meuble=False if data["type_bien"] in TYPES_BIEN_SANS_PIECES else data.get("meuble", False),
         disponible_a_partir=_parse_date(data.get("disponible_a_partir")),
         has_generator=data.get("has_generator", False),
         has_water=data.get("has_water", False),
@@ -287,8 +307,9 @@ def create_listing(current_user):
     db.session.add(listing)
     db.session.commit()
 
-    return jsonify({"message": "Annonce publiée avec succès",
-                    "listing": listing.to_dict()}), 201
+    message = ("Annonce de vente publiée avec succès" if transaction == "vente"
+               else "Annonce publiée avec succès")
+    return jsonify({"message": message, "listing": listing.to_dict()}), 201
 
 
 # ─── PUT /api/listings/<id> ──────────────────────────────────
@@ -302,16 +323,32 @@ def update_listing(current_user, listing_id):
 
     data = request.get_json() or {}
 
+    if "type_bien" in data and data["type_bien"] not in TYPES_BIEN:
+        return jsonify({"error": f"Type de bien invalide : {' | '.join(TYPES_BIEN)}"}), 400
+    if "type_transaction" in data and data["type_transaction"] not in TYPES_TRANSACTION:
+        return jsonify({"error": f"Type de transaction invalide : "
+                                 f"{' | '.join(TYPES_TRANSACTION)}"}), 400
+
     modifiables = (
         "title_fr", "title_en", "description_fr", "description_en",
-        "pays", "ville", "quartier", "adresse", "type_bien", "prix", "charges",
-        "caution", "devise", "nb_pieces", "superficie", "etage", "meuble",
-        "has_generator", "has_water", "has_wifi", "is_secured", "has_parking",
-        "has_ac", "status", "is_visible",
+        "pays", "ville", "quartier", "adresse", "type_transaction", "type_bien",
+        "prix", "charges", "caution", "devise", "nb_pieces", "superficie",
+        "etage", "meuble", "has_generator", "has_water", "has_wifi",
+        "is_secured", "has_parking", "has_ac", "status", "is_visible",
     )
     for champ in modifiables:
         if champ in data:
             setattr(listing, champ, data[champ])
+
+    # Basculer de la location vers la vente laisserait sinon traîner une caution
+    # et des charges qui n'ont plus d'objet.
+    if listing.type_transaction == "vente":
+        listing.charges = 0
+        listing.caution = None
+    if listing.type_bien in TYPES_BIEN_SANS_PIECES:
+        listing.nb_pieces = None
+        listing.etage = None
+        listing.meuble = False
 
     if "disponible_a_partir" in data:
         listing.disponible_a_partir = _parse_date(data["disponible_a_partir"])
@@ -323,7 +360,8 @@ def update_listing(current_user, listing_id):
         listing.images_urls = ",".join(images) if images else None
 
     # Modifier le bien invalide la certification : elle portait sur l'ancien état.
-    champs_sensibles = {"adresse", "quartier", "ville", "type_bien", "superficie"}
+    champs_sensibles = {"adresse", "quartier", "ville", "type_bien",
+                        "type_transaction", "superficie"}
     if listing.is_certified and champs_sensibles & set(data):
         listing.certification_status = "none"
         listing.certified_at = None

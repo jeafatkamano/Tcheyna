@@ -302,6 +302,18 @@ function ReglementsEntree({
   const listing = match.listing;
   if (!listing) return null;
 
+  // Une cession se règle devant notaire : ni caution, ni premier loyer.
+  if (listing.est_vente) {
+    return (
+      <div className="pt-3 mt-1 border-t border-gray-100">
+        <p className="text-xs leading-relaxed" style={{ color: "#64748B" }}>
+          Bien à vendre — la transaction se conclut devant notaire, hors plateforme.
+          Poursuivez les échanges avec le vendeur depuis la discussion.
+        </p>
+      </div>
+    );
+  }
+
   const etapes: { type: TypePaiement; label: string; montant: number }[] = [
     { type: "caution", label: "Payer la caution", montant: listing.caution ?? listing.prix },
     {

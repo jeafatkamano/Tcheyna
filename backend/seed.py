@@ -322,6 +322,43 @@ def seed():
                 images_urls=",".join(PHOTOS["maison"]),
                 views_count=45,
             ),
+            # ─── Biens à vendre ─────────────────────────────
+            Listing(
+                landlord_id=ibrahima.id,
+                type_transaction="vente",
+                title_fr="Villa 5 chambres à vendre — Kipé",
+                description_fr=(
+                    "Villa familiale sur deux niveaux à Kipé, cinq chambres, grand "
+                    "séjour, cuisine équipée et cour close. Titre foncier disponible. "
+                    "Cession devant notaire."
+                ),
+                pays="Guinée", ville="Conakry", quartier="Kipé",
+                adresse="Kipé Centre, non loin du carrefour",
+                type_bien="villa", prix=1_250_000_000, charges=0,
+                caution=None, devise="GNF",
+                nb_pieces=7, superficie=280, etage=0, meuble=False,
+                has_generator=True, has_water=True, has_wifi=False,
+                is_secured=True, has_parking=True, has_ac=True,
+                images_urls=",".join(PHOTOS["villa"]),
+                views_count=133,
+            ),
+            Listing(
+                landlord_id=mamadou.id,
+                type_transaction="vente",
+                title_fr="Terrain de 600 m² à vendre — Kaporo",
+                description_fr=(
+                    "Parcelle viabilisée de 600 m² à Kaporo, accès goudronné, "
+                    "raccordement eau et électricité en limite de parcelle. "
+                    "Papiers en règle, vente devant notaire."
+                ),
+                pays="Guinée", ville="Conakry", quartier="Kaporo",
+                type_bien="terrain", prix=480_000_000, charges=0,
+                caution=None, devise="GNF",
+                nb_pieces=None, superficie=600, etage=None, meuble=False,
+                has_generator=False, has_water=True, has_wifi=False,
+                is_secured=False, has_parking=False, has_ac=False,
+                views_count=78,
+            ),
         ]
         db.session.add_all(annonces)
         db.session.flush()

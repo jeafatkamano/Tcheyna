@@ -8,7 +8,7 @@ import { ArrowLeft, Check, ShieldCheck, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { listingsAPI, type DonneesAnnonce, type Listing } from "../../api";
+import { listingsAPI, type DonneesAnnonce, type Listing, type TypeTransaction } from "../../api";
 import { Chargement, Erreur, MessageErreur, MessageSucces } from "../../components/Etats";
 import { ModalePaiement } from "../../components/ModalePaiement";
 import { TeleversementDocuments } from "../../components/TeleversementDocuments";
@@ -19,7 +19,7 @@ import {
 } from "../../components/TeleversementPhotos";
 import { useAction, useApi } from "../../hooks/useApi";
 import { useGeo } from "../../hooks/useGeo";
-import { formatMontant } from "../../lib/format";
+import { formatMontant, sansPieces } from "../../lib/format";
 
 /** Frais de certification, alignés sur la grille tarifaire du serveur. */
 const PRIX_CERTIFICATION = 250_000;
@@ -42,6 +42,7 @@ type Formulaire = {
   ville: string;
   quartier: string;
   adresse: string;
+  type_transaction: TypeTransaction;
   type_bien: string;
   prix: string;
   charges: string;
@@ -65,6 +66,7 @@ const VIDE: Formulaire = {
   ville: "Conakry",
   quartier: "",
   adresse: "",
+  type_transaction: "location",
   type_bien: "appartement",
   prix: "",
   charges: "",
@@ -131,11 +133,12 @@ function Formulaire({
           ville: existante.ville,
           quartier: existante.quartier ?? "",
           adresse: existante.adresse ?? "",
+          type_transaction: existante.type_transaction ?? "location",
           type_bien: existante.type_bien,
           prix: String(existante.prix),
           charges: String(existante.charges ?? ""),
           caution: existante.caution != null ? String(existante.caution) : "",
-          nb_pieces: String(existante.nb_pieces),
+          nb_pieces: existante.nb_pieces != null ? String(existante.nb_pieces) : "1",
           superficie: existante.superficie != null ? String(existante.superficie) : "",
           etage: existante.etage != null ? String(existante.etage) : "",
           meuble: existante.meuble,
@@ -172,15 +175,17 @@ function Formulaire({
       ville: form.ville,
       quartier: form.quartier || undefined,
       adresse: form.adresse || undefined,
+      type_transaction: form.type_transaction,
       type_bien: form.type_bien,
       prix: Number(form.prix),
-      charges: form.charges ? Number(form.charges) : 0,
-      caution: form.caution ? Number(form.caution) : undefined,
+      // Le serveur les remet à zéro pour une vente ; on évite de les envoyer.
+      charges: estVente ? 0 : form.charges ? Number(form.charges) : 0,
+      caution: estVente || !form.caution ? undefined : Number(form.caution),
       devise: "GNF",
-      nb_pieces: Number(form.nb_pieces) || 1,
+      nb_pieces: bienSansPieces ? undefined : Number(form.nb_pieces) || 1,
       superficie: form.superficie ? Number(form.superficie) : undefined,
-      etage: form.etage ? Number(form.etage) : undefined,
-      meuble: form.meuble,
+      etage: bienSansPieces || !form.etage ? undefined : Number(form.etage),
+      meuble: bienSansPieces ? false : form.meuble,
       disponible_a_partir: form.disponible_a_partir || undefined,
       has_generator: form.has_generator,
       has_water: form.has_water,
@@ -225,6 +230,8 @@ function Formulaire({
     if (ok) onSuppression();
   }
 
+  const estVente = form.type_transaction === "vente";
+  const bienSansPieces = sansPieces(form.type_bien);
   const coutEntree =
     (Number(form.prix) || 0) + (Number(form.charges) || 0) + (Number(form.caution) || 0);
 
@@ -265,6 +272,48 @@ function Formulaire({
             <h2 className="font-bold" style={{ color: "#1E293B" }}>
               Le bien
             </h2>
+
+            {/* Premier choix du formulaire : il commande les champs affichés
+                ensuite, mieux vaut le poser avant que l'annonce soit écrite. */}
+            <div>
+              <span className="block text-sm font-semibold mb-2" style={{ color: "#334155" }}>
+                Que souhaitez-vous faire ? *
+              </span>
+              <div className="grid grid-cols-2 gap-3">
+                {(
+                  [
+                    { valeur: "location" as const, titre: "Mettre en location", sous: "Loyer mensuel" },
+                    { valeur: "vente" as const, titre: "Mettre en vente", sous: "Prix de cession" },
+                  ]
+                ).map((option) => {
+                  const actif = form.type_transaction === option.valeur;
+                  return (
+                    <button
+                      key={option.valeur}
+                      type="button"
+                      onClick={() =>
+                        setForm((f) => ({ ...f, type_transaction: option.valeur }))
+                      }
+                      className="flex flex-col items-start gap-0.5 px-4 py-3 rounded-xl text-left transition-colors"
+                      style={{
+                        background: actif ? "#FFF7ED" : "#F8FAFC",
+                        border: `1.5px solid ${actif ? "#F97316" : "#E2E8F0"}`,
+                      }}
+                    >
+                      <span
+                        className="font-semibold text-sm"
+                        style={{ color: actif ? "#9A3412" : "#334155" }}
+                      >
+                        {option.titre}
+                      </span>
+                      <span className="text-xs" style={{ color: actif ? "#C2410C" : "#94A3B8" }}>
+                        {option.sous}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             <div>
               <label htmlFor="titre" className="block text-sm font-semibold mb-1.5" style={{ color: "#334155" }}>
@@ -317,21 +366,23 @@ function Formulaire({
                   ))}
                 </select>
               </div>
-              <div>
-                <label htmlFor="pieces" className="block text-sm font-semibold mb-1.5" style={{ color: "#334155" }}>
-                  Nombre de pièces
-                </label>
-                <input
-                  id="pieces"
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={form.nb_pieces}
-                  onChange={(e) => setForm((f) => ({ ...f, nb_pieces: e.target.value }))}
-                  className={CHAMP}
-                  style={STYLE_CHAMP}
-                />
-              </div>
+              {!bienSansPieces && (
+                <div>
+                  <label htmlFor="pieces" className="block text-sm font-semibold mb-1.5" style={{ color: "#334155" }}>
+                    Nombre de pièces
+                  </label>
+                  <input
+                    id="pieces"
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={form.nb_pieces}
+                    onChange={(e) => setForm((f) => ({ ...f, nb_pieces: e.target.value }))}
+                    className={CHAMP}
+                    style={STYLE_CHAMP}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -350,24 +401,26 @@ function Formulaire({
                   style={STYLE_CHAMP}
                 />
               </div>
-              <div>
-                <label htmlFor="etage" className="block text-sm font-semibold mb-1.5" style={{ color: "#334155" }}>
-                  Étage
-                </label>
-                <input
-                  id="etage"
-                  type="number"
-                  min={0}
-                  value={form.etage}
-                  onChange={(e) => setForm((f) => ({ ...f, etage: e.target.value }))}
-                  placeholder="0 = rez-de-chaussée"
-                  className={CHAMP}
-                  style={STYLE_CHAMP}
-                />
-              </div>
+              {!bienSansPieces && (
+                <div>
+                  <label htmlFor="etage" className="block text-sm font-semibold mb-1.5" style={{ color: "#334155" }}>
+                    Étage
+                  </label>
+                  <input
+                    id="etage"
+                    type="number"
+                    min={0}
+                    value={form.etage}
+                    onChange={(e) => setForm((f) => ({ ...f, etage: e.target.value }))}
+                    placeholder="0 = rez-de-chaussée"
+                    className={CHAMP}
+                    style={STYLE_CHAMP}
+                  />
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center justify-between py-1">
+            <div className="flex items-center justify-between py-1" hidden={bienSansPieces}>
               <p className="font-semibold text-sm" style={{ color: "#1E293B" }}>
                 Bien meublé
               </p>
@@ -457,12 +510,12 @@ function Formulaire({
             style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }}
           >
             <h2 className="font-bold" style={{ color: "#1E293B" }}>
-              Loyer et charges
+              {estVente ? "Prix de vente" : "Loyer et charges"}
             </h2>
 
             <div>
               <label htmlFor="prix" className="block text-sm font-semibold mb-1.5" style={{ color: "#334155" }}>
-                Loyer mensuel (GNF) *
+                {estVente ? "Prix de vente (GNF) *" : "Loyer mensuel (GNF) *"}
               </label>
               <input
                 id="prix"
@@ -472,13 +525,13 @@ function Formulaire({
                 inputMode="numeric"
                 value={form.prix}
                 onChange={(e) => setForm((f) => ({ ...f, prix: e.target.value }))}
-                placeholder="2800000"
+                placeholder={estVente ? "850000000" : "2800000"}
                 className={CHAMP}
                 style={STYLE_CHAMP}
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3" hidden={estVente}>
               <div>
                 <label htmlFor="charges" className="block text-sm font-semibold mb-1.5" style={{ color: "#334155" }}>
                   Charges (GNF)
@@ -513,7 +566,7 @@ function Formulaire({
               </div>
             </div>
 
-            {coutEntree > 0 && (
+            {!estVente && coutEntree > 0 && (
               <div className="px-3.5 py-3 rounded-xl" style={{ background: "#FFF7ED" }}>
                 <p className="text-xs" style={{ color: "#9A3412" }}>
                   Coût d'entrée affiché au locataire :{" "}
@@ -522,9 +575,19 @@ function Formulaire({
               </div>
             )}
 
+            {estVente && (
+              <div className="px-3.5 py-3 rounded-xl" style={{ background: "#EFF6FF" }}>
+                <p className="text-xs leading-relaxed" style={{ color: "#1D4ED8" }}>
+                  La cession se conclut devant notaire, hors plateforme. Tcheyna vous
+                  met en relation avec des acquéreurs et conserve la trace des échanges ;
+                  ni caution ni loyer ne sont demandés.
+                </p>
+              </div>
+            )}
+
             <div>
               <label htmlFor="dispo" className="block text-sm font-semibold mb-1.5" style={{ color: "#334155" }}>
-                Disponible à partir du
+                {estVente ? "Disponible à la vente à partir du" : "Disponible à partir du"}
               </label>
               <input
                 id="dispo"

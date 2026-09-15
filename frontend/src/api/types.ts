@@ -57,6 +57,9 @@ export interface DetailCompatibilite {
   libelle: string;
 }
 
+/** Un propriétaire peut mettre son bien en location ou le vendre. */
+export type TypeTransaction = "location" | "vente";
+
 export interface Listing {
   id: string;
   title: string;
@@ -65,13 +68,16 @@ export interface Listing {
   ville: string;
   quartier?: string;
   adresse?: string;
+  type_transaction: TypeTransaction;
+  est_vente: boolean;
   type_bien: string;
+  /** Loyer mensuel en location, prix de cession en vente. */
   prix: number;
   charges: number;
   caution?: number | null;
   cout_entree: number;
   devise: string;
-  nb_pieces: number;
+  nb_pieces?: number | null;
   superficie?: number | null;
   etage?: number | null;
   meuble: boolean;
@@ -259,7 +265,7 @@ export interface Pays {
 export interface Referentiel {
   locations: Record<string, Record<string, string[]>>;
   devises: Record<string, { code: string; symbol: string; locale?: string }>;
-  types_bien: { valeur: string; label: string }[];
+  types_bien: { valeur: string; label: string; sans_pieces?: boolean }[];
   marches_ouverts: string[];
 }
 

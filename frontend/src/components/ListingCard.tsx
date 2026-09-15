@@ -6,7 +6,7 @@ import { Bed, Heart, MapPin, Square, Zap } from "lucide-react";
 import { Link } from "react-router";
 
 import type { Listing } from "../api";
-import { formatMontantCourt, labelTypeBien } from "../lib/format";
+import { formatMontantCourt, labelTransaction, labelTypeBien } from "../lib/format";
 import { BadgeCertifie, ScoreMatch } from "./BadgeVerification";
 
 const IMAGE_PAR_DEFAUT =
@@ -57,6 +57,17 @@ export function ListingCard({ listing, onToggleFavori, to }: Props) {
           <div className="absolute top-3 right-3">
             <ScoreMatch score={listing.score_compatibilite} />
           </div>
+
+          {/* Un prix de vente et un loyer se ressemblent trop pour qu'on
+              laisse deviner lequel on regarde. */}
+          {listing.est_vente && (
+            <span
+              className="absolute bottom-3 left-3 px-2.5 py-1 rounded-full text-xs font-bold"
+              style={{ background: "#1D4ED8", color: "white" }}
+            >
+              {labelTransaction(true)}
+            </span>
+          )}
         </div>
 
         <div className="p-4">
@@ -81,10 +92,12 @@ export function ListingCard({ listing, onToggleFavori, to }: Props) {
                 {listing.superficie} m²
               </span>
             )}
-            <span className="flex items-center gap-1">
-              <Bed size={12} />
-              {listing.nb_pieces} {listing.nb_pieces > 1 ? "pièces" : "pièce"}
-            </span>
+            {listing.nb_pieces != null && (
+              <span className="flex items-center gap-1">
+                <Bed size={12} />
+                {listing.nb_pieces} {listing.nb_pieces > 1 ? "pièces" : "pièce"}
+              </span>
+            )}
             {listing.equipements.generateur && (
               <span className="flex items-center gap-1" title="Groupe électrogène">
                 <Zap size={12} style={{ color: "#F59E0B" }} />
@@ -98,8 +111,8 @@ export function ListingCard({ listing, onToggleFavori, to }: Props) {
               <span className="font-bold text-lg" style={{ color: "#1E3A5F" }}>
                 {formatMontantCourt(listing.prix, listing.devise)}
               </span>
-              <span className="text-gray-400 text-xs"> /mois</span>
-              {listing.charges > 0 && (
+              {!listing.est_vente && <span className="text-gray-400 text-xs"> /mois</span>}
+              {!listing.est_vente && listing.charges > 0 && (
                 <span className="text-gray-400 text-xs">
                   {" "}
                   + {formatMontantCourt(listing.charges, listing.devise)} charges

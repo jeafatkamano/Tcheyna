@@ -329,7 +329,7 @@ export function OwnerMatches() {
                               <CheckCircle2 size={14} />
                               Commission réglée
                             </div>
-                          ) : match.commission > 0 ? (
+                          ) : match.commission > 0 && !match.listing?.est_vente ? (
                             <BoutonPaiement
                               label="Régler la commission"
                               montant={match.commission}

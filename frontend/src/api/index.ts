@@ -22,6 +22,7 @@ import type {
   Tarif,
   TenantPassport,
   TypePaiement,
+  TypeTransaction,
   User,
 } from "./types";
 
@@ -76,6 +77,8 @@ export const authAPI = {
 
 export interface FiltresAnnonces {
   q?: string;
+  /** Louer ou acheter — deux marchés qu'on ne mélange pas dans une liste. */
+  transaction?: TypeTransaction;
   pays?: string;
   ville?: string;
   quartier?: string;
@@ -112,6 +115,7 @@ export interface DonneesAnnonce {
   ville: string;
   quartier?: string;
   adresse?: string;
+  type_transaction?: TypeTransaction;
   type_bien: string;
   prix: number;
   charges?: number;

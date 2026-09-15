@@ -34,6 +34,7 @@ export function ListingsPage() {
   const [filtresOuverts, setFiltresOuverts] = useState(false);
   const [filtres, setFiltres] = useState<FiltresAnnonces>({
     ville: "Conakry",
+    transaction: "location",
     tri: "match",
     per_page: 20,
   });
@@ -68,7 +69,12 @@ export function ListingsPage() {
   }
 
   function reinitialiser() {
-    const neutre: FiltresAnnonces = { ville: "Conakry", tri: filtres.tri, per_page: 20 };
+    const neutre: FiltresAnnonces = {
+      ville: "Conakry",
+      transaction: filtres.transaction,
+      tri: filtres.tri,
+      per_page: 20,
+    };
     setBrouillon(neutre);
     setFiltres(neutre);
     setFiltresOuverts(false);
@@ -76,16 +82,56 @@ export function ListingsPage() {
 
   const nbFiltresActifs = Object.entries(filtres).filter(
     ([cle, valeur]) =>
-      !["ville", "tri", "per_page", "page"].includes(cle) && valeur !== undefined && valeur !== false,
+      !["ville", "transaction", "tri", "per_page", "page"].includes(cle) &&
+      valeur !== undefined &&
+      valeur !== false,
   ).length;
+
+  const estVente = filtres.transaction === "vente";
 
   return (
     <div className="pb-8">
       {/* Recherche */}
       <div className="px-4 pt-6 pb-4" style={{ background: "#1E3A5F" }}>
         <h1 className="text-white font-bold mb-4" style={{ fontSize: "20px" }}>
-          Annonces à Conakry
+          {estVente ? "Biens à vendre à Conakry" : "Annonces à Conakry"}
         </h1>
+
+        {/* Louer et acheter sont deux marchés : on n'en montre qu'un à la fois. */}
+        <div
+          className="flex gap-1 p-1 rounded-xl mb-4"
+          style={{ background: "rgba(255,255,255,0.1)" }}
+        >
+          {(
+            [
+              { valeur: "location" as const, label: "Louer" },
+              { valeur: "vente" as const, label: "Acheter" },
+            ]
+          ).map((option) => {
+            const actif = (filtres.transaction ?? "location") === option.valeur;
+            return (
+              <button
+                key={option.valeur}
+                onClick={() => {
+                  // Un tri par compatibilité n'existe pas à la vente.
+                  setFiltres((f) => ({
+                    ...f,
+                    transaction: option.valeur,
+                    tri: option.valeur === "vente" && f.tri === "match" ? "recent" : f.tri,
+                  }));
+                }}
+                className="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors"
+                style={{
+                  background: actif ? "#F97316" : "transparent",
+                  color: actif ? "white" : "rgba(255,255,255,0.65)",
+                }}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+
         <div className="relative">
           <Search
             size={18}
@@ -120,7 +166,7 @@ export function ListingsPage() {
         className="flex gap-2 px-4 py-3 overflow-x-auto"
         style={{ background: "#1E3A5F", borderBottom: "1px solid rgba(255,255,255,0.1)" }}
       >
-        {TRIS.map((t) => (
+        {TRIS.filter((t) => !(estVente && t.valeur === "match")).map((t) => (
           <button
             key={t.valeur}
             onClick={() => setFiltres((f) => ({ ...f, tri: t.valeur }))}

@@ -91,9 +91,30 @@ const TYPES_BIEN: Record<string, string> = {
   appartement: "Appartement",
   maison: "Maison",
   villa: "Villa",
+  hangar: "Hangar",
+  terrain: "Terrain",
 };
 
 export function labelTypeBien(type?: string | null): string {
   if (!type) return "Bien";
   return TYPES_BIEN[type] ?? type;
+}
+
+/** Types qui ne se décrivent ni en pièces, ni en étage, ni en ameublement. */
+export const TYPES_SANS_PIECES = ["terrain", "hangar"];
+
+export function sansPieces(type?: string | null): boolean {
+  return TYPES_SANS_PIECES.includes(type ?? "");
+}
+
+/**
+ * Un loyer se lit « par mois », un prix de vente non. Oublier le suffixe fait
+ * passer une maison à 850 M pour un loyer mensuel.
+ */
+export function suffixePrix(estVente?: boolean): string {
+  return estVente ? "" : "/mois";
+}
+
+export function labelTransaction(estVente?: boolean): string {
+  return estVente ? "À vendre" : "À louer";
 }

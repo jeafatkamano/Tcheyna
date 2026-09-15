@@ -31,6 +31,16 @@ def score_compatibilite(passport, listing, tenant=None):
     details = []
     score = 0
 
+    # Une vente ne se juge pas à l'aune d'un budget de loyer mensuel. Plutôt
+    # qu'un score trompeur, on dit qu'il n'y en a pas.
+    if getattr(listing, "est_vente", False):
+        return 0, [{
+            "critere": "Compatibilité",
+            "points": 0,
+            "max": 100,
+            "libelle": "Bien à vendre — le Passeport Locataire ne s'applique pas",
+        }]
+
     # ─── Budget ─────────────────────────────────────────────
     cout = (listing.prix or 0) + (listing.charges or 0)
     budget_max = passport.budget_max if passport else None
@@ -84,7 +94,9 @@ def score_compatibilite(passport, listing, tenant=None):
 
     # ─── Nombre de pièces ───────────────────────────────────
     mini = passport.nb_pieces_min if passport else None
-    if not mini:
+    if getattr(listing, "sans_pieces", False):
+        pts, libelle = POIDS["pieces"] // 2, "Sans objet pour ce type de bien"
+    elif not mini:
         pts, libelle = POIDS["pieces"] // 2, "Non renseigné"
     elif (listing.nb_pieces or 0) >= mini:
         pts, libelle = POIDS["pieces"], f"{listing.nb_pieces} pièces"

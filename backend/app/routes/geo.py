@@ -68,12 +68,16 @@ CURRENCIES = {
 # référentiel mais ne sont pas proposés à la publication d'annonces.
 MARCHES_OUVERTS = ("Guinée",)
 
+# `sans_pieces` : le frontend masque alors pièces, étage et ameublement, qui
+# n'ont pas de sens pour un terrain nu ou un hangar.
 TYPES_BIEN = [
-    {"valeur": "studio",      "label": "Studio"},
-    {"valeur": "chambre",     "label": "Chambre"},
-    {"valeur": "appartement", "label": "Appartement"},
-    {"valeur": "maison",      "label": "Maison"},
-    {"valeur": "villa",       "label": "Villa"},
+    {"valeur": "studio",      "label": "Studio",      "sans_pieces": False},
+    {"valeur": "chambre",     "label": "Chambre",     "sans_pieces": False},
+    {"valeur": "appartement", "label": "Appartement", "sans_pieces": False},
+    {"valeur": "maison",      "label": "Maison",      "sans_pieces": False},
+    {"valeur": "villa",       "label": "Villa",       "sans_pieces": False},
+    {"valeur": "hangar",      "label": "Hangar",      "sans_pieces": True},
+    {"valeur": "terrain",     "label": "Terrain",     "sans_pieces": True},
 ]
 
 

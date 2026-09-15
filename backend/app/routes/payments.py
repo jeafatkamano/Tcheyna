@@ -52,6 +52,13 @@ def _montant_attendu(type_paiement, user, match, listing):
     Le montant vient toujours du serveur : le client ne choisit jamais combien
     il paie, sauf pour les paiements libres entre parties.
     """
+    # Caution, loyer et commission découlent d'un bail : aucun n'a de sens sur
+    # une vente, dont le règlement se fait par acte notarié hors plateforme.
+    vente = bool(match and match.listing and match.listing.est_vente)
+    if vente and type_paiement in ("caution", "premier_loyer", "commission"):
+        return None, None, ("Ce paiement ne s'applique qu'à une location. La cession "
+                            "d'un bien se règle devant notaire, hors plateforme.")
+
     if type_paiement == "caution":
         if not match or not match.listing:
             return None, None, "Un match accepté est requis pour payer la caution"

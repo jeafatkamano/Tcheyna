@@ -7,7 +7,7 @@ import { Erreur, ListeVide, SqueletteCartes } from "../../components/Etats";
 import { StatutPastille } from "../../components/ListingCard";
 import { ModalePaiement } from "../../components/ModalePaiement";
 import { useApi } from "../../hooks/useApi";
-import { formatMontantCourt, labelTypeBien } from "../../lib/format";
+import { formatMontantCourt, labelTransaction, labelTypeBien } from "../../lib/format";
 
 /** Tarif de la mise en avant, aligné sur la grille du serveur. */
 const PRIX_MISE_EN_AVANT = 200_000;
@@ -108,12 +108,23 @@ export function OwnerListings() {
                       >
                         {listing.title}
                       </h3>
-                      <StatutPastille statut={listing.status} />
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {listing.est_vente && (
+                          <span
+                            className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                            style={{ background: "#DBEAFE", color: "#1D4ED8" }}
+                          >
+                            {labelTransaction(true)}
+                          </span>
+                        )}
+                        <StatutPastille statut={listing.status} />
+                      </div>
                     </div>
 
                     <p className="text-xs text-gray-400 mb-2">
                       {listing.quartier ?? listing.ville} · {labelTypeBien(listing.type_bien)} ·{" "}
-                      {formatMontantCourt(listing.prix, listing.devise)}/mois
+                      {formatMontantCourt(listing.prix, listing.devise)}
+                      {!listing.est_vente && "/mois"}
                     </p>
 
                     <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">

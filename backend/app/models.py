@@ -190,6 +190,14 @@ class OTPCode(db.Model):
 
 CERTIFICATION_STATUSES = ("none", "pending", "certified", "rejected")
 
+# Un propriétaire ne cherche pas toujours un locataire : il peut vouloir vendre.
+TYPES_TRANSACTION = ("location", "vente")
+
+# Types de biens. `terrain` et `hangar` n'ont ni pièces, ni étage, ni meubles :
+# les traiter comme un appartement produirait des annonces absurdes.
+TYPES_BIEN = ("appartement", "maison", "studio", "chambre", "villa", "hangar", "terrain")
+TYPES_BIEN_SANS_PIECES = ("terrain", "hangar")
+
 
 class Listing(db.Model):
     __tablename__ = "listings"
@@ -210,12 +218,14 @@ class Listing(db.Model):
     adresse  = db.Column(db.String(300), nullable=True)
 
     # Caractéristiques
-    type_bien   = db.Column(db.String(30), nullable=False, index=True)  # appartement | maison | studio | chambre | villa
-    prix        = db.Column(db.Integer, nullable=False, index=True)     # loyer mensuel, devise locale
-    charges     = db.Column(db.Integer, default=0)
-    caution     = db.Column(db.Integer, nullable=True)                  # dépôt de garantie
+    # location : `prix` est un loyer mensuel. vente : `prix` est le prix de cession.
+    type_transaction = db.Column(db.String(20), default="location", nullable=False, index=True)
+    type_bien   = db.Column(db.String(30), nullable=False, index=True)
+    prix        = db.Column(db.Integer, nullable=False, index=True)
+    charges     = db.Column(db.Integer, default=0)                      # location seulement
+    caution     = db.Column(db.Integer, nullable=True)                  # dépôt de garantie, location seulement
     devise      = db.Column(db.String(10), nullable=False)              # GNF | XOF | GHS | NGN
-    nb_pieces   = db.Column(db.Integer, default=1)
+    nb_pieces   = db.Column(db.Integer, nullable=True)  # None pour un terrain, un hangar
     superficie  = db.Column(db.Float, nullable=True)                    # m²
     etage       = db.Column(db.Integer, nullable=True)
     meuble      = db.Column(db.Boolean, default=False)
@@ -271,8 +281,23 @@ class Listing(db.Model):
                     and self.premium_until > datetime.utcnow())
 
     @property
+    def est_vente(self):
+        return self.type_transaction == "vente"
+
+    @property
+    def sans_pieces(self):
+        """Un terrain ou un hangar ne se décrit pas en nombre de pièces."""
+        return self.type_bien in TYPES_BIEN_SANS_PIECES
+
+    @property
     def cout_entree(self):
-        """Somme à débourser à l'entrée : premier loyer + charges + caution."""
+        """Somme à débourser à l'entrée : premier loyer + charges + caution.
+
+        Pour une vente, il n'y a pas de coût d'entrée au sens locatif : le prix
+        annoncé est le prix du bien.
+        """
+        if self.est_vente:
+            return self.prix or 0
         return (self.prix or 0) + (self.charges or 0) + (self.caution or 0)
 
     def to_dict(self, lang="fr", include_landlord=True):
@@ -284,13 +309,15 @@ class Listing(db.Model):
             "ville":       self.ville,
             "quartier":    self.quartier,
             "adresse":     self.adresse,
+            "type_transaction": self.type_transaction or "location",
+            "est_vente":   self.est_vente,
             "type_bien":   self.type_bien,
             "prix":        self.prix,
-            "charges":     self.charges or 0,
-            "caution":     self.caution,
+            "charges":     0 if self.est_vente else (self.charges or 0),
+            "caution":     None if self.est_vente else self.caution,
             "cout_entree": self.cout_entree,
             "devise":      self.devise,
-            "nb_pieces":   self.nb_pieces,
+            "nb_pieces":   None if self.sans_pieces else self.nb_pieces,
             "superficie":  self.superficie,
             "etage":       self.etage,
             "meuble":      self.meuble,
@@ -358,8 +385,15 @@ class Match(db.Model):
 
     @property
     def commission(self):
-        """Commission Tcheyna sur le premier loyer (business plan §6)."""
-        return int((self.listing.prix or 0) * COMMISSION_RATE) if self.listing else 0
+        """Commission Tcheyna sur le premier loyer (business plan §6).
+
+        Le business plan ne chiffre que la location. Appliquer le même taux à un
+        prix de vente produirait une commission sans commune mesure, jamais
+        décidée : on renvoie zéro tant que ce barème n'est pas arrêté.
+        """
+        if not self.listing or self.listing.est_vente:
+            return 0
+        return int((self.listing.prix or 0) * COMMISSION_RATE)
 
     def to_dict(self, lang="fr"):
         return {

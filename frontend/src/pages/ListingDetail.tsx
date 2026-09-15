@@ -35,7 +35,7 @@ import { BadgeCertifie, BadgeVerification, ScoreMatch } from "../components/Badg
 import { Chargement, Erreur, MessageErreur } from "../components/Etats";
 import { useAuth } from "../context/AuthContext";
 import { useAction, useApi } from "../hooks/useApi";
-import { formatDate, formatMontant, formatMontantCourt } from "../lib/format";
+import { formatDate, formatMontant, formatMontantCourt, labelTransaction } from "../lib/format";
 
 const IMAGE_PAR_DEFAUT = "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1080&q=80";
 
@@ -246,7 +246,9 @@ export function ListingDetail() {
               <div className="font-bold" style={{ color: "#1E3A5F", fontSize: "19px" }}>
                 {formatMontantCourt(listing.prix, listing.devise)}
               </div>
-              <div className="text-xs text-gray-400">/mois</div>
+              <div className="text-xs text-gray-400">
+                {listing.est_vente ? labelTransaction(true) : "/mois"}
+              </div>
             </div>
           </div>
 
@@ -268,7 +270,7 @@ export function ListingDetail() {
           <div className="grid grid-cols-4 gap-3">
             {[
               { icone: Square, valeur: listing.superficie ? `${listing.superficie} m²` : "—", label: "Surface" },
-              { icone: Bed, valeur: `${listing.nb_pieces}P`, label: "Pièces" },
+              { icone: Bed, valeur: listing.nb_pieces != null ? `${listing.nb_pieces}P` : "—", label: "Pièces" },
               { icone: Layers, valeur: listing.etage != null ? `Ét. ${listing.etage}` : "—", label: "Étage" },
               { icone: Sofa, valeur: listing.meuble ? "Oui" : "Non", label: "Meublé" },
             ].map((item) => (
@@ -405,7 +407,29 @@ export function ListingDetail() {
           </div>
         )}
 
+        {/* Prix de vente : il n'y a ni loyer, ni caution, ni coût d'entrée. */}
+        {listing.est_vente && (
+          <div className="rounded-2xl p-4" style={{ background: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
+            <p className="text-sm font-semibold mb-2" style={{ color: "#1E3070" }}>
+              Bien à vendre
+            </p>
+            <div className="flex justify-between">
+              <span className="text-sm" style={{ color: "#1D4ED8" }}>
+                Prix demandé
+              </span>
+              <span className="text-sm font-bold" style={{ color: "#1E3070" }}>
+                {formatMontant(listing.prix, listing.devise)}
+              </span>
+            </div>
+            <p className="text-xs mt-2.5 leading-relaxed" style={{ color: "#1D4ED8" }}>
+              La cession se conclut devant notaire, hors plateforme. Tcheyna vous met en
+              relation avec le vendeur et conserve la trace de vos échanges.
+            </p>
+          </div>
+        )}
+
         {/* Coût d'entrée */}
+        {!listing.est_vente && (
         <div className="rounded-2xl p-4" style={{ background: "#FFF7ED", border: "1.5px solid #FED7AA" }}>
           <p className="text-sm font-semibold mb-2" style={{ color: "#92400E" }}>
             Coût d'entrée estimé
@@ -431,6 +455,7 @@ export function ListingDetail() {
             Payable par Mobile Money via Tcheyna, avec reçu numérique pour les deux parties.
           </p>
         </div>
+        )}
       </div>
 
       {/* Barre d'action */}
@@ -468,11 +493,15 @@ export function ListingDetail() {
             className="w-full py-4 rounded-2xl font-semibold text-white flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
             style={{ background: "#F97316", fontSize: "16px" }}
           >
-            Créer un compte pour candidater
+            {listing.est_vente
+              ? "Créer un compte pour contacter le vendeur"
+              : "Créer un compte pour candidater"}
           </Link>
         ) : !estLocataire ? (
           <p className="text-center text-sm text-gray-500 py-2">
-            Seuls les comptes locataires peuvent candidater.
+            {listing.est_vente
+              ? "Seuls les comptes locataires peuvent contacter le vendeur."
+              : "Seuls les comptes locataires peuvent candidater."}
           </p>
         ) : !niveauSuffisant ? (
           <Link
@@ -496,8 +525,12 @@ export function ListingDetail() {
               onChange={(e) => setMessageCandidature(e.target.value)}
               rows={3}
               maxLength={1000}
-              placeholder="Présentez-vous en quelques lignes : situation, date d'emménagement souhaitée…"
-              aria-label="Message de candidature"
+              placeholder={
+                listing.est_vente
+                  ? "Présentez-vous et dites ce qui vous intéresse : financement, délai d'acquisition, visite souhaitée…"
+                  : "Présentez-vous en quelques lignes : situation, date d'emménagement souhaitée…"
+              }
+              aria-label={listing.est_vente ? "Message au vendeur" : "Message de candidature"}
               className="w-full px-4 py-3 rounded-xl outline-none resize-none"
               style={{ background: "white", border: "1.5px solid #E2E8F0", fontSize: "14px" }}
             />
@@ -516,7 +549,11 @@ export function ListingDetail() {
                 className="flex-[2] py-3.5 rounded-2xl font-semibold text-white disabled:opacity-60"
                 style={{ background: "#F97316" }}
               >
-                {candidature.enCours ? "Envoi…" : "Envoyer ma candidature"}
+                {candidature.enCours
+                  ? "Envoi…"
+                  : listing.est_vente
+                    ? "Contacter le vendeur"
+                    : "Envoyer ma candidature"}
               </button>
             </div>
           </div>
