@@ -110,6 +110,12 @@ export function CGU() {
           ]}
         />
         <p>
+          <strong>Aucune commission n'est prélevée sur une vente.</strong> La mise en relation
+          entre un vendeur et un acquéreur est gratuite ; seules la certification et la mise en
+          avant de l'annonce restent payantes. La cession elle-même se conclut devant notaire,
+          hors plateforme : Tcheyna n'y est pas partie et n'en perçoit rien.
+        </p>
+        <p>
           La caution et le premier loyer peuvent être réglés par Mobile Money via la
           plateforme. Ces sommes sont dues au propriétaire : Tcheyna en assure l'acheminement
           et la traçabilité, sans en être bénéficiaire.
