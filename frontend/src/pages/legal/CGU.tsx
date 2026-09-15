@@ -189,14 +189,14 @@ export function CGU() {
         <p>
           Les présentes conditions sont soumises au droit de la République de Guinée. À défaut
           de résolution amiable, tout différend relève des juridictions compétentes de{" "}
-          <ACompleter quoi="juridiction compétente, ex. Conakry" />.
+          <ACompleter champ="juridiction" quoi="juridiction compétente" />.
         </p>
       </Section>
 
       <Section titre="14. Contact">
         <p>
           Pour toute question relative aux présentes conditions :{" "}
-          <ACompleter quoi="adresse e-mail de contact" />.
+          <ACompleter champ="emailContact" quoi="adresse e-mail de contact" />.
         </p>
       </Section>
     </PageLegale>

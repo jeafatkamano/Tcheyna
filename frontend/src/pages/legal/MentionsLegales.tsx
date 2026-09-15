@@ -4,39 +4,41 @@
  * Les éléments d'identité juridique ne peuvent pas être devinés : ils sont
  * signalés comme à compléter plutôt que remplis par des valeurs plausibles.
  */
-import { ACompleter, PageLegale, Section } from "./PageLegale";
+import { ACompleter, identiteIncomplete, PageLegale, Section } from "./PageLegale";
 
 export function MentionsLegales() {
   return (
     <PageLegale titre="Mentions légales" sousTitre="Qui édite et qui héberge cette plateforme">
-      <div
-        className="rounded-xl p-4 text-sm leading-relaxed"
-        style={{ background: "#FEF3C7", border: "1px solid #FDE68A", color: "#92400E" }}
-      >
-        Les champs signalés ci-dessous doivent être renseignés par l'éditeur avant toute
-        exploitation commerciale de la plateforme.
-      </div>
+      {identiteIncomplete() && (
+        <div
+          className="rounded-xl p-4 text-sm leading-relaxed"
+          style={{ background: "#FEF3C7", border: "1px solid #FDE68A", color: "#92400E" }}
+        >
+          Les champs signalés ci-dessous doivent être renseignés par l'éditeur avant toute
+          exploitation commerciale de la plateforme.
+        </div>
+      )}
 
       <Section titre="Éditeur">
         <p>
-          <strong>Dénomination :</strong> <ACompleter quoi="dénomination sociale" />
+          <strong>Dénomination :</strong> <ACompleter champ="denomination" quoi="dénomination sociale" />
         </p>
         <p>
-          <strong>Forme juridique :</strong> <ACompleter quoi="forme juridique, ex. SARL" />
+          <strong>Forme juridique :</strong> <ACompleter champ="formeJuridique" quoi="forme juridique, ex. SARL" />
         </p>
         <p>
           <strong>Immatriculation :</strong>{" "}
-          <ACompleter quoi="numéro RCCM et numéro d'identification fiscale" />
+          <ACompleter champ="rccm" quoi="numéro RCCM" /> · <ACompleter champ="nif" quoi="numéro d'identification fiscale" />
         </p>
         <p>
-          <strong>Siège social :</strong> <ACompleter quoi="adresse complète à Conakry" />
+          <strong>Siège social :</strong> <ACompleter champ="siege" quoi="adresse complète à Conakry" />
         </p>
         <p>
           <strong>Directeur de la publication :</strong>{" "}
-          <ACompleter quoi="nom du représentant légal" />
+          <ACompleter champ="directeurPublication" quoi="nom du représentant légal" />
         </p>
         <p>
-          <strong>Contact :</strong> <ACompleter quoi="adresse e-mail et téléphone" />
+          <strong>Contact :</strong> <ACompleter champ="emailContact" quoi="adresse e-mail" /> · <ACompleter champ="telephone" quoi="téléphone" />
         </p>
       </Section>
 
@@ -75,7 +77,7 @@ export function MentionsLegales() {
       <Section titre="Signalement d'un contenu">
         <p>
           Une annonce frauduleuse, un profil suspect ou un contenu illicite peuvent être
-          signalés à <ACompleter quoi="adresse e-mail de signalement" />. Chaque signalement
+          signalés à <ACompleter champ="emailSignalement" quoi="adresse e-mail de signalement" />. Chaque signalement
           est examiné et peut donner lieu au retrait du contenu et à la suspension du compte
           concerné.
         </p>

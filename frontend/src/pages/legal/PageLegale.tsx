@@ -8,6 +8,8 @@ import { ArrowLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
+import { EDITEUR, renseigne, type ChampEditeur } from "../../lib/editeur";
+
 export const DERNIERE_MAJ = "15 septembre 2026";
 
 export function PageLegale({
@@ -84,11 +86,14 @@ export function Liste({ items }: { items: ReactNode[] }) {
 }
 
 /**
- * Élément d'identité juridique que l'éditeur doit renseigner avant toute
- * exploitation réelle. Volontairement visible : une mention légale incomplète
- * qui aurait l'air complète serait pire qu'un trou signalé.
+ * Élément d'identité juridique tiré de `editeur.ts`. Tant qu'il n'est pas
+ * renseigné, le manque s'affiche au lieu d'être masqué : une mention légale
+ * incomplète qui aurait l'air complète expose plus qu'un trou signalé.
  */
-export function ACompleter({ quoi }: { quoi: string }) {
+export function ACompleter({ champ, quoi }: { champ: ChampEditeur; quoi: string }) {
+  if (renseigne(champ)) {
+    return <span>{EDITEUR[champ]}</span>;
+  }
   return (
     <span
       className="inline-block px-2 py-0.5 rounded font-semibold"
@@ -97,4 +102,9 @@ export function ACompleter({ quoi }: { quoi: string }) {
       [à compléter : {quoi}]
     </span>
   );
+}
+
+/** Vrai tant qu'au moins un champ d'identité manque. */
+export function identiteIncomplete(): boolean {
+  return (Object.keys(EDITEUR) as ChampEditeur[]).some((c) => !renseigne(c));
 }

@@ -49,8 +49,10 @@ services:
       # l'API refuse les téléversements en production plutôt que de les
       # écrire sur le disque de l'instance, qui est effacé à chaque
       # redémarrage.
+      # Le dépôt est public : l'URL désigne le projet Supabase et n'a pas à y
+      # figurer. La valeur est déjà posée dans le tableau de bord Render.
       - key: SUPABASE_URL
-        value: https://uhvlqdnxzkatlxidbwhb.supabase.co
+        sync: false
       - key: SUPABASE_SERVICE_KEY
         sync: false
       - key: SUPABASE_BUCKET_PUBLIC

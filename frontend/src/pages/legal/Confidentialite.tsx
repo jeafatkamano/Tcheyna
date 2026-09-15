@@ -14,9 +14,9 @@ export function Confidentialite() {
     >
       <Section titre="1. Responsable du traitement">
         <p>
-          Le responsable du traitement est <ACompleter quoi="dénomination sociale de l'éditeur" />,
+          Le responsable du traitement est <ACompleter champ="denomination" quoi="dénomination sociale de l'éditeur" />,
           éditeur de la plateforme Tcheyna. Pour toute question relative à vos données :{" "}
-          <ACompleter quoi="adresse e-mail dédiée aux données personnelles" />.
+          <ACompleter champ="emailDonnees" quoi="adresse e-mail dédiée aux données personnelles" />.
         </p>
       </Section>
 
@@ -147,9 +147,9 @@ export function Confidentialite() {
         />
         <p>
           Pour exercer ces droits, écrivez à{" "}
-          <ACompleter quoi="adresse e-mail dédiée aux données personnelles" />. Nous répondons
+          <ACompleter champ="emailDonnees" quoi="adresse e-mail dédiée aux données personnelles" />. Nous répondons
           sous 30 jours. Vous pouvez également saisir{" "}
-          <ACompleter quoi="autorité guinéenne de protection des données compétente" />.
+          <ACompleter champ="autoriteDonnees" quoi="autorité guinéenne de protection des données" />.
         </p>
       </Section>
 
