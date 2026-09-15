@@ -80,6 +80,55 @@ def supabase_configure():
                 and current_app.config.get("SUPABASE_SERVICE_KEY"))
 
 
+def verifier_acces():
+    """Éprouve réellement la clé, au lieu de constater qu'elle est renseignée.
+
+    Une clé publique (`anon` / `sb_publishable_…`) est parfaitement valide :
+    elle passe l'authentification, puis se fait refuser chaque écriture par
+    les règles de sécurité. Un diagnostic qui se contente de vérifier la
+    présence de la variable annonce donc « tout fonctionne » alors que pas un
+    fichier ne peut être enregistré.
+
+    Lister les compartiments exige les droits de service : c'est ce qui
+    distingue les deux clés sans rien téléverser.
+    """
+    if not supabase_configure():
+        return False, ("SUPABASE_URL ou SUPABASE_SERVICE_KEY manquante : "
+                       "les téléversements sont refusés.")
+
+    url = f"{current_app.config['SUPABASE_URL']}/storage/v1/bucket"
+    try:
+        reponse = requests.get(url, headers=_entetes(), timeout=15)
+    except requests.RequestException as exc:
+        return False, f"Supabase Storage injoignable : {exc.__class__.__name__}"
+
+    if reponse.status_code in (401, 403):
+        return False, ("La clé fournie est refusée par Supabase. "
+                       "Vérifiez qu'il s'agit bien de la clé secrète.")
+
+    if reponse.status_code != 200:
+        return False, f"Supabase Storage a répondu {reponse.status_code}."
+
+    try:
+        compartiments = {b.get("id") for b in reponse.json()}
+    except ValueError:
+        return False, "Réponse illisible de Supabase Storage."
+
+    # Une clé publique s'authentifie mais ne voit aucun compartiment : elle
+    # échouerait ensuite sur chaque écriture, avec un message trompeur.
+    if not compartiments:
+        return False, ("Clé acceptée mais sans droits : c'est la clé publique "
+                       "(anon / publishable). Utilisez la clé secrète "
+                       "(service_role ou sb_secret_…).")
+
+    attendus = {_bucket("photos"), _bucket("documents")}
+    manquants = attendus - compartiments
+    if manquants:
+        return False, f"Compartiment(s) absent(s) : {', '.join(sorted(manquants))}."
+
+    return True, "Les téléversements fonctionnent."
+
+
 def _bucket(dossier):
     """Compartiment correspondant à l'usage : public pour ce qui s'affiche,
     privé pour ce qui se consulte sur autorisation."""

@@ -61,7 +61,9 @@ def diagnostic(current_user):
     def renseigne(cle):
         return bool(current_app.config.get(cle))
 
-    stockage_pret = stockage.supabase_configure()
+    # On éprouve la clé plutôt que de constater sa présence : une clé publique
+    # est renseignée, valide, et refuse pourtant chaque écriture.
+    stockage_pret, consequence = stockage.verifier_acces()
 
     return jsonify({
         "stockage": {
@@ -70,12 +72,7 @@ def diagnostic(current_user):
             "supabase_service_key": renseigne("SUPABASE_SERVICE_KEY"),
             "compartiment_public": current_app.config.get("SUPABASE_BUCKET_PUBLIC"),
             "compartiment_prive": current_app.config.get("SUPABASE_BUCKET_PRIVE"),
-            "consequence": (
-                "Les téléversements fonctionnent."
-                if stockage_pret
-                else "Les téléversements sont refusés : renseignez SUPABASE_URL "
-                     "et SUPABASE_SERVICE_KEY."
-            ),
+            "consequence": consequence,
         },
         "sms": {
             "operationnel": renseigne("AT_API_KEY"),
