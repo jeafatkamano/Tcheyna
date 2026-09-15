@@ -4,7 +4,7 @@
  * Le paiement lui-même est initié depuis la mise en relation concernée ; cette
  * page sert de journal et de point d'accès aux reçus.
  */
-import { ChevronRight, Receipt, Wallet } from "lucide-react";
+import { ChevronRight, Clock, Receipt, Wallet } from "lucide-react";
 import { Link } from "react-router";
 
 import { paiementsAPI, type Payment } from "../api";
@@ -23,6 +23,8 @@ export function PaiementsPage() {
   const { user } = useAuth();
   const paiements = useApi(() => paiementsAPI.mesPaiements(), []);
   const tarifs = useApi(() => paiementsAPI.tarifs(), []);
+
+  const enAttente = (paiements.data?.paiements ?? []).find((p) => p.statut === "pending");
 
   const estLocataire = user?.role === "tenant";
   const servicesPertinents = (tarifs.data?.services ?? []).filter((s) =>
@@ -58,6 +60,28 @@ export function PaiementsPage() {
       </div>
 
       <div className="px-4 pt-5 space-y-5">
+        {/* Retour d'opérateur : le paiement existe mais n'est pas encore confirmé.
+            C'est sur cette page que CinetPay renvoie l'utilisateur. */}
+        {enAttente && (
+          <Link
+            to={`/paiements/${enAttente.id}`}
+            className="flex items-center gap-3 p-4 rounded-2xl"
+            style={{ background: "#FEF3C7", border: "1.5px solid #FDE68A" }}
+          >
+            <Clock size={20} style={{ color: "#B45309", flexShrink: 0 }} />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm" style={{ color: "#92400E" }}>
+                Un paiement attend confirmation
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: "#B45309" }}>
+                {enAttente.type_label} · {formatMontant(enAttente.montant, enAttente.devise)} —
+                ouvrez le reçu pour vérifier son statut.
+              </p>
+            </div>
+            <ChevronRight size={18} style={{ color: "#B45309", flexShrink: 0 }} />
+          </Link>
+        )}
+
         {/* Historique */}
         <div>
           <h2 className="font-bold mb-3" style={{ color: "#1E293B", fontSize: "17px" }}>

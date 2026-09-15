@@ -1,4 +1,5 @@
 import {
+  BadgeCheck,
   CheckCircle,
   LogOut,
   Mail,
@@ -12,16 +13,21 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import type { LucideIcon } from "lucide-react";
 
-import { passportAPI, type TenantPassport, type TypeDocument } from "../../api";
+import { paiementsAPI, passportAPI, type TenantPassport, type TypeDocument } from "../../api";
 import { BadgeVerification, ScoreCircle, VerificationSteps } from "../../components/BadgeVerification";
 import { ChangementMotDePasse } from "../../components/ChangementMotDePasse";
+import { LiensLegaux } from "../../components/LiensLegaux";
 import { TeleversementAvatar } from "../../components/TeleversementAvatar";
 import { Chargement, Erreur, MessageErreur, MessageSucces } from "../../components/Etats";
+import { ModalePaiement } from "../../components/ModalePaiement";
 import { PhoneVerification } from "../../components/PhoneVerification";
 import { useAuth } from "../../context/AuthContext";
 import { useAction, useApi } from "../../hooks/useApi";
 import { useGeo } from "../../hooks/useGeo";
 import { formatMontant } from "../../lib/format";
+
+/** Tarif de l'abonnement Passeport, aligné sur la grille du serveur. */
+const PRIX_ABONNEMENT = 150_000;
 
 const DOCUMENTS: { type: TypeDocument; label: string; aide: string }[] = [
   { type: "cni_recto", label: "CNI — recto", aide: "Face avant de votre carte d'identité" },
@@ -177,9 +183,72 @@ export function TenantProfile() {
               <LogOut size={17} />
               Se déconnecter
             </button>
+
+            <LiensLegaux />
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ─── Abonnement Passeport ─────────────────────────────────── */
+
+/**
+ * L'abonnement ne remplace pas la vérification : il met en avant un dossier
+ * déjà vérifié auprès des propriétaires. Le dire clairement évite de vendre
+ * un niveau de confiance qui, lui, ne s'achète pas.
+ */
+function AbonnementPasseport() {
+  const [ouvert, setOuvert] = useState(false);
+  const paiements = useApi(() => paiementsAPI.mesPaiements(), []);
+
+  const actif = (paiements.data?.paiements ?? []).some(
+    (p) => p.type_paiement === "abonnement_passeport" && p.statut === "success",
+  );
+
+  return (
+    <div
+      className="rounded-2xl p-5"
+      style={
+        actif
+          ? { background: "#ECFDF5", border: "1.5px solid #A7F3D0" }
+          : { background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }
+      }
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <BadgeCheck size={19} style={{ color: actif ? "#047857" : "#F97316" }} />
+        <h3 className="font-bold" style={{ color: actif ? "#065F46" : "#1E293B" }}>
+          {actif ? "Abonnement Passeport actif" : "Abonnement Passeport Locataire"}
+        </h3>
+      </div>
+
+      <p className="text-xs leading-relaxed mb-4" style={{ color: actif ? "#047857" : "#64748B" }}>
+        {actif
+          ? "Votre dossier est mis en avant auprès des propriétaires pendant un an. Votre niveau de confiance, lui, reste acquis par la vérification de vos pièces."
+          : "Votre dossier vérifié est proposé en priorité aux propriétaires dont les biens correspondent à votre recherche, pendant un an. L'abonnement ne fait pas monter votre niveau de confiance : seules vos pièces vérifiées le font."}
+      </p>
+
+      {!actif && (
+        <button
+          onClick={() => setOuvert(true)}
+          className="w-full py-3 rounded-xl text-sm font-semibold text-white"
+          style={{ background: "#F97316" }}
+        >
+          S'abonner · {formatMontant(PRIX_ABONNEMENT, "GNF")} / an
+        </button>
+      )}
+
+      {ouvert && (
+        <ModalePaiement
+          type="abonnement_passeport"
+          titre="Abonnement Passeport Locataire"
+          description="Un an de mise en avant de votre dossier auprès des propriétaires. Sans engagement de reconduction."
+          montant={PRIX_ABONNEMENT}
+          onFerme={() => setOuvert(false)}
+          onPaye={() => void paiements.recharger()}
+        />
+      )}
     </div>
   );
 }
@@ -255,6 +324,8 @@ function OngletDossier({
           </div>
         )}
       </div>
+
+      <AbonnementPasseport />
 
       {/* Situation professionnelle */}
       <div

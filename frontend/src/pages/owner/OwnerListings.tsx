@@ -1,11 +1,16 @@
-import { Eye, Plus, ShieldCheck, Users } from "lucide-react";
+import { Eye, Plus, ShieldCheck, Sparkles, Users } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router";
 
-import { listingsAPI } from "../../api";
+import { listingsAPI, type Listing } from "../../api";
 import { Erreur, ListeVide, SqueletteCartes } from "../../components/Etats";
 import { StatutPastille } from "../../components/ListingCard";
+import { ModalePaiement } from "../../components/ModalePaiement";
 import { useApi } from "../../hooks/useApi";
 import { formatMontantCourt, labelTypeBien } from "../../lib/format";
+
+/** Tarif de la mise en avant, aligné sur la grille du serveur. */
+const PRIX_MISE_EN_AVANT = 200_000;
 
 const IMAGE_PAR_DEFAUT = "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1080&q=80";
 
@@ -18,6 +23,7 @@ const CERTIFICATION = {
 
 export function OwnerListings() {
   const annonces = useApi(() => listingsAPI.mesAnnonces(), []);
+  const [miseEnAvant, setMiseEnAvant] = useState<Listing | null>(null);
   const stats = annonces.data?.stats;
 
   return (
@@ -72,11 +78,14 @@ export function OwnerListings() {
           annonces.data.listings.map((listing) => {
             const cert = CERTIFICATION[listing.certification_status];
             return (
-              <Link
+              <div
                 key={listing.id}
-                to={`/owner/listings/${listing.id}`}
-                className="block rounded-2xl overflow-hidden transition-transform active:scale-[0.98]"
+                className="rounded-2xl overflow-hidden"
                 style={{ background: "white", boxShadow: "0 2px 16px rgba(30,58,95,0.08)" }}
+              >
+              <Link
+                to={`/owner/listings/${listing.id}`}
+                className="block transition-transform active:scale-[0.98]"
               >
                 <div className="flex gap-3 p-3">
                   <div
@@ -128,10 +137,49 @@ export function OwnerListings() {
                   </div>
                 </div>
               </Link>
+
+              {/* La mise en avant n'a de sens que sur une annonce encore à louer. */}
+              {listing.status === "active" && (
+                <div className="px-3 pb-3">
+                  {listing.is_premium ? (
+                    <div
+                      className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold"
+                      style={{ background: "#FEF3C7", color: "#92400E" }}
+                    >
+                      <Sparkles size={13} />
+                      Mise en avant active
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setMiseEnAvant(listing)}
+                      className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold"
+                      style={{ background: "#FFF7ED", color: "#9A3412" }}
+                    >
+                      <Sparkles size={13} />
+                      Mettre en avant 30 jours ·{" "}
+                      {formatMontantCourt(PRIX_MISE_EN_AVANT, listing.devise)}
+                    </button>
+                  )}
+                </div>
+              )}
+              </div>
             );
           })
         )}
       </div>
+
+      {miseEnAvant && (
+        <ModalePaiement
+          type="mise_en_avant"
+          titre="Mettre l'annonce en avant"
+          description="Votre bien remonte en tête des résultats de recherche pendant 30 jours, devant les annonces non mises en avant de même pertinence."
+          montant={PRIX_MISE_EN_AVANT}
+          devise={miseEnAvant.devise}
+          listingId={miseEnAvant.id}
+          onFerme={() => setMiseEnAvant(null)}
+          onPaye={() => void annonces.recharger()}
+        />
+      )}
     </div>
   );
 }

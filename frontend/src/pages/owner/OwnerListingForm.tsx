@@ -10,6 +10,7 @@ import { Link, useNavigate, useParams } from "react-router";
 
 import { listingsAPI, type DonneesAnnonce, type Listing } from "../../api";
 import { Chargement, Erreur, MessageErreur, MessageSucces } from "../../components/Etats";
+import { ModalePaiement } from "../../components/ModalePaiement";
 import { TeleversementDocuments } from "../../components/TeleversementDocuments";
 import {
   envoyerPhotosEnAttente,
@@ -19,6 +20,9 @@ import {
 import { useAction, useApi } from "../../hooks/useApi";
 import { useGeo } from "../../hooks/useGeo";
 import { formatMontant } from "../../lib/format";
+
+/** Frais de certification, alignés sur la grille tarifaire du serveur. */
+const PRIX_CERTIFICATION = 250_000;
 
 const EQUIPEMENTS = [
   { cle: "has_generator", label: "Groupe électrogène" },
@@ -619,6 +623,7 @@ function BlocCertification({
   onChangement: (message: string) => Promise<void> | void;
 }) {
   const [nbDocuments, setNbDocuments] = useState(listing.nb_documents);
+  const [paiementOuvert, setPaiementOuvert] = useState(false);
 
   const CONFIGS = {
     certified: {
@@ -694,18 +699,27 @@ function BlocCertification({
 
       {peutDemander && (
         <>
+          <div
+            className="flex items-baseline justify-between px-3.5 py-2.5 rounded-xl"
+            style={{ background: "rgba(255,255,255,0.65)" }}
+          >
+            <span className="text-xs font-semibold" style={{ color: config.titre }}>
+              Frais de certification
+            </span>
+            <span className="text-sm font-bold" style={{ color: "#EA580C" }}>
+              {formatMontant(PRIX_CERTIFICATION, listing.devise)}
+            </span>
+          </div>
+
           <MessageErreur message={demande.erreur} />
 
           <button
-            onClick={async () => {
-              const ok = await demande.executer(listing.id);
-              if (ok) await onChangement("Demande de certification envoyée");
-            }}
+            onClick={() => setPaiementOuvert(true)}
             disabled={!nbDocuments || !listing.images.length || demande.enCours}
             className="w-full py-3.5 rounded-2xl font-semibold text-white disabled:opacity-50"
             style={{ background: "#1E3A5F" }}
           >
-            {demande.enCours ? "Envoi…" : "Demander la certification"}
+            {demande.enCours ? "Envoi…" : "Régler et demander la certification"}
           </button>
 
           {(!nbDocuments || !listing.images.length) && (
@@ -718,6 +732,24 @@ function BlocCertification({
             </p>
           )}
         </>
+      )}
+
+      {paiementOuvert && (
+        <ModalePaiement
+          type="certification"
+          titre="Certification de l'annonce"
+          description="Un vérificateur Tcheyna contrôle vos pièces de propriété. Une fois accordé, le badge « Annonce Certifiée » s'affiche sur votre bien et le fait remonter dans les résultats."
+          montant={PRIX_CERTIFICATION}
+          devise={listing.devise}
+          listingId={listing.id}
+          onFerme={() => setPaiementOuvert(false)}
+          onPaye={async () => {
+            // Passerelle hors ligne : le dossier part quand même à l'examen.
+            const ok = await demande.executer(listing.id);
+            setPaiementOuvert(false);
+            if (ok) await onChangement("Demande de certification envoyée");
+          }}
+        />
       )}
     </div>
   );

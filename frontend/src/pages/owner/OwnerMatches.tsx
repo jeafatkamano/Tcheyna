@@ -9,13 +9,15 @@ import {
   Star,
   X,
 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { listingsAPI, matchesAPI, type Match, type MatchStatus } from "../../api";
+import { listingsAPI, matchesAPI, paiementsAPI, type Match, type MatchStatus } from "../../api";
 import { Avatar } from "../../components/Avatar";
 import { BadgeVerification, ScoreCircle, ScoreMatch } from "../../components/BadgeVerification";
 import { Erreur, ListeVide, MessageErreur, SqueletteCartes } from "../../components/Etats";
+import { BoutonPaiement, ModalePaiement } from "../../components/ModalePaiement";
 import { useAction, useApi } from "../../hooks/useApi";
 import { formatDateHeure, formatMontantCourt, formatRelatif } from "../../lib/format";
 import { ModaleAvis } from "../tenant/TenantMatches";
@@ -42,10 +44,18 @@ export function OwnerMatches() {
   const [filtre, setFiltre] = useState<MatchStatus | undefined>(undefined);
   const [visiteOuverte, setVisiteOuverte] = useState<string | null>(null);
   const [avisOuvert, setAvisOuvert] = useState<{ matchId: string; cible: string } | null>(null);
+  const [commissionOuverte, setCommissionOuverte] = useState<Match | null>(null);
 
   const demandes = useApi(() => matchesAPI.mesDemandes({ statut: filtre }), [filtre]);
+  const paiements = useApi(() => paiementsAPI.mesPaiements(), []);
   const reponse = useAction(matchesAPI.repondre);
   const conclusion = useAction(matchesAPI.conclure);
+
+  function commissionReglee(matchId: string) {
+    return (paiements.data?.paiements ?? []).some(
+      (p) => p.match_id === matchId && p.type_paiement === "commission" && p.statut !== "failed",
+    );
+  }
 
   async function repondre(match: Match, statut: "accepted" | "rejected") {
     const ok = await reponse.executer(match.id, statut);
@@ -310,6 +320,23 @@ export function OwnerMatches() {
                               6 % du premier loyer, sur une location conclue via la plateforme.
                             </p>
                           </div>
+
+                          {commissionReglee(match.id) ? (
+                            <div
+                              className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold"
+                              style={{ background: "#ECFDF5", color: "#047857" }}
+                            >
+                              <CheckCircle2 size={14} />
+                              Commission réglée
+                            </div>
+                          ) : match.commission > 0 ? (
+                            <BoutonPaiement
+                              label="Régler la commission"
+                              montant={match.commission}
+                              devise={match.listing?.devise}
+                              onClick={() => setCommissionOuverte(match)}
+                            />
+                          ) : null}
                           <button
                             onClick={() =>
                               setAvisOuvert({
@@ -332,6 +359,19 @@ export function OwnerMatches() {
             )}
           </div>
         </>
+      )}
+
+      {commissionOuverte && (
+        <ModalePaiement
+          type="commission"
+          titre="Commission de mise en relation"
+          description="6 % du premier loyer, dus une fois la location effectivement conclue par Tcheyna. C'est la seule commission prélevée : aucun frais n'est facturé tant qu'aucun locataire n'est trouvé."
+          montant={commissionOuverte.commission}
+          devise={commissionOuverte.listing?.devise}
+          matchId={commissionOuverte.id}
+          onFerme={() => setCommissionOuverte(null)}
+          onPaye={() => void paiements.recharger()}
+        />
       )}
 
       {visiteOuverte && (

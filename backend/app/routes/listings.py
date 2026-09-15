@@ -7,11 +7,11 @@ certifiée remonte dans les résultats et affiche un badge visible.
 """
 from datetime import date, datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 
 from app import db
-from app.models import Favorite, Listing, User
+from app.models import Favorite, Listing, Payment, User
 from app.routes import current_user_required, role_required
 from app.services import stockage
 from app.services.matching import score_compatibilite, trier_par_compatibilite
@@ -373,6 +373,21 @@ def demander_certification(current_user, listing_id):
         }), 400
     if not listing.images_urls:
         return jsonify({"error": "Ajoutez au moins une photo du bien"}), 400
+
+    # La certification est un service payant du modèle économique. Tant que la
+    # passerelle Mobile Money n'est pas configurée, aucun propriétaire ne peut
+    # payer : on laisse alors passer la demande plutôt que de bloquer le
+    # parcours, et la contrainte s'applique d'elle-même dès l'activation.
+    if current_app.config.get("CINETPAY_API_KEY"):
+        regle = Payment.query.filter_by(
+            listing_id=listing.id, type_paiement="certification", statut="success"
+        ).first()
+        if not regle:
+            return jsonify({
+                "error": "La certification est un service payant. Réglez les frais "
+                         "de certification pour soumettre votre dossier.",
+                "paiement_requis": "certification",
+            }), 402
 
     listing.certification_status = "pending"
     listing.certification_requested_at = datetime.utcnow()

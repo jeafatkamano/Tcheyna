@@ -1,11 +1,19 @@
-import { Calendar, MapPin, MessageSquare, Star, Trash2, X } from "lucide-react";
+import { Calendar, CheckCircle2, MapPin, MessageSquare, Star, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { avisAPI, matchesAPI, type Match, type MatchStatus } from "../../api";
+import {
+  avisAPI,
+  matchesAPI,
+  paiementsAPI,
+  type Match,
+  type MatchStatus,
+  type TypePaiement,
+} from "../../api";
 import { Erreur, ListeVide, MessageErreur, SqueletteCartes } from "../../components/Etats";
+import { BoutonPaiement, ModalePaiement } from "../../components/ModalePaiement";
 import { useAction, useApi } from "../../hooks/useApi";
-import { formatDateHeure, formatMontantCourt, formatRelatif } from "../../lib/format";
+import { formatDateHeure, formatMontant, formatMontantCourt, formatRelatif } from "../../lib/format";
 
 const STATUTS: Record<MatchStatus, { label: string; couleur: string; fond: string }> = {
   pending: { label: "En attente", couleur: "#D97706", fond: "#FEF3C7" },
@@ -25,10 +33,19 @@ const FILTRES = [
 export function TenantMatches() {
   const [filtre, setFiltre] = useState<MatchStatus | undefined>(undefined);
   const [avisOuvert, setAvisOuvert] = useState<string | null>(null);
+  const [paiementOuvert, setPaiementOuvert] = useState<{ match: Match; type: TypePaiement } | null>(null);
 
   const candidatures = useApi(() => matchesAPI.mesCandidatures(filtre), [filtre]);
   const avisADonner = useApi(() => avisAPI.aDonner(), []);
+  const paiements = useApi(() => paiementsAPI.mesPaiements(), []);
   const retrait = useAction(matchesAPI.retirer);
+
+  /** Un règlement déjà passé ne doit pas être proposé une seconde fois. */
+  function dejaRegle(matchId: string, type: TypePaiement) {
+    return (paiements.data?.paiements ?? []).some(
+      (p) => p.match_id === matchId && p.type_paiement === type && p.statut !== "failed",
+    );
+  }
 
   async function retirer(match: Match) {
     if (!window.confirm("Retirer définitivement cette candidature ?")) return;
@@ -211,6 +228,14 @@ export function TenantMatches() {
                       </button>
                     ) : null}
                   </div>
+
+                  {(match.status === "accepted" || match.status === "completed") && (
+                    <ReglementsEntree
+                      match={match}
+                      dejaRegle={dejaRegle}
+                      onPayer={(type) => setPaiementOuvert({ match, type })}
+                    />
+                  )}
                 </div>
               </div>
             );
@@ -219,6 +244,23 @@ export function TenantMatches() {
 
         <MessageErreur message={retrait.erreur} />
       </div>
+
+      {paiementOuvert && (
+        <ModalePaiement
+          type={paiementOuvert.type}
+          titre={paiementOuvert.type === "caution" ? "Dépôt de garantie" : "Premier loyer"}
+          description={
+            paiementOuvert.type === "caution"
+              ? "La caution est conservée par le propriétaire et vous est restituée en fin de bail. Le règlement via Tcheyna laisse une trace opposable aux deux parties."
+              : "Le premier mois de loyer, charges comprises. Un reçu numérique est émis pour vous et pour le propriétaire."
+          }
+          montant={montantDu(paiementOuvert.match, paiementOuvert.type)}
+          devise={paiementOuvert.match.listing?.devise}
+          matchId={paiementOuvert.match.id}
+          onFerme={() => setPaiementOuvert(null)}
+          onPaye={() => void paiements.recharger()}
+        />
+      )}
 
       {avisOuvert && (
         <ModaleAvis
@@ -231,6 +273,79 @@ export function TenantMatches() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** Montant affiché avant redirection ; le serveur reste seul juge du montant réel. */
+function montantDu(match: Match, type: TypePaiement): number {
+  const listing = match.listing;
+  if (!listing) return 0;
+  if (type === "caution") return listing.caution ?? listing.prix;
+  return (listing.prix ?? 0) + (listing.charges ?? 0);
+}
+
+/**
+ * Les deux règlements qui ouvrent l'entrée dans les lieux. Ils n'apparaissent
+ * qu'une fois la candidature acceptée : payer avant l'accord n'aurait pas de
+ * sens, et le serveur le refuserait.
+ */
+function ReglementsEntree({
+  match,
+  dejaRegle,
+  onPayer,
+}: {
+  match: Match;
+  dejaRegle: (matchId: string, type: TypePaiement) => boolean;
+  onPayer: (type: TypePaiement) => void;
+}) {
+  const listing = match.listing;
+  if (!listing) return null;
+
+  const etapes: { type: TypePaiement; label: string; montant: number }[] = [
+    { type: "caution", label: "Payer la caution", montant: listing.caution ?? listing.prix },
+    {
+      type: "premier_loyer",
+      label: "Payer le premier loyer",
+      montant: (listing.prix ?? 0) + (listing.charges ?? 0),
+    },
+  ];
+
+  const restants = etapes.filter((e) => !dejaRegle(match.id, e.type));
+  const regles = etapes.filter((e) => dejaRegle(match.id, e.type));
+
+  return (
+    <div className="pt-3 mt-1 border-t border-gray-100 space-y-2">
+      <div className="flex items-baseline justify-between">
+        <p className="text-xs font-semibold" style={{ color: "#64748B" }}>
+          Coût d'entrée
+        </p>
+        <p className="text-xs font-bold" style={{ color: "#1E3A5F" }}>
+          {formatMontant(listing.cout_entree, listing.devise)}
+        </p>
+      </div>
+
+      {regles.map((e) => (
+        <div
+          key={e.type}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold"
+          style={{ background: "#ECFDF5", color: "#047857" }}
+        >
+          <CheckCircle2 size={14} />
+          {e.label.replace("Payer ", "")} — réglé via Tcheyna
+        </div>
+      ))}
+
+      {restants.map((e, i) => (
+        <BoutonPaiement
+          key={e.type}
+          label={e.label}
+          montant={e.montant}
+          devise={listing.devise}
+          variante={i === 0 ? "principal" : "secondaire"}
+          onClick={() => onPayer(e.type)}
+        />
+      ))}
     </div>
   );
 }
