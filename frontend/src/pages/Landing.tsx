@@ -300,6 +300,22 @@ export function Landing() {
         <p className="text-white/30 text-xs mt-1">
           © {new Date().getFullYear()} Tcheyna — La location immobilière, en toute confiance
         </p>
+
+        <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 justify-center">
+          {[
+            { to: "/legal/cgu", label: "Conditions générales" },
+            { to: "/legal/confidentialite", label: "Confidentialité" },
+            { to: "/legal/mentions", label: "Mentions légales" },
+          ].map((lien) => (
+            <Link
+              key={lien.to}
+              to={lien.to}
+              className="text-white/45 text-xs underline underline-offset-4 hover:text-white/70"
+            >
+              {lien.label}
+            </Link>
+          ))}
+        </div>
       </footer>
     </div>
   );

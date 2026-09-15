@@ -27,6 +27,7 @@ export function RegisterPage({ roleImpose, onInscrit }: Props = {}) {
     ["tenant", "landlord", "agency"].includes(roleInitial) ? roleInitial : "tenant",
   );
   const [afficherMdp, setAfficherMdp] = useState(false);
+  const [conditionsAcceptees, setConditionsAcceptees] = useState(false);
   const [form, setForm] = useState({
     full_name: "",
     email: "",
@@ -257,11 +258,44 @@ export function RegisterPage({ roleImpose, onInscrit }: Props = {}) {
               </div>
             </div>
 
+            {/* Consentement explicite : la plateforme collecte des pièces
+                d'identité, on ne peut pas le faire par acceptation tacite. */}
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={conditionsAcceptees}
+                onChange={(e) => setConditionsAcceptees(e.target.checked)}
+                className="mt-0.5 w-5 h-5 rounded flex-shrink-0 accent-orange-500"
+              />
+              <span className="text-white/70" style={{ fontSize: "13px", lineHeight: 1.5 }}>
+                J'accepte les{" "}
+                <Link
+                  to="/legal/cgu"
+                  target="_blank"
+                  className="font-semibold underline underline-offset-2"
+                  style={{ color: "#F97316" }}
+                >
+                  conditions générales
+                </Link>{" "}
+                et la{" "}
+                <Link
+                  to="/legal/confidentialite"
+                  target="_blank"
+                  className="font-semibold underline underline-offset-2"
+                  style={{ color: "#F97316" }}
+                >
+                  politique de confidentialité
+                </Link>
+                , notamment le traitement des pièces que je téléverserai pour vérifier mon
+                dossier.
+              </span>
+            </label>
+
             <MessageErreur message={inscription.erreur} />
 
             <button
               type="submit"
-              disabled={inscription.enCours}
+              disabled={inscription.enCours || !conditionsAcceptees}
               className="w-full py-4 rounded-2xl font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-60"
               style={{ background: "#F97316", fontSize: "16px" }}
             >

@@ -15,6 +15,9 @@ import { useAuth } from "./context/AuthContext";
 import { AdminDashboard } from "./pages/admin/AdminDashboard";
 import { AdminUsers } from "./pages/admin/AdminUsers";
 import { Landing } from "./pages/Landing";
+import { CGU } from "./pages/legal/CGU";
+import { Confidentialite } from "./pages/legal/Confidentialite";
+import { MentionsLegales } from "./pages/legal/MentionsLegales";
 import { ListingDetail } from "./pages/ListingDetail";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFound } from "./pages/NotFound";
@@ -109,6 +112,11 @@ export const router = createBrowserRouter([
 
   // Fiche annonce : consultable sans compte, avec CTA d'inscription.
   { path: "/listing/:id", Component: ListingDetail },
+
+  // Pages légales : lisibles sans compte, puisqu'il faut les accepter pour en créer un.
+  { path: "/legal/cgu", Component: CGU },
+  { path: "/legal/confidentialite", Component: Confidentialite },
+  { path: "/legal/mentions", Component: MentionsLegales },
 
   // ─── Espace locataire ──────────────────────────────────────
   {

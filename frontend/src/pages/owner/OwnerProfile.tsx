@@ -5,6 +5,7 @@ import { useNavigate } from "react-router";
 import { avisAPI, usersAPI } from "../../api";
 import { BadgeVerification, VerificationSteps } from "../../components/BadgeVerification";
 import { ChangementMotDePasse } from "../../components/ChangementMotDePasse";
+import { LiensLegaux } from "../../components/LiensLegaux";
 import { TeleversementAvatar } from "../../components/TeleversementAvatar";
 import { MessageErreur, MessageSucces } from "../../components/Etats";
 import { PhoneVerification } from "../../components/PhoneVerification";
@@ -291,6 +292,8 @@ export function OwnerProfile() {
             <LogOut size={17} />
             Se déconnecter
           </button>
+
+          <LiensLegaux />
         </div>
       </div>
     </div>
