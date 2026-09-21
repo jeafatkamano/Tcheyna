@@ -107,8 +107,12 @@ def get_listings():
         "recent":    Listing.created_at.desc(),
     }
     # Le badge « Certifié » se paie d'une visibilité : il prime sur le tri choisi.
+    # `is_premium` n'est jamais remis à faux : seule la date dit si la mise en
+    # avant payée court encore.
+    premium_en_cours = db.and_(Listing.is_premium.is_(True),
+                               Listing.premium_until > datetime.utcnow())
     query = query.order_by(
-        Listing.is_premium.desc(),
+        db.case((premium_en_cours, 1), else_=0).desc(),
         db.case((Listing.certification_status == "certified", 1), else_=0).desc(),
         ordres.get(tri, ordres["recent"]),
     )
