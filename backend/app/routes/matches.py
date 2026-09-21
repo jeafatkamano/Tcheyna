@@ -66,6 +66,9 @@ def create_match(current_user):
         score_compatibilite=score,
     )
     db.session.add(match)
+    # L'identifiant n'est attribué qu'à l'écriture : sans flush, le lien de la
+    # notification pointerait vers une candidature « None ».
+    db.session.flush()
 
     notify.nouvelle_candidature(
         listing.landlord_id, current_user.full_name, listing.title_fr, match.id

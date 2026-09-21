@@ -53,12 +53,13 @@ def candidature_traitee(tenant_id, acceptee, listing_title, match_id):
     )
 
 
-def nouveau_message(destinataire_id, expediteur_name, extrait, conversation_id):
+def nouveau_message(destinataire_id, expediteur_name, extrait, match_id):
+    # Le fil s'ouvre par la candidature (/messages/:matchId), pas par la conversation.
     return notifier(
         destinataire_id, "nouveau_message",
         f"Message de {expediteur_name}",
         extrait[:140],
-        f"/messages/{conversation_id}",
+        f"/messages/{match_id}",
     )
 
 
@@ -75,7 +76,7 @@ def certification_traitee(landlord_id, certifiee, listing_title, listing_id, mot
         landlord_id, "annonce_refusee",
         "Certification refusée",
         motif or f"La certification de « {listing_title} » n'a pas été accordée.",
-        f"/owner/listing?id={listing_id}",
+        f"/owner/listings/{listing_id}",
     )
 
 

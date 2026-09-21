@@ -112,7 +112,7 @@ def envoyer_message(current_user, conversation_id):
     destinataire = conversation.autre_participant(current_user.id)
     if destinataire:
         notify.nouveau_message(destinataire.id, current_user.full_name,
-                               contenu, conversation.id)
+                               contenu, conversation.match_id)
 
     db.session.commit()
     return jsonify({"message": "Message envoyé", "data": message.to_dict()}), 201
