@@ -110,6 +110,9 @@ class ProductionConfig(Config):
 class TestingConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+    # Une base SQLite en mémoire n'a qu'une connexion, partagée : les options
+    # de pool pensées pour PostgreSQL y sont refusées dès le démarrage.
+    SQLALCHEMY_ENGINE_OPTIONS = {}
 
 
 CONFIGS = {
