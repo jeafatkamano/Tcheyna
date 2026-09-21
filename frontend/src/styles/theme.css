@@ -38,6 +38,33 @@
   --ombre-carte-forte: 0 2px 16px rgba(30, 58, 95, 0.08);
 }
 
+/*
+ * Animations d'entrée — exposées en utilitaires Tailwind (`animate-apparition`,
+ * `animate-halo`). Elles ne touchent qu'à `transform` et `opacity`, que le GPU
+ * compose sans recalcul de mise en page ni repeint, et durent moins de 600 ms.
+ * Les composants les posent avec `motion-safe:` : elles n'existent pas pour qui
+ * a demandé au système de réduire les animations.
+ */
+@theme {
+  --animate-apparition: apparition 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-halo: halo 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  /* Seul l'état de départ est décrit : l'arrivée est le style normal de l'élément. */
+  @keyframes apparition {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 14px, 0);
+    }
+  }
+
+  @keyframes halo {
+    from {
+      opacity: 0;
+      transform: translate3d(0, -6%, 0) scale(0.9);
+    }
+  }
+}
+
 @layer base {
   html {
     /* Empêche iOS d'agrandir le texte en mode paysage */

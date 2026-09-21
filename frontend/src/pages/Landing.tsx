@@ -1,15 +1,7 @@
-import {
-  ArrowRight,
-  CheckCircle,
-  Home,
-  ShieldCheck,
-  Smartphone,
-  Star,
-  Users,
-  Zap,
-} from "lucide-react";
+import { ArrowRight, CheckCircle, ShieldCheck, Smartphone, Star, Zap } from "lucide-react";
 import { Link } from "react-router";
 
+import { Hero } from "../components/Hero";
 import { useAuth } from "../context/AuthContext";
 
 const ETAPES = [
@@ -58,132 +50,23 @@ export function Landing() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#0F2040" }}>
-      {/* ─── Hero ──────────────────────────────────────────── */}
+      <Hero />
+
+      {/* Repères du marché — chiffres du recensement RGPH-4 2025 */}
       <div
-        className="relative min-h-screen flex flex-col"
-        style={{ background: "linear-gradient(160deg, #0F2040 0%, #1E3A5F 60%, #0F2040 100%)" }}
+        className="mx-4 mb-8 md:mx-auto md:w-full md:max-w-xl rounded-2xl px-6 py-5 grid grid-cols-3 gap-4"
+        style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
       >
-        <div
-          className="absolute top-[-80px] right-[-80px] w-64 h-64 rounded-full opacity-10 pointer-events-none"
-          style={{ background: "#F97316" }}
-        />
-        <div
-          className="absolute bottom-[20%] left-[-60px] w-48 h-48 rounded-full opacity-10 pointer-events-none"
-          style={{ background: "#F97316" }}
-        />
-
-        <header className="relative z-10 flex items-center justify-between px-6 pt-10 pb-4">
-          <span
-            className="text-white font-bold tracking-tight"
-            style={{ fontSize: "26px", letterSpacing: "-0.5px" }}
-          >
-            tcheyna
-          </span>
-          {user ? (
-            <Link
-              to={accueilDuRole()}
-              className="px-4 py-2 rounded-xl text-sm font-semibold text-white"
-              style={{ background: "rgba(249,115,22,0.2)", color: "#F97316" }}
-            >
-              Mon espace
-            </Link>
-          ) : (
-            <Link
-              to="/login"
-              className="px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
-              style={{
-                background: "rgba(255,255,255,0.10)",
-                color: "white",
-                border: "1.5px solid rgba(255,255,255,0.25)",
-              }}
-            >
-              Se connecter
-            </Link>
-          )}
-        </header>
-
-        <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 text-center py-16">
-          <div
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-8"
-            style={{ background: "rgba(249,115,22,0.15)", border: "1px solid rgba(249,115,22,0.3)" }}
-          >
-            <Zap size={14} style={{ color: "#F97316" }} />
-            <span className="text-sm font-semibold" style={{ color: "#F97316" }}>
-              La location en confiance à Conakry
-            </span>
+        {[
+          { valeur: "3,4 M", label: "Habitants à Conakry" },
+          { valeur: "89 %", label: "Pénétration mobile" },
+          { valeur: "2 faces", label: "Vérifiées, pas une" },
+        ].map((stat) => (
+          <div key={stat.label} className="flex flex-col items-center text-center">
+            <span className="text-white font-bold text-xl">{stat.valeur}</span>
+            <span className="text-white/50 text-xs mt-0.5 leading-tight">{stat.label}</span>
           </div>
-
-          <h1
-            className="text-white mb-6"
-            style={{ fontSize: "clamp(32px, 8vw, 52px)", fontWeight: 800, lineHeight: 1.15 }}
-          >
-            Pas une meilleure <span style={{ color: "#F97316" }}>annonce</span>.
-            <br />
-            Une meilleure <span style={{ color: "#F97316" }}>mise en relation</span>.
-          </h1>
-
-          <p className="text-white/60 mb-12 max-w-sm" style={{ fontSize: "17px", lineHeight: 1.7 }}>
-            Tcheyna vérifie les deux côtés de la location : les locataires et les annonces. Fini les
-            faux propriétaires et les dossiers invérifiables.
-          </p>
-
-          <div className="flex flex-col gap-4 w-full max-w-xs">
-            <Link
-              to="/onboarding/tenant"
-              className="flex items-center justify-center gap-3 py-4 px-6 rounded-2xl font-semibold text-white transition-transform active:scale-95"
-              style={{ background: "#F97316", fontSize: "16px" }}
-            >
-              <Users size={20} />
-              Je cherche un logement
-              <ArrowRight size={18} />
-            </Link>
-            <Link
-              to="/onboarding/owner"
-              className="flex items-center justify-center gap-3 py-4 px-6 rounded-2xl font-semibold transition-transform active:scale-95"
-              style={{
-                background: "rgba(255,255,255,0.08)",
-                color: "white",
-                border: "1.5px solid rgba(255,255,255,0.2)",
-                fontSize: "16px",
-              }}
-            >
-              <Home size={20} />
-              Je mets en location
-              <ArrowRight size={18} />
-            </Link>
-          </div>
-
-          {/* Un utilisateur qui revient ne doit pas passer par l'inscription */}
-          {!user && (
-            <p className="text-white/50 mt-7" style={{ fontSize: "15px" }}>
-              Vous avez déjà un compte ?{" "}
-              <Link
-                to="/login"
-                className="font-semibold underline underline-offset-4"
-                style={{ color: "#F97316" }}
-              >
-                Connectez-vous
-              </Link>
-            </p>
-          )}
-        </div>
-
-        {/* Repères du marché — chiffres du recensement RGPH-4 2025 */}
-        <div
-          className="relative z-10 mx-4 mb-8 rounded-2xl px-6 py-5 grid grid-cols-3 gap-4"
-          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
-        >
-          {[
-            { valeur: "3,4 M", label: "Habitants à Conakry" },
-            { valeur: "89 %", label: "Pénétration mobile" },
-            { valeur: "2 faces", label: "Vérifiées, pas une" },
-          ].map((stat) => (
-            <div key={stat.label} className="flex flex-col items-center text-center">
-              <span className="text-white font-bold text-xl">{stat.valeur}</span>
-              <span className="text-white/50 text-xs mt-0.5 leading-tight">{stat.label}</span>
-            </div>
-          ))}
-        </div>
+        ))}
       </div>
 
       {/* ─── Comment ça marche ─────────────────────────────── */}
