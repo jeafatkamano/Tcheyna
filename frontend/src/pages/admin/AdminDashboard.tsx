@@ -169,16 +169,16 @@ export function AdminDashboard() {
           ) : !cni.data?.length ? (
             <ListeVide titre="Aucune pièce d'identité en attente" description="La file est vide." />
           ) : (
-            cni.data.map(({ user, passport }) => (
+            cni.data.map(({ user, passport, pieces }) => (
               <FicheVerification
                 key={user.id}
                 titre={user.full_name}
                 sousTitre={`${user.email} · ${user.phone ?? "sans téléphone"}`}
                 niveau={user.trust_level}
                 documents={[
-                  { label: "CNI recto", present: passport?.documents?.cni_recto },
-                  { label: "CNI verso", present: passport?.documents?.cni_verso },
-                  { label: "Passeport", present: passport?.documents?.passport },
+                  { label: "CNI recto", present: passport?.documents?.cni_recto, url: pieces.cni_recto },
+                  { label: "CNI verso", present: passport?.documents?.cni_verso, url: pieces.cni_verso },
+                  { label: "Passeport", present: passport?.documents?.passport, url: pieces.passport },
                 ]}
                 lienProfil={`/profil/${user.id}`}
                 enCours={validationCNI.enCours}
@@ -202,7 +202,7 @@ export function AdminDashboard() {
           ) : !revenus.data?.length ? (
             <ListeVide titre="Aucun justificatif de revenus en attente" description="La file est vide." />
           ) : (
-            revenus.data.map(({ passport, user }) => (
+            revenus.data.map(({ passport, user, pieces }) => (
               <FicheVerification
                 key={passport.id}
                 titre={user?.full_name ?? "Locataire"}
@@ -215,7 +215,9 @@ export function AdminDashboard() {
                     ? `Revenu déclaré : ${formatMontant(passport.revenu_mensuel, passport.devise ?? "GNF")}`
                     : "Revenu non déclaré"
                 }
-                documents={[{ label: "Justificatif de revenus", present: passport.documents?.income }]}
+                documents={[
+                  { label: "Justificatif de revenus", present: passport.documents?.income, url: pieces.income },
+                ]}
                 lienProfil={user ? `/profil/${user.id}` : undefined}
                 enCours={validationRevenus.enCours}
                 onValider={async (approuve, motif) => {
@@ -270,6 +272,48 @@ export function AdminDashboard() {
   );
 }
 
+/* ─── Pièce justificative ──────────────────────────────────── */
+
+/**
+ * Une pièce déposée s'ouvre dans un nouvel onglet : on ne valide pas un
+ * document qu'on n'a pas vu. Le lien est signé pour quelques minutes ; s'il a
+ * expiré, recharger la page en produit un nouveau.
+ */
+function PuceDocument({ label, present, url }: { label: string; present?: boolean; url?: string | null }) {
+  const lien = present ? urlFichier(url) : undefined;
+  const classes = "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold";
+
+  if (lien) {
+    return (
+      <a
+        href={lien}
+        target="_blank"
+        rel="noreferrer"
+        title="Lien temporaire : rechargez la page s'il a expiré"
+        className={classes}
+        style={{ background: "#EFF6FF", color: "#1D4ED8" }}
+      >
+        <FileText size={12} />
+        {label}
+      </a>
+    );
+  }
+
+  if (present) {
+    return (
+      <span className={classes} style={{ background: "#FEF3C7", color: "#B45309" }}>
+        {label} · lien indisponible
+      </span>
+    );
+  }
+
+  return (
+    <span className={classes} style={{ background: "#F1F5F9", color: "#94A3B8" }}>
+      — {label}
+    </span>
+  );
+}
+
 /* ─── Fiche de vérification d'un utilisateur ───────────────── */
 
 interface FicheProps {
@@ -277,7 +321,7 @@ interface FicheProps {
   sousTitre: string;
   niveau: number;
   complement?: string;
-  documents: { label: string; present?: boolean }[];
+  documents: { label: string; present?: boolean; url?: string | null }[];
   lienProfil?: string;
   enCours: boolean;
   onValider: (approuve: boolean, motif?: string) => Promise<void>;
@@ -320,17 +364,7 @@ function FicheVerification({
 
       <div className="flex flex-wrap gap-2 mb-3">
         {documents.map((doc) => (
-          <span
-            key={doc.label}
-            className="px-2.5 py-1 rounded-full text-xs font-semibold"
-            style={{
-              background: doc.present ? "#D1FAE5" : "#F1F5F9",
-              color: doc.present ? "#059669" : "#94A3B8",
-            }}
-          >
-            {doc.present ? "✓ " : "— "}
-            {doc.label}
-          </span>
+          <PuceDocument key={doc.label} label={doc.label} present={doc.present} url={doc.url} />
         ))}
       </div>
 
@@ -409,13 +443,12 @@ function FicheCertification({
   enCours,
   onValider,
 }: {
-  listing: Listing & { propriete_doc_url?: string; demande_le?: string };
+  listing: Listing & { documents: (string | null)[]; demande_le?: string };
   enCours: boolean;
   onValider: (approuve: boolean, motif?: string) => Promise<void>;
 }) {
   const [refusOuvert, setRefusOuvert] = useState(false);
   const [motif, setMotif] = useState("");
-  const doc = urlFichier(listing.propriete_doc_url);
 
   return (
     <div
@@ -439,27 +472,23 @@ function FicheCertification({
           {formatRelatif(listing.demande_le)}
         </p>
 
-        <div className="flex gap-2 mb-3">
-          <Link
-            to={`/listing/${listing.id}`}
-            className="flex-1 text-center py-2 rounded-xl text-xs font-semibold"
-            style={{ background: "#F0F4FA", color: "#1E3A5F" }}
-          >
-            Voir l'annonce
-          </Link>
-          {doc && (
-            <a
-              href={doc}
-              target="_blank"
-              rel="noreferrer"
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold"
-              style={{ background: "#EFF6FF", color: "#1D4ED8" }}
-            >
-              <FileText size={13} />
-              Document de propriété
-            </a>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {listing.documents.length ? (
+            listing.documents.map((url, i) => (
+              <PuceDocument key={i} label={`Document ${i + 1}`} present url={url} />
+            ))
+          ) : (
+            <PuceDocument label="Aucun document de propriété" />
           )}
         </div>
+
+        <Link
+          to={`/listing/${listing.id}`}
+          className="block text-center py-2 rounded-xl text-xs font-semibold mb-3"
+          style={{ background: "#F0F4FA", color: "#1E3A5F" }}
+        >
+          Voir l'annonce
+        </Link>
 
         {refusOuvert ? (
           <div className="space-y-2">

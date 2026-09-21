@@ -451,11 +451,19 @@ export interface StatsAdmin {
   avis: { total: number };
 }
 
+/**
+ * Liens temporaires vers les pièces d'un passeport, valables quelques
+ * minutes. `null` : la pièce existe mais le lien n'a pas pu être signé.
+ */
+export type PiecesPasseport = Partial<Record<TypeDocument, string | null>>;
+
 export const adminAPI = {
   stats: () => api.get<StatsAdmin>("/admin/stats"),
 
   cniEnAttente: () =>
-    api.get<{ user: User; passport: TenantPassport | null }[]>("/admin/cni-pending"),
+    api.get<{ user: User; passport: TenantPassport | null; pieces: PiecesPasseport }[]>(
+      "/admin/cni-pending",
+    ),
 
   validerCNI: (userId: string, approuve: boolean, motif?: string) =>
     api.put<{ message: string; trust_level: number; badge: string }>(
@@ -464,7 +472,9 @@ export const adminAPI = {
     ),
 
   revenusEnAttente: () =>
-    api.get<{ passport: TenantPassport; user: User | null }[]>("/admin/revenus-pending"),
+    api.get<{ passport: TenantPassport; user: User | null; pieces: PiecesPasseport }[]>(
+      "/admin/revenus-pending",
+    ),
 
   validerRevenus: (userId: string, approuve: boolean, motif?: string) =>
     api.put<{ message: string; trust_level: number }>(`/admin/verify-revenus/${userId}`, {
@@ -473,7 +483,7 @@ export const adminAPI = {
     }),
 
   certificationsEnAttente: () =>
-    api.get<(Listing & { propriete_doc_url?: string; demande_le?: string })[]>(
+    api.get<(Listing & { documents: (string | null)[]; demande_le?: string })[]>(
       "/admin/certifications-pending",
     ),
 

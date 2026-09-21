@@ -32,6 +32,10 @@ def _liens_pieces(passport):
 
     Un vérificateur doit pouvoir ouvrir la CNI qu'il valide ; ces documents ne
     sont pour autant jamais accessibles publiquement.
+
+    Une signature impossible donne `None` : la référence interne
+    `supabase://…` ne s'ouvre dans aucun navigateur, l'interface signale
+    alors le lien comme indisponible.
     """
     if not passport:
         return {}
@@ -41,7 +45,7 @@ def _liens_pieces(passport):
         "passport": passport.passport_url,
         "income": passport.income_doc_url,
     }
-    return {cle: stockage.url_signee(url) or url
+    return {cle: stockage.url_signee(url)
             for cle, url in champs.items() if url}
 
 
@@ -267,7 +271,8 @@ def certifications_pending(current_user):
         {
             **a.to_dict(),
             # Liens temporaires : les pièces de propriété ne sont pas publiques.
-            "documents": [stockage.url_signee(u) or u for u in a.documents],
+            # `None` quand la signature échoue, comme pour les passeports.
+            "documents": [stockage.url_signee(u) for u in a.documents],
             "demande_le": (a.certification_requested_at.isoformat()
                            if a.certification_requested_at else None),
         }
