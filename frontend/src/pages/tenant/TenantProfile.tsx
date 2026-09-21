@@ -13,7 +13,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import type { LucideIcon } from "lucide-react";
 
-import { paiementsAPI, passportAPI, type TenantPassport, type TypeDocument } from "../../api";
+import { passportAPI, type TenantPassport, type TypeDocument } from "../../api";
 import { BadgeVerification, ScoreCircle, VerificationSteps } from "../../components/BadgeVerification";
 import { ChangementMotDePasse } from "../../components/ChangementMotDePasse";
 import { LiensLegaux } from "../../components/LiensLegaux";
@@ -24,7 +24,7 @@ import { PhoneVerification } from "../../components/PhoneVerification";
 import { useAuth } from "../../context/AuthContext";
 import { useAction, useApi } from "../../hooks/useApi";
 import { useGeo } from "../../hooks/useGeo";
-import { formatMontant } from "../../lib/format";
+import { formatDate, formatMontant } from "../../lib/format";
 
 /** Tarif de l'abonnement Passeport, aligné sur la grille du serveur. */
 const PRIX_ABONNEMENT = 150_000;
@@ -199,13 +199,10 @@ export function TenantProfile() {
  * déjà vérifié auprès des propriétaires. Le dire clairement évite de vendre
  * un niveau de confiance qui, lui, ne s'achète pas.
  */
-function AbonnementPasseport() {
+function AbonnementPasseport({ abonnement }: { abonnement?: TenantPassport["abonnement"] }) {
   const [ouvert, setOuvert] = useState(false);
-  const paiements = useApi(() => paiementsAPI.mesPaiements(), []);
-
-  const actif = (paiements.data?.paiements ?? []).some(
-    (p) => p.type_paiement === "abonnement_passeport" && p.statut === "success",
-  );
+  // Le serveur fait foi : un abonnement payé expire au bout d'un an.
+  const actif = Boolean(abonnement?.actif);
 
   return (
     <div
@@ -225,7 +222,7 @@ function AbonnementPasseport() {
 
       <p className="text-xs leading-relaxed mb-4" style={{ color: actif ? "#047857" : "#64748B" }}>
         {actif
-          ? "Votre dossier est mis en avant auprès des propriétaires pendant un an. Votre niveau de confiance, lui, reste acquis par la vérification de vos pièces."
+          ? `Votre dossier est mis en avant auprès des propriétaires jusqu'au ${formatDate(abonnement?.jusqu_au)}. Votre niveau de confiance, lui, reste acquis par la vérification de vos pièces.`
           : "Votre dossier vérifié est proposé en priorité aux propriétaires dont les biens correspondent à votre recherche, pendant un an. L'abonnement ne fait pas monter votre niveau de confiance : seules vos pièces vérifiées le font."}
       </p>
 
@@ -246,7 +243,6 @@ function AbonnementPasseport() {
           description="Un an de mise en avant de votre dossier auprès des propriétaires. Sans engagement de reconduction."
           montant={PRIX_ABONNEMENT}
           onFerme={() => setOuvert(false)}
-          onPaye={() => void paiements.recharger()}
         />
       )}
     </div>
@@ -325,7 +321,7 @@ function OngletDossier({
         )}
       </div>
 
-      <AbonnementPasseport />
+      <AbonnementPasseport abonnement={passeport.abonnement} />
 
       {/* Situation professionnelle */}
       <div

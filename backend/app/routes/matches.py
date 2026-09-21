@@ -10,7 +10,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 
 from app import db
-from app.models import Conversation, Listing, Match, User
+from app.models import Conversation, Listing, Match, User, abonnements_passeport
 from app.routes import current_user_required, role_required
 from app.services import notifications as notify
 from app.services.matching import score_compatibilite
@@ -173,6 +173,7 @@ def candidats_suggeres(current_user):
                           User.is_active.is_(True),
                           User.trust_level >= NIVEAU_MIN_CANDIDATURE)
                   .limit(200).all())
+    abonnes = abonnements_passeport([l.id for l in locataires])
 
     suggestions = []
     for locataire in locataires:
@@ -186,9 +187,14 @@ def candidats_suggeres(current_user):
             "passeport": locataire.passport.to_dict(public=True) if locataire.passport else None,
             "score_compatibilite": score,
             "details_compatibilite": details,
+            "abonne_passeport": locataire.id in abonnes,
         })
 
-    suggestions.sort(key=lambda s: s["score_compatibilite"], reverse=True)
+    # Parmi les dossiers déjà jugés compatibles, les abonnés Passeport passent
+    # devant : c'est la mise en avant qu'ils ont payée. L'interface l'indique
+    # au propriétaire, pour qu'il ne la confonde pas avec un meilleur score.
+    suggestions.sort(key=lambda s: (s["abonne_passeport"], s["score_compatibilite"]),
+                     reverse=True)
 
     return jsonify({"candidats": suggestions[:limite], "total": len(suggestions)}), 200
 

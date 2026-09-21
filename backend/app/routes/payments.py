@@ -21,6 +21,7 @@ from app.models import (
     Listing,
     Match,
     Payment,
+    abonnements_passeport,
 )
 from app.routes import current_user_required
 from app.services import notifications as notify
@@ -88,6 +89,12 @@ def _montant_attendu(type_paiement, user, match, listing):
         return TARIFS_GNF["mise_en_avant"], f"Mise en avant 30 jours — {listing.title_fr}", None
 
     if type_paiement == "abonnement_passeport":
+        if user.role != "tenant":
+            return None, None, "L'abonnement Passeport est réservé aux locataires"
+        # Payer une seconde fois pendant l'abonnement n'apporterait rien.
+        fin = abonnements_passeport([user.id]).get(user.id)
+        if fin:
+            return None, None, f"Votre abonnement Passeport court déjà jusqu'au {fin:%d/%m/%Y}"
         return TARIFS_GNF["abonnement_passeport"], "Abonnement Passeport Locataire (1 an)", None
 
     return None, None, f"Type de paiement inconnu : {type_paiement}"

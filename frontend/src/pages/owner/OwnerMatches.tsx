@@ -494,6 +494,15 @@ function OngletSuggestions() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <BadgeVerification level={candidat.tenant.trust_level} size="sm" />
                   <ScoreMatch score={candidat.score_compatibilite} />
+                  {/* Placement payé : le signaler évite de le prendre pour un meilleur dossier. */}
+                  {candidat.abonne_passeport && (
+                    <span
+                      className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      style={{ background: "#FFF7ED", color: "#C2410C" }}
+                    >
+                      Mis en avant
+                    </span>
+                  )}
                 </div>
               </div>
               {candidat.passeport && <ScoreCircle score={candidat.passeport.score} size={46} label="" />}

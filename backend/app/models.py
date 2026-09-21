@@ -10,7 +10,7 @@ Marché initial : Conakry (Guinée). Extension prévue : Sénégal, Côte d'Ivoi
 Ghana, Nigeria — d'où les champs `pays` / `devise` sur les entités monétaires.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app import db
 
@@ -740,3 +740,31 @@ class Payment(db.Model):
             "paid_at":       self.paid_at.isoformat() if self.paid_at else None,
             "created_at":    self.created_at.isoformat() if self.created_at else None,
         }
+
+
+# ─────────────────────────────────────────────────────────────
+# ABONNEMENT PASSEPORT — Un an de mise en avant du dossier
+# ─────────────────────────────────────────────────────────────
+
+DUREE_ABONNEMENT_PASSEPORT = timedelta(days=365)
+
+
+def abonnements_passeport(user_ids):
+    """Fin d'abonnement de chaque locataire dont l'abonnement court encore.
+
+    Retourne {user_id: datetime}. L'abonnement n'a pas de colonne propre : il
+    se lit dans les paiements réussis, qui restent la seule source de vérité.
+    Un nouvel abonnement est refusé tant que le précédent court, si bien que
+    le dernier paiement suffit à dater la fin.
+    """
+    if not user_ids:
+        return {}
+    depuis = datetime.utcnow() - DUREE_ABONNEMENT_PASSEPORT
+    lignes = (db.session.query(Payment.user_id, db.func.max(Payment.paid_at))
+              .filter(Payment.user_id.in_(user_ids),
+                      Payment.type_paiement == "abonnement_passeport",
+                      Payment.statut == "success",
+                      Payment.paid_at > depuis)
+              .group_by(Payment.user_id)
+              .all())
+    return {user_id: paye_le + DUREE_ABONNEMENT_PASSEPORT for user_id, paye_le in lignes}

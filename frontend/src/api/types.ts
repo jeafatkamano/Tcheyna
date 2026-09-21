@@ -162,6 +162,7 @@ export interface TenantPassport {
   niveau?: Niveau;
   prochain_niveau?: Niveau | null;
   etapes?: EtapeVerification[];
+  abonnement?: { actif: boolean; jusqu_au: string | null };
   tenant?: User;
 }
 
@@ -274,4 +275,6 @@ export interface CandidatSuggere {
   passeport?: TenantPassport | null;
   score_compatibilite: number;
   details_compatibilite: DetailCompatibilite[];
+  /** Abonnement Passeport en cours : le dossier est mis en avant. */
+  abonne_passeport: boolean;
 }

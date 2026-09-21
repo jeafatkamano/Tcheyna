@@ -9,7 +9,7 @@ from datetime import date
 from flask import Blueprint, jsonify, request
 
 from app import db
-from app.models import TRUST_LEVELS, TenantPassport
+from app.models import TRUST_LEVELS, TenantPassport, abonnements_passeport
 from app.routes import role_required
 from app.services import stockage
 
@@ -51,12 +51,17 @@ def get_passport(current_user):
     db.session.commit()
 
     niveau_actuel = current_user.trust_level or 0
+    fin_abonnement = abonnements_passeport([current_user.id]).get(current_user.id)
     return jsonify({
         **passport.to_dict(),
         "trust_level": niveau_actuel,
         "niveau": TRUST_LEVELS[niveau_actuel],
         "prochain_niveau": TRUST_LEVELS.get(niveau_actuel + 1),
         "etapes": _etapes_verification(current_user, passport),
+        "abonnement": {
+            "actif": fin_abonnement is not None,
+            "jusqu_au": fin_abonnement.isoformat() if fin_abonnement else None,
+        },
     }), 200
 
 
