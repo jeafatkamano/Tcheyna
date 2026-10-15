@@ -40,7 +40,7 @@ MOT_DE_PASSE_INUTILISABLE = "!compte-supprime"
 
 
 class PurgeNonConfiguree(RuntimeError):
-    """La durée de conservation (décision D5) n'est pas encore fixée."""
+    """La durée de conservation (décision D5) est absente ou invalide."""
 
 
 # ─── Journal des décisions ───────────────────────────────────

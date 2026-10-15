@@ -208,10 +208,15 @@ def test_depot_d_une_piece_date_le_depot(client, locataire, entetes, fichier_ima
 
 # ─── Purge (durée D5 non tranchée) ───────────────────────────
 
+def test_duree_de_conservation_par_defaut_douze_mois(app):
+    # Décision D5 : pièce sans décision supprimée 12 mois après son dépôt.
+    assert int(app.config["DUREE_CONSERVATION_PIECES_JOURS"]) == 365
+
+
 def test_purge_refusee_sans_duree_configuree(app, fabrique, supabase):
     _candidat(fabrique, cni_recto_url="supabase://documents/recto.png",
               identite_deposee_le=datetime.utcnow() - timedelta(days=3650))
-    assert app.config["DUREE_CONSERVATION_PIECES_JOURS"] is None
+    app.config["DUREE_CONSERVATION_PIECES_JOURS"] = None
 
     with pytest.raises(dp.PurgeNonConfiguree):
         dp.purger_pieces_sans_decision()
