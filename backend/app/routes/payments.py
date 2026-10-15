@@ -386,10 +386,17 @@ def _confirmer(paiement):
             paiement.listing.certification_status = "pending"
             paiement.listing.certification_requested_at = datetime.utcnow()
 
-    elif paiement.type_paiement == "mise_en_avant" and paiement.listing:
-        base = max(paiement.listing.premium_until or datetime.utcnow(), datetime.utcnow())
-        paiement.listing.is_premium = True
-        paiement.listing.premium_until = base + DUREE_MISE_EN_AVANT
+    elif paiement.type_paiement == "mise_en_avant" and paiement.listing_id:
+        # Deux mises en avant distinctes de la même annonce peuvent être
+        # confirmées en même temps : le verrou du paiement ne les sépare pas.
+        # On relit donc l'annonce sous verrou, sinon une prolongation se perd.
+        annonce = db.session.execute(
+            select(Listing).where(Listing.id == paiement.listing_id)
+            .with_for_update().execution_options(populate_existing=True)
+        ).scalar_one()
+        base = max(annonce.premium_until or datetime.utcnow(), datetime.utcnow())
+        annonce.is_premium = True
+        annonce.premium_until = base + DUREE_MISE_EN_AVANT
 
     notify.paiement_confirme(
         paiement.user_id, paiement.montant, paiement.devise,
