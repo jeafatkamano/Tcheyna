@@ -16,5 +16,9 @@ requests==2.32.3
 # Validation des corps de requête (app/schemas). pydantic épingle lui-même
 # pydantic-core.
 pydantic==2.13.5
+# Limitation de débit (lot 1.4). `limits` porte les stockages des compteurs :
+# épinglé comme alembic, une mise à jour pourrait changer leur comportement.
+flask-limiter==4.1.1
+limits==5.8.0
 africastalking==1.2.7
 gunicorn==23.0.0

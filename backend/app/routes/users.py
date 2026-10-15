@@ -61,6 +61,8 @@ def desactiver_compte(current_user):
     """Désactivation plutôt que suppression : les historiques d'avis et de
     paiements des autres utilisateurs doivent rester intacts."""
     current_user.is_active = False
+    # Les jetons de tous les appareils cessent de fonctionner immédiatement.
+    current_user.revoquer_jetons()
     for annonce in current_user.listings:
         annonce.is_visible = False
         annonce.status = "closed"

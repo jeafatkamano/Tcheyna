@@ -3,11 +3,9 @@ from app.schemas import BaseCorps, Texte
 
 
 class Decision(BaseCorps):
-    # `approuve` vaut encore True par défaut : l'exiger explicitement est la
-    # correction de R1, prévue au lot 1.4 avec le contrôle « pièce déposée ».
-    # Ce lot garantit seulement qu'il s'agit d'un vrai booléen : « "false" »
-    # ne vaut plus approbation, comme le faisait `bool("false")`.
-    approuve: bool = True
+    # Décision explicite (R1) : un corps vide approuvait. Un vrai booléen
+    # exigé : « "false" » valait approbation avec `bool("false")`.
+    approuve: bool
     motif: Texte(1000) | None = None
 
 

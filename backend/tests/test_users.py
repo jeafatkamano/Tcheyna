@@ -61,9 +61,12 @@ def test_avatar_refuse_un_format_non_image(client, locataire, entetes, fichier_i
 
 
 def test_desactiver_son_compte_retire_ses_annonces(client, bailleur, annonce, entetes):
-    reponse = client.delete("/api/users/me", headers=entetes(bailleur))
+    en_tetes = entetes(bailleur)
+    reponse = client.delete("/api/users/me", headers=en_tetes)
 
     assert reponse.status_code == 200
     assert annonce.is_visible is False and annonce.status == "closed"
-    # Le jeton encore valide ne donne plus accès à rien.
+    # Le jeton utilisé est révoqué (lot 1.4)…
+    assert client.get("/api/auth/me", headers=en_tetes).status_code == 401
+    # … et un jeton à la version courante bute sur le compte désactivé.
     assert client.get("/api/auth/me", headers=entetes(bailleur)).status_code == 403

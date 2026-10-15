@@ -1,29 +1,80 @@
 """
 app/__init__.py — Fabrique d'application Flask pour l'API Tcheyna.
 """
+import math
 import os
+import time
 
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, g, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import Config
 
 db = SQLAlchemy()
 jwt = JWTManager()
 migrate = Migrate()
+# Aucune limite par défaut : seules les routes décorées sont limitées. La clé
+# par défaut est l'IP du client, rendue fiable par ProxyFix (voir
+# create_app) ; le stockage vient de RATELIMIT_STORAGE_URI.
+limiter = Limiter(key_func=get_remote_address)
+
+
+def reponse_trop_de_requetes(message, reessayer_dans):
+    """429 au format d'erreur commun, avec le délai dans le corps : le front,
+    servi depuis une autre origine, ne peut pas lire `Retry-After` (en-tête
+    non exposé par CORS)."""
+    reessayer_dans = max(1, int(math.ceil(reessayer_dans)))
+    reponse = jsonify({"error": message, "details": [], "reessayer_dans": reessayer_dans})
+    reponse.status_code = 429
+    reponse.headers["Retry-After"] = str(reessayer_dans)
+    return reponse
+
+
+def _arrondi(valeur):
+    # Arrondi au plus proche, demi vers le haut (`round` arrondit au pair).
+    return int(valeur + 0.5)
+
+
+def formater_delai(secondes):
+    """« 40 secondes », « 15 minutes », « 3 heures ». Sous la minute, arrondi
+    au-dessus ; au-delà, au plus proche : un délai de 900 s affiché « 16
+    minutes » surprendrait, et `reessayer_dans` donne la valeur exacte."""
+    secondes = max(1, int(math.ceil(secondes)))
+    if secondes < 60:
+        return f"{secondes} seconde{'s' if secondes > 1 else ''}"
+    minutes = max(1, _arrondi(secondes / 60))
+    if minutes < 60:
+        return f"{minutes} minute{'s' if minutes > 1 else ''}"
+    heures = max(1, _arrondi(minutes / 60))
+    return f"{heures} heure{'s' if heures > 1 else ''}"
 
 
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # Derrière le répartiteur de Render, REMOTE_ADDR est l'IP du proxy :
+    # ProxyFix la remplace par l'entrée de X-Forwarded-For posée par le
+    # dernier proxy de confiance. Les entrées plus à gauche, écrites par le
+    # client, sont ignorées : elles sont falsifiables.
+    sauts = app.config.get("TRUSTED_PROXY_HOPS", 0)
+    if sauts > 0:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=sauts, x_proto=0, x_host=0,
+                                x_port=0, x_prefix=0)
+
     # ─── Extensions ─────────────────────────────────────────
     db.init_app(app)
     jwt.init_app(app)
     migrate.init_app(app, db)
+    # Chaque `init_app` repart d'un stockage neuf : les compteurs ne fuient
+    # pas d'une application (ou d'un test) à l'autre.
+    limiter.init_app(app)
     CORS(
         app,
         origins=app.config["CORS_ORIGINS"],
@@ -96,6 +147,19 @@ def create_app(config_class=Config):
         db.session.rollback()
         return reponse_422(exc.validation)
 
+    # Limite de flask-limiter dépassée (connexion, inscription). Sans ce
+    # gestionnaire, la réponse serait une page HTML en anglais.
+    @app.errorhandler(429)
+    def too_many_requests(_exc):
+        # `current_limit` désigne la limite franchie ; `reset_at` est l'instant
+        # où sa fenêtre libère une place.
+        limite = limiter.current_limit
+        reessayer_dans = (limite.reset_at - time.time()) if limite else 60
+        return reponse_trop_de_requetes(
+            f"Trop de tentatives. Réessayez dans {formater_delai(reessayer_dans)}.",
+            reessayer_dans,
+        )
+
     @app.errorhandler(413)
     def too_large(_):
         return jsonify({"error": "Fichier trop volumineux (10 Mo maximum)", "details": []}), 413
@@ -117,5 +181,29 @@ def create_app(config_class=Config):
     @jwt.unauthorized_loader
     def missing_token(_reason):
         return jsonify({"error": "Authentification requise", "details": []}), 401
+
+    # Révocation des jetons : chaque jeton porte la version des jetons de son
+    # compte (claim `tv`) au moment de son émission. Changer de mot de passe
+    # ou être désactivé incrémente la version, ce qui invalide d'un coup tous
+    # les jetons émis avant, accès comme rafraîchissement, sur tous les
+    # appareils. Ce chargeur couvre toutes les routes protégées, y compris
+    # `/auth/refresh` et l'identification facultative de la recherche.
+    @jwt.token_in_blocklist_loader
+    def jeton_revoque(_header, payload):
+        from app.models import User
+
+        # Lecture par clé primaire : `role_required` relit ensuite le même
+        # utilisateur depuis l'identity map, sans seconde requête SQL. L'identity
+        # map ne garde que des références faibles : sans celle posée dans `g`,
+        # l'objet serait libéré dès la sortie de cette fonction et relu.
+        user = db.session.get(User, payload.get("sub"))
+        g.utilisateur_jwt = user
+        # Un jeton émis avant ce lot n'a pas de claim : il vaut la version 0,
+        # celle de tous les comptes existants au déploiement.
+        return user is None or payload.get("tv", 0) != user.token_version
+
+    @jwt.revoked_token_loader
+    def revoked_token(_header, _payload):
+        return jsonify({"error": "Session révoquée, veuillez vous reconnecter", "details": []}), 401
 
     return app

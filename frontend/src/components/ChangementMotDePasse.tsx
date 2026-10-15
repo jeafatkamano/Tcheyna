@@ -3,6 +3,11 @@
  *
  * Partagé par les espaces locataire, propriétaire et administrateur : le
  * backend expose une seule route, quel que soit le rôle.
+ *
+ * Le changement ferme les sessions des autres appareils ; les nouveaux jetons
+ * de celui-ci sont enregistrés par `authAPI.changerMotDePasse`. Un ancien mot
+ * de passe faux revient en 422 (message affiché), plus en 401 : il ne
+ * déconnecte donc plus l'utilisateur.
  */
 import { Eye, EyeOff, KeyRound } from "lucide-react";
 import { useState } from "react";
