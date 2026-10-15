@@ -170,12 +170,16 @@ renseigner les secrets marqués `sync: false` :
 - `AT_API_KEY` — Africa's Talking
 - `CINETPAY_API_KEY`, `CINETPAY_SITE_ID` — CinetPay
 
-Puis créer les tables et le compte administrateur :
+Puis créer les tables (par les migrations Alembic) et le compte administrateur :
 
 ```bash
-flask init-db          # ou : python -c "from run import app,db; app.app_context().push(); db.create_all()"
+cd backend
+flask db upgrade
 python create_admin.py
 ```
+
+Une base existante, créée avant les migrations par `create_all`, ne doit pas
+recevoir `flask db upgrade` : voir la procédure de `backend/migrations/README`.
 
 Un disque persistant est monté sur `/var/data` : les CNI et justificatifs
 téléversés survivent aux redéploiements.

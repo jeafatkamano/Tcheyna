@@ -1,0 +1,112 @@
+# ci.yml — Intégration continue Tcheyna.
+#
+# Chaque PR doit garder verts : les tests et le lint du backend, l'application
+# des migrations sur PostgreSQL 16, puis le lint, le typage et le build du
+# frontend. PostgreSQL 16 est la version sur laquelle la révision initiale a été
+# vérifiée, pas une version constatée en production : vérifier celle de
+# Supabase (`select version();`) et aligner l'image ci-dessous si elle diffère. Aucun secret : Supabase, CinetPay et
+# Africa's Talking sont simulés dans les tests, qui bloquent tout appel réseau.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Un nouveau push sur une PR rend le run précédent sans objet. Sur main, chaque
+# run va à son terme : l'historique de la branche principale reste complet.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    name: Backend (pytest, ruff, migrations)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tcheyna
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12.7"  # comme PYTHON_VERSION dans render.yaml
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Dépendances
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Tests (pytest)
+        # Couverture affichée pour suivi, sans seuil bloquant.
+        run: pytest -q --cov=app --cov-report=term
+
+      - name: Migrations sur PostgreSQL 16
+        env:
+          FLASK_APP: run.py
+          FLASK_ENV: production
+          # Même forme d'URL qu'en prod : vérifie aussi que la borne
+          # SQLAlchemy 2.0 de requirements.txt garde le pilote psycopg2.
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tcheyna
+        run: |
+          flask db upgrade
+          # Échoue si un modèle a changé sans révision correspondante.
+          flask db check
+          # Les révisions doivent rester réversibles.
+          flask db downgrade base
+          flask db upgrade
+
+  frontend:
+    name: Frontend (lint, typecheck, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20.18.0"  # comme NODE_VERSION dans render.yaml
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Dépendances
+        run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Typage
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build

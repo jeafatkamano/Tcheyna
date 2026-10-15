@@ -110,7 +110,7 @@ def mes_candidatures(current_user):
 def mes_demandes(current_user):
     """Côté propriétaire : les candidatures reçues, les meilleurs dossiers d'abord."""
     lang = request.args.get("lang", "fr")
-    listing_ids = [l.id for l in current_user.listings]
+    listing_ids = [annonce.id for annonce in current_user.listings]
     if not listing_ids:
         return jsonify({"matches": [], "stats": {"total": 0, "en_attente": 0,
                                                  "acceptees": 0, "conclues": 0}}), 200
@@ -176,7 +176,7 @@ def candidats_suggeres(current_user):
                           User.is_active.is_(True),
                           User.trust_level >= NIVEAU_MIN_CANDIDATURE)
                   .limit(200).all())
-    abonnes = abonnements_passeport([l.id for l in locataires])
+    abonnes = abonnements_passeport([locataire.id for locataire in locataires])
 
     suggestions = []
     for locataire in locataires:

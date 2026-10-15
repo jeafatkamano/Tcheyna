@@ -1,0 +1,8 @@
+# Dépendances de développement et d'intégration continue.
+# La production n'installe que requirements.txt (render.yaml) : rien d'ici
+# n'arrive sur Render.
+-r requirements.txt
+
+pytest==9.1.1
+pytest-cov==7.1.0
+ruff==0.17.0

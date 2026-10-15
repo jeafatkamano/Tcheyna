@@ -18,9 +18,10 @@ from run import app  # noqa: E402
 
 
 def main():
+    # Pas de create_all : le schéma vient des migrations (flask db upgrade).
+    # Créer les tables ici donnerait, sur une base neuve, un schéma non
+    # tamponné qu'Alembic ne saurait plus faire évoluer.
     with app.app_context():
-        db.create_all()
-
         email = input("E-mail de l'administrateur : ").strip().lower()
         if not email:
             sys.exit("E-mail requis.")
