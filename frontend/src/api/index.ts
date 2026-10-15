@@ -480,7 +480,13 @@ export interface StatsAdmin {
   };
   annonces: { total: number; actives: number; certifiees: number; louees: number };
   mises_en_relation: { total: number; en_attente: number; acceptees: number; conclues: number };
-  revenus: { total_encaisse: number; commissions: number; nb_paiements: number; devise: string };
+  revenus: {
+    total_encaisse: number;
+    commissions: number;
+    nb_paiements: number;
+    fonds_de_tiers_historiques: number;
+    devise: string;
+  };
   file_de_verification: {
     cni_en_attente: number;
     revenus_en_attente: number;

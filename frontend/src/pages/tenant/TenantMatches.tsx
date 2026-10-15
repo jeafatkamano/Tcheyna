@@ -42,7 +42,7 @@ export function TenantMatches() {
   /** Caution ou loyer réglés via Tcheyna avant la décision D2 : rappel de l'historique. */
   function dejaRegle(matchId: string, type: TypePaiement) {
     return (paiements.data?.paiements ?? []).some(
-      (p) => p.match_id === matchId && p.type_paiement === type && p.statut !== "failed",
+      (p) => p.match_id === matchId && p.type_paiement === type && p.statut === "success",
     );
   }
 

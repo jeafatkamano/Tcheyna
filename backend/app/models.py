@@ -753,7 +753,7 @@ class Payment(db.Model):
     listing_id = db.Column(db.String(36), db.ForeignKey("listings.id"), nullable=True)
 
     reference     = db.Column(db.String(30), unique=True, nullable=False, index=True)  # n° de reçu
-    type_paiement = db.Column(db.String(30), nullable=False, default="caution")
+    type_paiement = db.Column(db.String(30), nullable=False)
     description   = db.Column(db.String(200), nullable=True)
 
     montant    = db.Column(db.Integer, nullable=False)

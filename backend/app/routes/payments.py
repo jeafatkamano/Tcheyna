@@ -127,7 +127,7 @@ def tarifs():
             "libelle": "Commission de mise en relation",
             "payeur": "Propriétaire",
             "description": f"{int(COMMISSION_RATE * 100)} % du premier loyer, "
-                           "prélevés lors d'une location conclue via Tcheyna",
+                           "dus par le propriétaire lorsqu'une location est conclue via Tcheyna",
         },
     }), 200
 
