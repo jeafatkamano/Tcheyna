@@ -5,7 +5,7 @@
  * document de propriété, demande, et suivi de la décision.
  */
 import { ArrowLeft, ArrowRight, Check, ShieldCheck, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { listingsAPI, type DonneesAnnonce, type Listing, type TypeTransaction } from "../../api";
@@ -127,6 +127,15 @@ function Formulaire({
   // photos, et une nouvelle soumission devient une modification.
   const [creee, setCreee] = useState<Listing | null>(null);
   const courante = existante ?? creee;
+  // Faux après démontage : un envoi qui se termine ensuite ne doit plus
+  // ramener l'utilisateur, parti ailleurs, sur la page de l'annonce.
+  const monte = useRef(false);
+  useEffect(() => {
+    monte.current = true;
+    return () => {
+      monte.current = false;
+    };
+  }, []);
 
   const [form, setForm] = useState<Formulaire>(
     existante
@@ -202,7 +211,7 @@ function Formulaire({
     const reponse = courante
       ? await modification.executer(courante.id, donnees())
       : await creation.executer(donnees());
-    if (!reponse) return;
+    if (!reponse || !monte.current) return;
 
     if (existante) {
       confirmer("Annonce mise à jour");
@@ -218,6 +227,7 @@ function Formulaire({
     if (photos.etat.photos.length) {
       setSucces("Annonce publiée. Envoi des photos en cours…");
       await photos.file.demarrer(reponse.listing.id);
+      if (!monte.current || photos.file.estArretee()) return;
       const bilan = resumer(photos.file.getSnapshot());
       if (bilan.enEchec > 0 || bilan.restantes > 0) {
         setSucces("Annonce publiée. Certaines photos restent à envoyer.");

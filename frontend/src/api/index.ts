@@ -27,7 +27,15 @@ import type {
 } from "./types";
 
 export * from "./types";
-export { ApiError, estAnnulation, MESSAGE_RESEAU, tokens, urlFichier } from "./client";
+export {
+  ApiError,
+  effacerMotifDeconnexion,
+  estAnnulation,
+  lireMotifDeconnexion,
+  MESSAGE_RESEAU,
+  tokens,
+  urlFichier,
+} from "./client";
 
 /* ─── AUTHENTIFICATION ─────────────────────────────────────── */
 
@@ -53,7 +61,8 @@ export const authAPI = {
   connecter: (email: string, password: string) =>
     api.post<ReponseAuth>("/auth/login", { email, password }),
 
-  moi: () => api.get<User>("/auth/me"),
+  // Une seule reprise au démarrage : pas deux minutes de chargeur.
+  moi: () => api.get<User>("/auth/me", { reprises: 1 }),
 
   /**
    * Le serveur révoque tous les jetons du compte et en renvoie de nouveaux

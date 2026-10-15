@@ -36,7 +36,23 @@ export function useFilePhotos(onImages: (images: string[]) => void) {
     return () => file.vider();
   }, [file]);
 
-  return { file, etat, resume: resumer(etat) };
+  const resume = resumer(etat);
+
+  // Fermer l'onglet ou recharger pendant un envoi : le navigateur demande
+  // confirmation (les photos en mémoire seraient perdues). La navigation
+  // interne, elle, n'est pas bloquée.
+  const envoiActif = resume.envoiActif;
+  useEffect(() => {
+    if (!envoiActif) return;
+    const retenir = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = ""; // anciens navigateurs
+    };
+    window.addEventListener("beforeunload", retenir);
+    return () => window.removeEventListener("beforeunload", retenir);
+  }, [envoiActif]);
+
+  return { file, etat, resume };
 }
 
 export type FilePhotosReact = ReturnType<typeof useFilePhotos>;

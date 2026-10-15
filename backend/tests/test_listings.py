@@ -240,3 +240,23 @@ def test_reecriture_des_photos_sous_verrou_d_ecriture(client, annonce, bailleur,
         event.remove(db.session, "do_orm_execute", observer)
 
     assert len(verrous) == 1
+
+
+def test_aucune_transaction_ouverte_pendant_le_stockage(client, annonce, bailleur, entetes,
+                                                        fichier_image, monkeypatch):
+    from app import db
+    from app.services import stockage
+
+    vrai_televerser = stockage.televerser
+    pendant = []
+
+    def televerser_observe(*args, **kwargs):
+        pendant.append(db.session().in_transaction())
+        return vrai_televerser(*args, **kwargs)
+
+    monkeypatch.setattr(stockage, "televerser", televerser_observe)
+
+    reponse = _envoyer_photo(client, annonce, bailleur, entetes, fichier_image("a.png"))
+
+    assert reponse.status_code == 201
+    assert pendant == [False]

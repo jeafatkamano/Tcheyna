@@ -116,6 +116,21 @@ describe("FilePhotos", () => {
     await file.demarrer("annonce-1");
 
     expect(serveur).toEqual(["a.jpg"]);
+    // Signalée : l'original garde ses métadonnées EXIF (GPS).
+    expect(resumer(file.getSnapshot()).nonCompressees).toBe(1);
+  });
+
+  it("l'envoi est « actif » (confirmation avant de quitter) tant que la file tourne", async () => {
+    const { file } = fabriquer(new Map([["a.webp", new ApiError(MESSAGE_RESEAU, 0)]]));
+    await file.ajouter([photo("a.jpg")]);
+    // Création pas encore enregistrée : rien ne serait perdu côté serveur.
+    expect(resumer(file.getSnapshot()).envoiActif).toBe(false);
+
+    const envoi = file.demarrer("annonce-1");
+    expect(resumer(file.getSnapshot()).envoiActif).toBe(true);
+    await envoi;
+    // Échec affiché : plus rien ne tourne.
+    expect(resumer(file.getSnapshot()).envoiActif).toBe(false);
   });
 
   it("signale un format illisible, sans proposer de réessayer", async () => {

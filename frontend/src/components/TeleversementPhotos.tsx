@@ -219,6 +219,12 @@ export function TeleversementPhotos({ listingId, images, onImagesChange, photos 
           {resume.restantes} restante{resume.restantes > 1 ? "s" : ""}. Restez sur cette page.
         </p>
       )}
+      {resume.nonCompressees > 0 && (
+        <p className="text-xs px-3 py-2 rounded-xl" style={{ background: "#F8FAFC", color: "#64748B" }}>
+          {resume.nonCompressees} photo{resume.nonCompressees > 1 ? "s envoyées" : " envoyée"} sans
+          compression : ses informations internes (date, parfois position) n'ont pas été retirées.
+        </p>
+      )}
       {resume.enEchec > 0 && (
         <div className="px-3 py-2.5 rounded-xl space-y-2" style={{ background: "#FEF2F2" }} role="alert">
           <p className="text-xs font-semibold" style={{ color: "#B91C1C" }}>
@@ -264,7 +270,7 @@ function VignetteEnFile({
   const occupee = photo.etat === "envoi" || photo.etat === "compression";
   const libelle = {
     compression: "Préparation…",
-    attente: differe ? "À l'enregistrement" : "En attente",
+    attente: `${differe ? "À l'enregistrement" : "En attente"}${photo.nonCompressee ? " · non compressée" : ""}`,
     envoi: `Envoi ${Math.round(photo.progression * 100)} %`,
     erreur: "Échec",
   }[photo.etat];

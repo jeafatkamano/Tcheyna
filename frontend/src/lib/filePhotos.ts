@@ -32,12 +32,21 @@ export interface PhotoFile {
   erreur?: string;
   /** Faux quand réessayer ne servirait à rien (format illisible). */
   reessayable: boolean;
+  /**
+   * Compression impossible : l'original part tel quel, avec ses métadonnées
+   * EXIF (dont, souvent, la position GPS). Signalé, sans bloquer.
+   */
+  nonCompressee?: boolean;
 }
 
 export interface EtatFile {
   photos: readonly PhotoFile[];
   /** Photos envoyées depuis la création de la file (récapitulatif). */
   envoyees: number;
+  /** Parmi elles, celles parties sans compression. */
+  nonCompressees: number;
+  /** Faux tant qu'aucune annonce n'est désignée (création en cours). */
+  demarree: boolean;
 }
 
 export interface DependancesFile {
@@ -66,7 +75,7 @@ function messageErreur(err: unknown): string {
 
 export class FilePhotos {
   private onImages?: (images: string[]) => void;
-  private etat: EtatFile = { photos: [], envoyees: 0 };
+  private etat: EtatFile = { photos: [], envoyees: 0, nonCompressees: 0, demarree: false };
   private fichiers = new Map<string, File>();
   private abonnes = new Set<() => void>();
   private listingId?: string;
@@ -130,6 +139,7 @@ export class FilePhotos {
   /** Désigne l'annonce destinataire et envoie ce qui attend. */
   demarrer(listingId: string): Promise<void> {
     this.listingId = listingId;
+    if (!this.etat.demarree) this.publier({ demarree: true });
     return this.traiter();
   }
 
@@ -155,6 +165,11 @@ export class FilePhotos {
 
   reprendre() {
     this.arretee = false;
+  }
+
+  /** Vrai après `arreter` (démontage) : l'appelant ne doit plus agir sur la page. */
+  estArretee(): boolean {
+    return this.arretee;
   }
 
   /** Vide la file et libère les aperçus. */
@@ -195,6 +210,7 @@ export class FilePhotos {
   private async compresser(photo: PhotoFile) {
     const original = this.fichiers.get(photo.id)!;
     let fichier: File;
+    let nonCompressee = false;
     try {
       fichier = await this.deps.compresser(original);
     } catch {
@@ -203,12 +219,14 @@ export class FilePhotos {
         return;
       }
       fichier = original;
+      nonCompressee = true;
     }
     if (!this.etat.photos.some((p) => p.id === photo.id)) return; // retirée entre-temps
     this.fichiers.set(photo.id, fichier);
     this.modifier(photo.id, {
       etat: "attente",
       nom: fichier.name,
+      nonCompressee,
       apercu: this.deps.creerApercu?.(fichier),
     });
   }
@@ -223,7 +241,10 @@ export class FilePhotos {
         onProgression: (fraction) => this.modifier(photo.id, { progression: fraction }),
       });
       this.enlever(photo.id);
-      this.publier({ envoyees: this.etat.envoyees + 1 });
+      this.publier({
+        envoyees: this.etat.envoyees + 1,
+        nonCompressees: this.etat.nonCompressees + (photo.nonCompressee ? 1 : 0),
+      });
       this.onImages?.(reponse.images);
     } catch (err) {
       if (estAnnulation(err)) {
@@ -244,6 +265,11 @@ export function resumer(etat: EtatFile) {
   const enEchec = compter("erreur");
   return {
     envoyees: etat.envoyees,
+    nonCompressees: etat.nonCompressees,
+    /** Quitter la page maintenant perdrait un envoi : à confirmer. */
+    envoiActif:
+      etat.photos.some((p) => p.etat === "envoi" || p.etat === "compression") ||
+      (etat.demarree && compter("attente") > 0),
     enEchec,
     restantes: etat.photos.length - enEchec,
     occupee: etat.photos.some((p) => p.etat === "envoi" || p.etat === "compression"),

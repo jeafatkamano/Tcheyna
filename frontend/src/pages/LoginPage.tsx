@@ -1,7 +1,8 @@
 import { ArrowLeft, Eye, EyeOff, Lock, Mail } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
+import { effacerMotifDeconnexion, lireMotifDeconnexion } from "../api";
 import { MessageErreur } from "../components/Etats";
 import { useAuth } from "../context/AuthContext";
 import { useAction } from "../hooks/useApi";
@@ -16,9 +17,14 @@ export function LoginPage() {
   const [afficherMdp, setAfficherMdp] = useState(false);
 
   const connexion = useAction(connecter);
+  // Déconnexion forcée (session révoquée, compte désactivé) : on dit pourquoi
+  // au lieu d'un renvoi muet. Lu une fois, effacé après affichage.
+  const [motif, setMotif] = useState(lireMotifDeconnexion);
+  useEffect(() => effacerMotifDeconnexion(), []);
 
   async function soumettre(e: React.FormEvent) {
     e.preventDefault();
+    setMotif(null);
     const user = await connexion.executer(email, motDePasse);
     if (!user) return;
     // Retour à la page demandée avant la redirection, sinon accueil du rôle.
@@ -108,7 +114,7 @@ export function LoginPage() {
               </div>
             </div>
 
-            <MessageErreur message={connexion.erreur} />
+            <MessageErreur message={connexion.erreur ?? motif} />
 
             <button
               type="submit"

@@ -12,7 +12,7 @@ export default defineConfig({
     environment: "happy-dom",
     // Page publique : une déconnexion simulée n'essaie pas de naviguer.
     environmentOptions: { happyDOM: { url: "http://localhost/" } },
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.{ts,tsx}"],
     restoreMocks: true,
   },
 });

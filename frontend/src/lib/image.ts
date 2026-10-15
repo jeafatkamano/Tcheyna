@@ -95,13 +95,52 @@ export function originalEnvoyable(fichier: File): boolean {
 
 type Source = ImageBitmap | HTMLImageElement;
 
+/**
+ * Dimensions affichées (orientation EXIF appliquée) sans décoder l'image :
+ * l'événement `load` d'un <img> survient après lecture de l'en-tête, le
+ * décodage des pixels n'a lieu qu'à l'affichage.
+ */
+function lireDimensions(fichier: File): Promise<Dimensions | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(fichier);
+    const img = new Image();
+    const finir = (dims: Dimensions | null) => {
+      URL.revokeObjectURL(url);
+      img.src = "";
+      resolve(dims);
+    };
+    img.onload = () =>
+      finir(img.naturalWidth ? { largeur: img.naturalWidth, hauteur: img.naturalHeight } : null);
+    img.onerror = () => finir(null);
+    img.src = url;
+  });
+}
+
 async function decoder(fichier: File): Promise<{ source: Source; liberer: () => void }> {
   if (typeof createImageBitmap === "function") {
-    try {
-      const bitmap = await createImageBitmap(fichier, { imageOrientation: "from-image" });
-      return { source: bitmap, liberer: () => bitmap.close() };
-    } catch {
-      // Safari ancien : options inconnues ou format refusé. On tente <img>.
+    // Dimensions connues : le navigateur décode directement à la taille
+    // cible, sans bitmap plein format (48 Mo pour 12 Mpx) en mémoire.
+    const dims = await lireDimensions(fichier);
+    const cible = dims && dimensionsCibles(dims.largeur, dims.hauteur, COTE_MAX);
+    const reduire = dims && cible && cible.largeur < dims.largeur;
+    const essais: ImageBitmapOptions[] = [
+      ...(reduire
+        ? [{
+            imageOrientation: "from-image" as const,
+            resizeWidth: cible.largeur,
+            resizeHeight: cible.hauteur,
+            resizeQuality: "high" as const,
+          }]
+        : []),
+      { imageOrientation: "from-image" },
+    ];
+    for (const options of essais) {
+      try {
+        const bitmap = await createImageBitmap(fichier, options);
+        return { source: bitmap, liberer: () => bitmap.close() };
+      } catch {
+        // Options refusées (Safari ancien) ou format illisible : essai suivant.
+      }
     }
   }
   const url = URL.createObjectURL(fichier);
@@ -155,6 +194,9 @@ export async function preparerPhoto(fichier: File): Promise<File> {
         if (!ctx) throw new Error("Canvas indisponible");
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
+        // Fond blanc : un PNG transparent encodé en JPEG deviendrait noir.
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(0, 0, cible.largeur, cible.hauteur);
         ctx.drawImage(source, 0, 0, cible.largeur, cible.hauteur);
       }
       const resultat = await versBlob(canvas, type, qualite);

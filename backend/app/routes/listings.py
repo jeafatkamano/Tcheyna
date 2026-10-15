@@ -490,12 +490,15 @@ def televerser_photos(current_user, listing_id):
     if len(_photos(listing)) + len(fichiers) > MAX_IMAGES:
         return refus_limite(len(_photos(listing)))
 
-    # Le stockage (Supabase) peut être lent : on ne tient pas le verrou pendant.
+    # Le stockage (Supabase) peut être lent : ni verrou ni transaction ouverte
+    # pendant l'appel, qui retiendrait une connexion du pool. La transaction
+    # de lecture est close ici ; la suivante ne s'ouvre qu'à la relecture.
+    db.session.rollback()
     ajoutees = []
     erreur = None
     for fichier in fichiers:
         try:
-            ajoutees.append(stockage.televerser(fichier, "photos", f"annonce-{listing.id}",
+            ajoutees.append(stockage.televerser(fichier, "photos", f"annonce-{listing_id}",
                                                 stockage.IMAGES))
         except stockage.ErreurStockage as exc:
             # Les photos déjà enregistrées sont conservées : l'utilisateur n'a
