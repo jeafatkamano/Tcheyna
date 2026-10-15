@@ -16,6 +16,13 @@ services:
     plan: free
     branch: main
 
+    # Lot 3.9 : l'API ne se redéploie que si son propre dossier change. Un
+    # merge qui ne touche que frontend/ ou docs/ ne la redémarre plus (ce qui
+    # évite aussi un réveil à froid de l'offre gratuite).
+    buildFilter:
+      paths:
+        - backend/**
+
     # Le code de l'API vit dans backend/ ; les commandes s'y déplacent plutôt
     # que d'utiliser rootDirectory, afin de rester alignées sur les services
     # existants, créés par l'API Render.
@@ -90,6 +97,11 @@ services:
     name: tcheyna
     runtime: static
     branch: main
+
+    # Lot 3.9 : le frontend ne se reconstruit que si son propre dossier change.
+    buildFilter:
+      paths:
+        - frontend/**
 
     buildCommand: cd frontend && npm ci && npm run build
     staticPublishPath: frontend/dist
