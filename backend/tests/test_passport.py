@@ -61,5 +61,7 @@ def test_vue_bailleur_sans_donnees_financieres(client, bailleur, match, locatair
 
 
 def test_un_locataire_ne_lit_pas_le_passeport_d_un_autre(client, fabrique, locataire, entetes):
+    # 404 et non 403 (lot 1.6) : la réponse ne confirme pas l'existence du
+    # dossier à qui n'a pas le droit de le lire.
     autre = fabrique.locataire()
-    assert client.get(f"/api/passport/{autre.id}", headers=entetes(locataire)).status_code == 403
+    assert client.get(f"/api/passport/{autre.id}", headers=entetes(locataire)).status_code == 404

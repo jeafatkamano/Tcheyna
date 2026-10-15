@@ -14,6 +14,7 @@ from app.models import TRUST_LEVELS, Match, Review, User
 from app.routes import current_user_required
 from app.schemas import valider_corps
 from app.schemas.reviews import Avis
+from app.services.acces import peut_voir_adresse
 
 reviews_bp = Blueprint("reviews", __name__)
 
@@ -65,7 +66,11 @@ def avis_a_donner(current_user):
             continue
         en_attente.append({
             "match_id":  match.id,
-            "listing":   match.listing.to_dict(include_landlord=False) if match.listing else None,
+            "listing":   (match.listing.to_dict(
+                              include_landlord=False,
+                              avec_adresse=peut_voir_adresse(current_user, match.listing,
+                                                             candidature=match))
+                          if match.listing else None),
             "cible":     cible.to_dict(),
             "type_avis": ("tenant_to_landlord" if current_user.role == "tenant"
                           else "landlord_to_tenant"),

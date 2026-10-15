@@ -2,7 +2,7 @@
 from functools import wraps
 
 from flask import jsonify
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask_jwt_extended import get_jwt_identity, jwt_required, verify_jwt_in_request
 
 from app.models import User
 
@@ -39,3 +39,18 @@ def role_required(*roles):
 def current_user_required(fn):
     """Authentification simple, sans contrainte de rôle."""
     return role_required()(fn)
+
+
+def utilisateur_optionnel():
+    """Identifie l'appelant si un jeton valide est fourni, sans l'exiger.
+
+    Un jeton absent, invalide ou expiré, ou un compte désactivé, donne
+    `None` : la route répond alors comme à un visiteur anonyme.
+    """
+    try:
+        verify_jwt_in_request(optional=True)
+        user_id = get_jwt_identity()
+    except Exception:  # noqa: BLE001 — un jeton invalide ne doit pas casser une route publique
+        return None
+    user = User.query.get(user_id) if user_id else None
+    return user if user and user.is_active else None

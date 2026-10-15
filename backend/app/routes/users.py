@@ -3,10 +3,11 @@ from flask import Blueprint, jsonify, request
 
 from app import db
 from app.models import Listing, Review, User
-from app.routes import current_user_required
+from app.routes import current_user_required, utilisateur_optionnel
 from app.schemas import valider_corps
 from app.schemas.users import MajProfil
 from app.services import stockage
+from app.services.acces import passeport_pour, visibilite_adresse
 
 users_bp = Blueprint("users", __name__)
 
@@ -15,10 +16,17 @@ users_bp = Blueprint("users", __name__)
 
 @users_bp.route("/<string:user_id>", methods=["GET"])
 def get_user(user_id):
-    """Profil public : niveau de confiance, avis reçus, annonces si bailleur."""
+    """Profil public : niveau de confiance, avis reçus, annonces si bailleur.
+
+    Le passeport d'un locataire n'y figure que pour qui a le droit de le lire
+    (`services.acces.peut_voir_passeport`) ; l'adresse exacte des annonces
+    d'un bailleur suit `visibilite_adresse`.
+    """
     user = User.query.get_or_404(user_id)
     if not user.is_active:
         return jsonify({"error": "Ce compte n'est plus actif"}), 404
+
+    lecteur = utilisateur_optionnel()
 
     data = user.to_dict(public=True)
 
@@ -28,11 +36,15 @@ def get_user(user_id):
     if user.role in ("landlord", "agency"):
         annonces = user.listings.filter(Listing.status == "active",
                                         Listing.is_visible.is_(True)).all()
-        data["annonces"] = [a.to_dict(include_landlord=False) for a in annonces]
+        adresse_visible = visibilite_adresse(lecteur)
+        data["annonces"] = [a.to_dict(include_landlord=False, avec_adresse=adresse_visible(a))
+                            for a in annonces]
         data["nb_annonces"] = len(annonces)
 
-    if user.role == "tenant" and user.passport:
-        data["passeport"] = user.passport.to_dict(public=True)
+    if user.role == "tenant":
+        passeport = passeport_pour(lecteur, user)
+        if passeport is not None:
+            data["passeport"] = passeport
 
     return jsonify(data), 200
 

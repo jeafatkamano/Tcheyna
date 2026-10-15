@@ -8,10 +8,11 @@ from flask import Blueprint, jsonify, request
 
 from app import db
 from app.models import TRUST_LEVELS, TenantPassport, abonnements_passeport
-from app.routes import role_required
+from app.routes import current_user_required, role_required
 from app.schemas import erreur_champ, valider_corps
 from app.schemas.passport import Criteres, MajPasseport
 from app.services import stockage
+from app.services.acces import passeport_pour
 
 passport_bp = Blueprint("passport", __name__)
 
@@ -226,15 +227,21 @@ def supprimer_document(current_user, doc_type):
 # ─── GET /api/passport/<tenant_id> ───────────────────────────
 
 @passport_bp.route("/<string:tenant_id>", methods=["GET"])
-@role_required("landlord", "agency", "admin")
+@current_user_required
 def voir_passeport(current_user, tenant_id):
-    """Vue propriétaire d'un dossier candidat, sans les données financières brutes."""
+    """Dossier d'un locataire, selon `services.acces.peut_voir_passeport` :
+    complet pour lui-même et l'admin, public (sans données financières) pour
+    un bailleur qui a reçu sa candidature.
+
+    Sans droit, la réponse est la même que pour un passeport inexistant :
+    elle ne confirme pas l'existence du locataire.
+    """
     passport = TenantPassport.query.filter_by(tenant_id=tenant_id).first()
-    if not passport:
+    donnees = passeport_pour(current_user, passport.tenant) if passport else None
+    if donnees is None:
         return jsonify({"error": "Ce locataire n'a pas encore de passeport"}), 404
 
-    public = current_user.role != "admin"
     return jsonify({
-        **passport.to_dict(public=public),
+        **donnees,
         "tenant": passport.tenant.to_dict() if passport.tenant else None,
     }), 200

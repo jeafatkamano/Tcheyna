@@ -27,6 +27,7 @@ from app.routes import current_user_required
 from app.schemas import valider_corps
 from app.schemas.payments import CallbackCinetPay, InitierPaiement
 from app.services import notifications as notify
+from app.services.acces import peut_voir_adresse
 
 payments_bp = Blueprint("payments", __name__)
 
@@ -340,7 +341,10 @@ def recu(current_user, payment_id):
     return jsonify({
         **paiement.to_dict(),
         "payeur": paiement.user.to_dict() if paiement.user else None,
-        "listing": (paiement.listing.to_dict(include_landlord=False)
+        "listing": (paiement.listing.to_dict(
+                        include_landlord=False,
+                        avec_adresse=peut_voir_adresse(current_user, paiement.listing,
+                                                       candidature=paiement.match))
                     if paiement.listing else None),
     }), 200
 

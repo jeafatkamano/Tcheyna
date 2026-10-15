@@ -253,7 +253,14 @@ def url_signee(url, duree_secondes=300):
     Les pièces d'identité et les documents de propriété ne sont pas publics :
     l'administrateur qui les examine reçoit un lien valable quelques minutes.
     """
-    if not url or not url.startswith("supabase://"):
+    if not url:
+        return url
+    if url.startswith("/uploads/"):
+        # Stockage disque (développement) : /uploads ne sert pas les pièces
+        # privées. Pas de lien plutôt qu'un lien mort ; l'interface affiche
+        # « lien indisponible ».
+        return None
+    if not url.startswith("supabase://"):
         return url
 
     chemin = url[len("supabase://"):]

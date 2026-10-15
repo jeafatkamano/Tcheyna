@@ -55,6 +55,12 @@ def formater_delai(secondes):
     return f"{heures} heure{'s' if heures > 1 else ''}"
 
 
+# Préfixes des fichiers servis par /uploads en développement : ceux que
+# services/stockage.py écrit pour les photos d'annonce et de profil (voir
+# routes/listings.py et routes/users.py). Tout autre fichier est privé.
+PREFIXES_UPLOADS_PUBLICS = ("annonce-", "profil-")
+
+
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
@@ -110,11 +116,20 @@ def create_app(config_class=Config):
     app.register_blueprint(geo_bp,           url_prefix="/api/geo")
     app.register_blueprint(admin_bp,         url_prefix="/api/admin")
 
-    # ─── Fichiers uploadés (CNI, justificatifs, photos) ──────
-    @app.route("/uploads/<path:filename>")
-    def uploaded_file(filename):
-        upload_dir = os.path.abspath(app.config["UPLOAD_FOLDER"])
-        return send_from_directory(upload_dir, filename)
+    # ─── Fichiers téléversés sur disque (développement) ──────
+    # Le stockage disque n'existe qu'en développement et en test (voir
+    # services/stockage.py) : en production, les fichiers sont sur Supabase et
+    # cette route n'est pas enregistrée. Même en développement, elle ne sert
+    # que les fichiers publics par nature (photos d'annonce, photos de
+    # profil) : CNI, justificatifs de revenus et titres de propriété partagent
+    # le même dossier, et répondent 404.
+    if app.config.get("DEBUG") or app.config.get("TESTING"):
+        @app.route("/uploads/<path:filename>")
+        def uploaded_file(filename):
+            if not filename.startswith(PREFIXES_UPLOADS_PUBLICS) or "/" in filename:
+                return jsonify({"error": "Ressource introuvable", "details": []}), 404
+            upload_dir = os.path.abspath(app.config["UPLOAD_FOLDER"])
+            return send_from_directory(upload_dir, filename)
 
     # ─── Santé (health check Render / UptimeRobot) ───────────
     @app.route("/health")

@@ -256,6 +256,9 @@ export function ListingDetail() {
             <MapPin size={14} />
             {listing.adresse ?? `${listing.quartier ?? ""}, ${listing.ville}`}
           </div>
+          {listing.adresse_masquee && (
+            <p className="text-xs text-gray-400 mb-1 ml-5">Adresse communiquée après acceptation</p>
+          )}
           <div className="flex items-center gap-3 text-xs text-gray-400 mb-4">
             <span className="flex items-center gap-1">
               <Eye size={12} />

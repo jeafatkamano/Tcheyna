@@ -476,21 +476,13 @@ function OngletSuggestions() {
             style={{ background: "white", boxShadow: "0 2px 16px rgba(30,58,95,0.08)" }}
           >
             <div className="flex items-center gap-3 mb-3">
-              <Link to={`/profil/${candidat.tenant.id}`}>
-                <Avatar
-                  nom={candidat.tenant.full_name}
-                  url={candidat.tenant.avatar_url}
-                  taille={48}
-                />
-              </Link>
+              <Avatar nom={candidat.tenant.full_name} taille={48} />
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-sm truncate" style={{ color: "#1E293B" }}>
                   {candidat.tenant.full_name}
                 </p>
-                <p className="text-xs text-gray-400 mb-1">
-                  {candidat.passeport?.situation_pro ?? "Situation non précisée"}
-                  {candidat.passeport?.a_un_garant && " · avec garant"}
-                </p>
+                {/* Version réduite : le dossier ne s'ouvre que si ce locataire candidate. */}
+                <p className="text-xs text-gray-400 mb-1">Dossier visible s'il candidate</p>
                 <div className="flex items-center gap-2 flex-wrap">
                   <BadgeVerification level={candidat.tenant.trust_level} size="sm" />
                   <ScoreMatch score={candidat.score_compatibilite} />
@@ -505,7 +497,6 @@ function OngletSuggestions() {
                   )}
                 </div>
               </div>
-              {candidat.passeport && <ScoreCircle score={candidat.passeport.score} size={46} label="" />}
             </div>
 
             <div className="space-y-1.5">
@@ -518,15 +509,6 @@ function OngletSuggestions() {
                 </div>
               ))}
             </div>
-
-            <Link
-              to={`/profil/${candidat.tenant.id}`}
-              className="mt-3 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold"
-              style={{ background: "#F0F4FA", color: "#1E3A5F" }}
-            >
-              Voir le dossier complet
-              <ChevronRight size={15} />
-            </Link>
           </div>
         ))
       )}

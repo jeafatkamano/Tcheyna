@@ -18,7 +18,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 
-import { usersAPI } from "../../api";
+import { ApiError, usersAPI } from "../../api";
 import { Avatar } from "../../components/Avatar";
 import { BadgeVerification, ScoreCircle } from "../../components/BadgeVerification";
 import { Chargement, Erreur } from "../../components/Etats";
@@ -30,9 +30,39 @@ export function TenantProfileView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const profil = useApi(() => usersAPI.profil(id!), [id], { actif: Boolean(id) });
+  // 403 ou 404 : profil inexistant, désactivé ou non accessible. Ce n'est pas
+  // une panne : on l'affiche comme tel, sans proposer de réessayer.
+  const profil = useApi(
+    () =>
+      usersAPI.profil(id!).catch((err: unknown) => {
+        if (err instanceof ApiError && (err.statut === 403 || err.statut === 404)) return null;
+        throw err;
+      }),
+    [id],
+    { actif: Boolean(id) },
+  );
 
   if (profil.chargement) return <Chargement texte="Chargement du profil…" />;
+
+  if (!profil.erreur && profil.data === null) {
+    return (
+      <div className="min-h-screen flex flex-col" style={{ background: "#F0F4FA" }}>
+        <div className="px-4 pt-6">
+          <button onClick={() => navigate(-1)} className="p-2 -ml-2" style={{ color: "#1E3A5F" }} aria-label="Retour">
+            <ArrowLeft size={20} />
+          </button>
+        </div>
+        <div className="flex flex-col items-center justify-center py-14 px-6 text-center gap-2">
+          <p className="font-semibold" style={{ color: "#1E293B" }}>
+            Profil introuvable
+          </p>
+          <p className="text-sm text-gray-500 max-w-xs">
+            Ce profil n'existe pas, n'est plus actif ou ne vous est pas accessible.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (profil.erreur || !profil.data) {
     return (
@@ -180,6 +210,20 @@ export function TenantProfileView() {
               <Verification label="Identité vérifiée" ok={utilisateur.cni_verified} />
               <Verification label="Revenus justifiés" ok={utilisateur.income_verified} />
             </div>
+          </div>
+        )}
+
+        {/* Dossier non communiqué : la règle d'accès ne l'ouvre qu'au bailleur
+            qui a reçu une candidature de ce locataire. */}
+        {estLocataire && !passeport && (
+          <div
+            className="rounded-2xl p-5 text-sm text-gray-500"
+            style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }}
+          >
+            <h2 className="font-bold mb-2" style={{ color: "#1E293B" }}>
+              Dossier locataire
+            </h2>
+            Le dossier de ce locataire est visible lorsqu'il candidate à l'une de vos annonces.
           </div>
         )}
 
