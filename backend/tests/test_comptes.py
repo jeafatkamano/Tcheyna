@@ -13,7 +13,11 @@ import pytest
 from app import create_app, db
 from app.models import OTPCode, User
 from app.routes import auth
-from tests.conftest import MOT_DE_PASSE
+from tests.conftest import HASH_MOT_DE_PASSE, MOT_DE_PASSE
+
+# Méthode des vrais hachages (ex. « scrypt ») : le hachage factice doit coûter
+# le même temps.
+MOT_DE_PASSE_HASH_METHODE = HASH_MOT_DE_PASSE.split(":")[0]
 
 
 def _bearer(jeton):
@@ -260,9 +264,12 @@ def test_otp_antispam_60_secondes_en_json(client, fabrique, entetes):
 
 def test_quota_otp_message_et_delai(app, client, fabrique, entetes):
     user = fabrique.locataire(niveau=0)
+    # Envois faits au même numéro par un autre compte (qui l'a libéré depuis) :
+    # seul le quota par numéro est en jeu.
+    ancien = fabrique.locataire(niveau=0, phone=None, phone_verified=False)
     il_y_a_23h = datetime.utcnow() - timedelta(hours=23)
     for _ in range(5):
-        db.session.add(OTPCode(user_id=user.id, phone=user.phone, code_hash="x" * 64,
+        db.session.add(OTPCode(user_id=ancien.id, phone=user.phone, code_hash="x" * 64,
                                is_used=True, created_at=il_y_a_23h,
                                expires_at=il_y_a_23h + timedelta(minutes=10)))
     db.session.commit()
@@ -286,6 +293,134 @@ def test_quota_otp_fenetre_de_24_heures(client, fabrique, entetes):
     db.session.commit()
 
     assert client.post("/api/auth/send-otp", headers=entetes(user), json={}).status_code == 200
+
+
+def _vieillir(user):
+    # Recule les envois du compte : l'anti-spam de 60 s ne masque pas le quota.
+    for otp in OTPCode.query.filter_by(user_id=user.id).all():
+        otp.created_at -= timedelta(minutes=2)
+    db.session.commit()
+
+
+def test_quota_otp_par_compte_quel_que_soit_le_numero(app, client, fabrique, entetes, sms):
+    app.config["AT_API_KEY"] = "cle-at-de-test"
+    user = fabrique.locataire(niveau=0, phone=None, phone_verified=False)
+
+    codes = []
+    for i in range(12):
+        reponse = client.post("/api/auth/send-otp", headers=entetes(user),
+                              json={"phone": f"+2246200001{i:02d}"})
+        codes.append(reponse.status_code)
+        _vieillir(user)
+
+    assert codes == [200] * 5 + [429] * 7, "un SMS par minute en changeant de numéro"
+    assert len(sms) == 5
+    assert reponse.get_json()["error"].startswith("5 codes maximum par jour pour ce compte.")
+
+
+def test_numero_deja_pris_apres_les_quotas(client, fabrique, entetes):
+    # L'énumération des numéros inscrits est bornée par le quota du compte.
+    pris = fabrique.locataire(niveau=1)
+    curieux = fabrique.locataire(niveau=0, phone=None, phone_verified=False)
+    for _ in range(5):
+        db.session.add(OTPCode(user_id=curieux.id, phone="+224620000777", code_hash="x" * 64,
+                               is_used=True, created_at=datetime.utcnow() - timedelta(hours=1),
+                               expires_at=datetime.utcnow()))
+    db.session.commit()
+
+    reponse = client.post("/api/auth/send-otp", headers=entetes(curieux),
+                          json={"phone": pris.phone})
+
+    assert reponse.status_code == 429
+
+
+def test_otp_code_reutilise_refuse(client, fabrique, entetes, codes_otp):
+    user = fabrique.locataire(niveau=0)
+    en_tetes = entetes(user)
+    client.post("/api/auth/send-otp", headers=en_tetes, json={})
+    code = codes_otp[-1]
+    assert client.post("/api/auth/verify-otp", headers=en_tetes,
+                       json={"code": code}).status_code == 200
+
+    # Même si le compte repasse non vérifié, le code consommé ne resservira pas.
+    User.query.get(user.id).phone_verified = False
+    db.session.commit()
+    reponse = client.post("/api/auth/verify-otp", headers=en_tetes, json={"code": code})
+
+    assert reponse.status_code == 400
+    assert User.query.get(user.id).phone_verified is False
+
+
+def test_otp_numero_change_entre_envoi_et_verification(client, fabrique, entetes, codes_otp):
+    # Course : un send-otp concurrent remplace le numéro du compte après la
+    # lecture du code par verify-otp. Le code prouve l'ancien numéro, pas le
+    # nouveau, qui ne doit pas être marqué vérifié.
+    user = fabrique.locataire(niveau=0)
+    client.post("/api/auth/send-otp", headers=entetes(user), json={})
+    User.query.get(user.id).phone = "+224620000555"
+    db.session.commit()
+
+    reponse = client.post("/api/auth/verify-otp", headers=entetes(user),
+                          json={"code": codes_otp[-1]})
+
+    assert reponse.status_code == 409
+    assert "a changé" in reponse.get_json()["error"]
+    relu = User.query.get(user.id)
+    assert relu.phone_verified is False and relu.trust_level == 0
+
+
+def test_otp_remplace_pendant_la_verification(client, fabrique, entetes, codes_otp, monkeypatch):
+    # Course : le code est lu, puis invalidé par un send-otp concurrent avant
+    # la réservation de l'essai. La réservation exige `is_used = False`.
+    user = fabrique.locataire(niveau=0)
+    client.post("/api/auth/send-otp", headers=entetes(user), json={})
+    otp = OTPCode.query.filter_by(user_id=user.id).one()
+    otp_id = otp.id
+
+    original = auth.datetime
+
+    class Horloge(original):
+        @classmethod
+        def utcnow(cls):
+            # Appelée juste avant la réservation : simule l'envoi concurrent.
+            OTPCode.query.filter_by(id=otp_id).update({"is_used": True})
+            db.session.commit()  # l'autre requête a validé sa transaction
+            return original.utcnow()
+
+    monkeypatch.setattr(auth, "datetime", Horloge)
+    reponse = client.post("/api/auth/verify-otp", headers=entetes(user),
+                          json={"code": codes_otp[-1]})
+
+    assert reponse.status_code == 400
+    assert "déjà utilisé ou remplacé" in reponse.get_json()["error"]
+    assert User.query.get(user.id).phone_verified is False
+
+
+def test_connexion_email_inconnu_verifie_quand_meme_un_hachage(client, monkeypatch):
+    # Temps de réponse égalisé : un e-mail inconnu paie aussi la vérification.
+    appels = []
+    monkeypatch.setattr(auth, "check_password_hash",
+                        lambda h, mdp: appels.append(h) or False)
+
+    reponse = _connexion(client, "personne@exemple.test")
+
+    assert reponse.status_code == 401
+    assert appels == [auth.HASH_FACTICE]
+    assert auth.HASH_FACTICE.split(":")[0] == MOT_DE_PASSE_HASH_METHODE
+
+
+def test_formater_delai():
+    from app import formater_delai
+
+    assert formater_delai(0.2) == "1 seconde"
+    assert formater_delai(58.5) == "59 secondes"
+    assert formater_delai(59.1) == "1 minute"
+    assert formater_delai(900) == "15 minutes"
+    assert formater_delai(901) == "15 minutes"
+    assert formater_delai(89) == "1 minute"
+    assert formater_delai(90) == "2 minutes"
+    assert formater_delai(3600) == "1 heure"
+    assert formater_delai(23.6 * 3600) == "24 heures"
 
 
 # ─── Révocation des jetons ───────────────────────────────────
@@ -419,14 +554,13 @@ def test_decision_explicite_exigee(client, fabrique, admin, entetes, route, corp
     assert User.query.get(cible.id).trust_level == 2
 
 
-@pytest.mark.parametrize("approuve", [True, False], ids=["approbation", "refus"])
-def test_verify_cni_sans_piece_refusee(client, fabrique, admin, entetes, approuve):
+def test_verify_cni_sans_piece_validation_impossible(client, fabrique, admin, entetes):
     # Drapeau `cni_uploaded` posé, mais aucune pièce dans le passeport : c'est
     # le passeport qui fait foi.
     cible = fabrique.locataire(niveau=1, cni_uploaded=True)
 
     reponse = client.put(f"/api/admin/verify-cni/{cible.id}", headers=entetes(admin),
-                         json={"approuve": approuve, "motif": "Illisible"})
+                         json={"approuve": True})
 
     assert reponse.status_code == 422
     assert reponse.get_json()["details"][0] == {
@@ -434,6 +568,24 @@ def test_verify_cni_sans_piece_refusee(client, fabrique, admin, entetes, approuv
         "message": "Aucune pièce d'identité déposée"}
     relu = User.query.get(cible.id)
     assert relu.trust_level == 1 and relu.cni_verified is False and relu.cni_uploaded is True
+
+
+def test_verify_cni_refus_sans_piece_vide_la_file(client, fabrique, admin, entetes):
+    from app.models import Notification
+
+    cible = fabrique.locataire(niveau=1, cni_uploaded=True)
+    en_tetes = entetes(admin)
+    assert len(client.get("/api/admin/cni-pending", headers=en_tetes).get_json()) == 1
+
+    reponse = client.put(f"/api/admin/verify-cni/{cible.id}", headers=en_tetes,
+                         json={"approuve": False, "motif": "Rien à examiner"})
+
+    assert reponse.status_code == 200
+    relu = User.query.get(cible.id)
+    assert relu.cni_uploaded is False and relu.cni_verified is False and relu.trust_level == 1
+    assert client.get("/api/admin/cni-pending", headers=en_tetes).get_json() == []
+    # Aucune notification de rejet d'une pièce qui n'existe pas.
+    assert Notification.query.filter_by(user_id=cible.id).count() == 0
 
 
 def test_verify_cni_refus_ecarte_la_piece(client, fabrique, admin, entetes):

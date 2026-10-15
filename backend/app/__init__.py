@@ -36,16 +36,22 @@ def reponse_trop_de_requetes(message, reessayer_dans):
     return reponse
 
 
+def _arrondi(valeur):
+    # Arrondi au plus proche, demi vers le haut (`round` arrondit au pair).
+    return int(valeur + 0.5)
+
+
 def formater_delai(secondes):
-    """« 40 secondes », « 12 minutes », « 3 heures » : arrondi au-dessus, pour
-    ne jamais inviter à réessayer trop tôt."""
+    """« 40 secondes », « 15 minutes », « 3 heures ». Sous la minute, arrondi
+    au-dessus ; au-delà, au plus proche : un délai de 900 s affiché « 16
+    minutes » surprendrait, et `reessayer_dans` donne la valeur exacte."""
     secondes = max(1, int(math.ceil(secondes)))
     if secondes < 60:
         return f"{secondes} seconde{'s' if secondes > 1 else ''}"
-    minutes = math.ceil(secondes / 60)
+    minutes = max(1, _arrondi(secondes / 60))
     if minutes < 60:
         return f"{minutes} minute{'s' if minutes > 1 else ''}"
-    heures = math.ceil(minutes / 60)
+    heures = max(1, _arrondi(minutes / 60))
     return f"{heures} heure{'s' if heures > 1 else ''}"
 
 

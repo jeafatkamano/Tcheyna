@@ -43,6 +43,11 @@ OTP_MAX_ATTEMPTS = 5
 # Compté en base, et non par flask-limiter : chaque SMS est payé, le quota
 # doit être exact entre workers et survivre aux redémarrages.
 OTP_MAX_PAR_JOUR = 5
+# Codes demandés par un même compte sur 24 h glissantes, quel que soit le
+# numéro : sans ce plafond, un compte qui change de numéro à chaque appel
+# enverrait un SMS par minute (~1 440 par jour). Même valeur que par numéro,
+# à ajuster selon l'usage réel (numéro mal saisi puis corrigé, etc.).
+OTP_MAX_PAR_COMPTE_PAR_JOUR = 5
 OTP_ANTISPAM_SECONDES = 60
 
 # Limites de débit (R7). Connexion : seuls les échecs comptent, par couple
@@ -71,6 +76,13 @@ def generate_otp(length=6):
     # `secrets` et non `random` : le générateur de `random` (Mersenne Twister)
     # est prévisible à partir de ses sorties précédentes.
     return f"{secrets.randbelow(10 ** length):0{length}d}"
+
+
+# Empreinte d'un mot de passe aléatoire, calculée une fois au chargement avec
+# la même méthode que les vrais hachages : un e-mail inconnu coûte alors le
+# même temps de vérification qu'un compte existant, et la durée de la réponse
+# ne révèle pas quels e-mails sont inscrits.
+HASH_FACTICE = generate_password_hash(secrets.token_hex(16))
 
 
 def _cle_otp():
@@ -193,7 +205,10 @@ def register(corps):
 @valider_corps(Connexion)
 def login(corps):
     user = User.query.filter_by(email=corps.email.lower()).first()
-    if not user or not check_password_hash(user.password_hash, corps.password):
+    if not user:
+        check_password_hash(HASH_FACTICE, corps.password)  # temps égalisé, résultat ignoré
+        return jsonify({"error": "Identifiants incorrects"}), 401
+    if not check_password_hash(user.password_hash, corps.password):
         return jsonify({"error": "Identifiants incorrects"}), 401
 
     if not user.is_active:
@@ -265,17 +280,20 @@ def change_password(current_user, corps):
 @current_user_required
 @valider_corps(EnvoiOTP)
 def send_otp(current_user, corps):
+    # Verrou sur la ligne du compte (PostgreSQL ; sans effet sur SQLite) : deux
+    # envois simultanés du même compte sont traités l'un après l'autre, ce qui
+    # rend exacts l'anti-spam, les quotas et le numéro enregistré.
+    current_user = (User.query.filter_by(id=current_user.id)
+                    .with_for_update().populate_existing().one())
+
     # Permet de renseigner (ou corriger) le numéro au moment de la vérification
+    phone = current_user.phone
     if corps.phone:
         phone = normaliser_phone(corps.phone)
         if not PHONE_RE.match(phone or ""):
             return jsonify({"error": "Numéro de téléphone invalide"}), 400
-        existant = User.query.filter_by(phone=phone).first()
-        if existant and existant.id != current_user.id:
-            return jsonify({"error": "Ce numéro est déjà utilisé par un autre compte"}), 409
-        current_user.phone = phone
 
-    if not current_user.phone:
+    if not phone:
         return jsonify({"error": "Aucun numéro de téléphone associé au compte"}), 400
 
     if current_user.phone_verified:
@@ -283,6 +301,7 @@ def send_otp(current_user, corps):
                         "trust_level": current_user.trust_level}), 200
 
     maintenant = datetime.utcnow()
+    depuis = maintenant - timedelta(hours=24)
 
     # Anti-spam : un code toutes les 60 secondes au maximum
     dernier = (OTPCode.query.filter_by(user_id=current_user.id)
@@ -292,20 +311,34 @@ def send_otp(current_user, corps):
         return reponse_trop_de_requetes(
             f"Patientez {formater_delai(attente)} avant de redemander un code", attente)
 
-    # Quota quotidien par numéro (R7) : changer de compte ne le remet pas à
-    # zéro, chaque SMS est facturé.
-    depuis = maintenant - timedelta(hours=24)
-    envois = (OTPCode.query
-              .filter(OTPCode.phone == current_user.phone, OTPCode.created_at >= depuis)
-              .order_by(OTPCode.created_at.asc()).all())
-    if len(envois) >= OTP_MAX_PAR_JOUR:
-        # Une place se libère quand l'envoi le plus ancien de la fenêtre sort
-        # des 24 h.
-        attente = (envois[-OTP_MAX_PAR_JOUR].created_at + timedelta(hours=24)
-                   - maintenant).total_seconds()
+    def quota_atteint(filtre, maximum, message):
+        """429 si `maximum` envois correspondent au filtre sur 24 h ; une
+        place se libère quand le plus ancien sort de la fenêtre."""
+        envois = (OTPCode.query.filter(filtre, OTPCode.created_at >= depuis)
+                  .order_by(OTPCode.created_at.asc()).all())
+        if len(envois) < maximum:
+            return None
+        attente = (envois[-maximum].created_at + timedelta(hours=24) - maintenant).total_seconds()
         return reponse_trop_de_requetes(
-            f"{OTP_MAX_PAR_JOUR} codes maximum par jour pour ce numéro. "
-            f"Réessayez dans {formater_delai(attente)}.", attente)
+            f"{message} Réessayez dans {formater_delai(attente)}.", attente)
+
+    # Quota par compte, puis par numéro (R7) : changer de numéro ne contourne
+    # pas le premier, changer de compte ne remet pas le second à zéro ; chaque
+    # SMS est facturé.
+    refus = (quota_atteint(OTPCode.user_id == current_user.id, OTP_MAX_PAR_COMPTE_PAR_JOUR,
+                           f"{OTP_MAX_PAR_COMPTE_PAR_JOUR} codes maximum par jour pour ce compte.")
+             or quota_atteint(OTPCode.phone == phone, OTP_MAX_PAR_JOUR,
+                              f"{OTP_MAX_PAR_JOUR} codes maximum par jour pour ce numéro."))
+    if refus:
+        return refus
+
+    # Après l'anti-spam et les quotas : tester si un numéro est inscrit
+    # (énumération) est ainsi borné par le quota du compte.
+    if phone != current_user.phone:
+        existant = User.query.filter_by(phone=phone).first()
+        if existant and existant.id != current_user.id:
+            return jsonify({"error": "Ce numéro est déjà utilisé par un autre compte"}), 409
+        current_user.phone = phone
 
     OTPCode.query.filter_by(user_id=current_user.id, is_used=False).update({"is_used": True})
 
@@ -351,17 +384,28 @@ def verify_otp(current_user, corps):
     if not otp or not otp.code_hash:
         return jsonify({"error": "Aucun code en attente. Demandez un nouveau code."}), 400
 
-    if otp.expires_at < datetime.utcnow():
+    maintenant = datetime.utcnow()
+    if otp.expires_at < maintenant:
         return jsonify({"error": "Code expiré. Demandez un nouveau code."}), 400
 
     # L'essai est décompté AVANT la comparaison, par un UPDATE conditionnel :
     # deux requêtes simultanées (deux workers) ne peuvent pas dépasser
     # OTP_MAX_ATTEMPTS comparaisons, ce que permettait la lecture puis
-    # l'écriture de `attempts` en Python.
+    # l'écriture de `attempts` en Python. Le code doit encore être valide au
+    # moment de l'UPDATE : un send-otp concurrent a pu le remplacer depuis la
+    # lecture ci-dessus.
     reserve = (OTPCode.query
-               .filter(OTPCode.id == otp.id, OTPCode.attempts < OTP_MAX_ATTEMPTS)
+               .filter(OTPCode.id == otp.id, OTPCode.attempts < OTP_MAX_ATTEMPTS,
+                       OTPCode.is_used.is_(False), OTPCode.expires_at > maintenant)
                .update({OTPCode.attempts: OTPCode.attempts + 1}, synchronize_session=False))
     if not reserve:
+        db.session.rollback()
+        db.session.refresh(otp)
+        if otp.is_used:
+            return jsonify({"error": "Code déjà utilisé ou remplacé. Demandez un nouveau code.",
+                            "details": []}), 400
+        if otp.expires_at <= maintenant:
+            return jsonify({"error": "Code expiré. Demandez un nouveau code.", "details": []}), 400
         OTPCode.query.filter_by(id=otp.id).update({"is_used": True}, synchronize_session=False)
         db.session.commit()
         return jsonify({"error": "Trop de tentatives. Demandez un nouveau code.", "details": []}), 429
@@ -373,8 +417,25 @@ def verify_otp(current_user, corps):
         restantes = max(0, OTP_MAX_ATTEMPTS - otp.attempts)
         return jsonify({"error": f"Code incorrect ({restantes} tentative(s) restante(s))"}), 400
 
-    otp.is_used = True
-    current_user.phone_verified = True
+    # Consommation atomique : un même code ne valide qu'une fois, même reçu
+    # deux fois en parallèle.
+    consomme = (OTPCode.query.filter(OTPCode.id == otp.id, OTPCode.is_used.is_(False))
+                .update({OTPCode.is_used: True}, synchronize_session=False))
+    db.session.commit()
+    if consomme != 1:
+        return jsonify({"error": "Code déjà utilisé ou remplacé. Demandez un nouveau code.",
+                        "details": []}), 400
+
+    # Le numéro vérifié est celui auquel le code a été ENVOYÉ : si le compte a
+    # changé de numéro entre-temps (send-otp concurrent), l'UPDATE ne touche
+    # aucune ligne et le nouveau numéro, jamais prouvé, reste non vérifié.
+    verifie = (User.query.filter(User.id == current_user.id, User.phone == otp.phone)
+               .update({User.phone_verified: True}, synchronize_session=False))
+    if verifie != 1:
+        db.session.rollback()
+        return jsonify({"error": "Le numéro du compte a changé depuis l'envoi du code. "
+                                 "Demandez un nouveau code.", "details": []}), 409
+    db.session.refresh(current_user)
     ancien_niveau = current_user.trust_level or 0
     nouveau_niveau = current_user.update_trust_level()
 

@@ -193,13 +193,25 @@ def verify_cni(current_user, user_id, corps):
     user = User.query.get_or_404(user_id)
     approuve = corps.approuve
 
-    # R1 : une décision ne porte que sur une pièce effectivement déposée. Le
-    # passeport fait foi, pas le drapeau `cni_uploaded`, qui peut dériver.
-    # Vaut aussi pour un refus : il notifierait le rejet d'une pièce qui
-    # n'existe pas.
+    # R1 : une validation ne porte que sur une pièce effectivement déposée.
+    # Le passeport fait foi, pas le drapeau `cni_uploaded`, qui peut dériver.
     passeport = user.passport
     if not (passeport and (passeport.cni_recto_url or passeport.passport_url)):
-        raise erreur_champ("approuve", "piece_absente", "Aucune pièce d'identité déposée")
+        if approuve:
+            raise erreur_champ("approuve", "piece_absente", "Aucune pièce d'identité déposée")
+        # Refus sans pièce : un drapeau `cni_uploaded` orphelin laisse le
+        # compte dans la file d'attente. On la vide en remettant les drapeaux
+        # à faux, sans notifier le rejet d'une pièce qui n'existe pas.
+        user.cni_uploaded = False
+        user.cni_verified = False
+        if passeport:
+            passeport.docs_uploaded = False
+        user.update_trust_level()
+        if passeport:
+            passeport.calculate_score()
+        db.session.commit()
+        return jsonify({"message": "Aucune pièce déposée : demande retirée de la file",
+                        "trust_level": user.trust_level, "badge": user.badge}), 200
 
     user.cni_verified = bool(approuve)
     if not approuve:
