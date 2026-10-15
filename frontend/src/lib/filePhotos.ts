@@ -63,7 +63,7 @@ export interface DependancesFile {
     listingId: string,
     fichier: File,
     options: { onProgression: (fraction: number) => void; signal: AbortSignal },
-  ) => Promise<{ images: string[] }>;
+  ) => Promise<{ images: string[]; url?: string | null }>;
   creerApercu?: (fichier: Blob) => string;
   revoquerApercu?: (url: string) => void;
 }
@@ -253,10 +253,9 @@ export class FilePhotos {
         signal: this.controleur.signal,
         onProgression: (fraction) => this.modifier(photo.id, { progression: fraction }),
       });
-      // Le serveur ajoute en fin de liste ; un doublon reconnu (même photo
-      // déjà enregistrée) renvoie la liste inchangée, dont la dernière est
-      // justement cette photo.
-      const url = reponse.images.at(-1);
+      // URL de cette photo, donnée par le serveur (ajoutée, ou reconnue comme
+      // doublon) : jamais déduite de sa place dans la liste.
+      const url = reponse.url ?? undefined;
       const apercu = this.etat.photos.find((p) => p.id === photo.id)?.apercu;
       const garder = Boolean(url && apercu && !this.etat.apercusLocaux[url]);
       this.enlever(photo.id, garder);

@@ -206,6 +206,11 @@ def preparer_image(fichier, dossier):
     fichier.stream.seek(0)
     empreinte = hashlib.sha256(recu).hexdigest()[:20]
 
+    # Mémoire (Render gratuit : 512 Mo pour deux workers) : une photo de
+    # 48 Mpx décodée en pleine taille pèse 144 Mo, et chaque copie autant.
+    # On demande donc au décodeur JPEG une version déjà réduite (`draft`, par
+    # facteurs 1/2, 1/4, 1/8 : quasi gratuit), puis on réduit à 1280 px AVANT
+    # de tourner l'image et de convertir son mode, qui copient l'image entière.
     try:
         with warnings.catch_warnings():
             # Entre PIXELS_MAX et son double, Pillow n'émet qu'un avertissement.
@@ -213,7 +218,12 @@ def preparer_image(fichier, dossier):
             with Image.open(io.BytesIO(recu), formats=FORMATS_LUS) as source:
                 if source.width * source.height > PIXELS_MAX:
                     raise ImageIllisible("Image trop grande (50 mégapixels maximum).")
+                if source.format in ("JPEG", "MPO"):
+                    source.draft("RGB", (2 * COTE_MAX, 2 * COTE_MAX))
                 source.load()
+                # Boîte carrée : réduire avant de tourner donne la même taille
+                # finale. L'orientation EXIF est conservée par `thumbnail`.
+                source.thumbnail((COTE_MAX, COTE_MAX), Image.Resampling.LANCZOS)
                 image = ImageOps.exif_transpose(source)
     except ImageIllisible:
         raise
@@ -226,7 +236,6 @@ def preparer_image(fichier, dossier):
     transparente = image.mode in ("RGBA", "LA", "PA") or (
         image.mode == "P" and "transparency" in image.info)
     image = image.convert("RGBA" if transparente else "RGB")
-    image.thumbnail((COTE_MAX, COTE_MAX), Image.Resampling.LANCZOS)
 
     sortie = io.BytesIO()
     # Ni `exif`, ni `xmp`, ni `icc_profile` : le fichier écrit n'en porte aucun.

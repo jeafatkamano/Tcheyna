@@ -25,8 +25,9 @@ function fabriquer(echecs: Map<string, unknown> = new Map()) {
       echecs.delete(fichier.name); // n'échoue qu'une fois
       throw echec;
     }
-    serveur.push(fichier.name);
-    return { images: [...serveur] };
+    // Comme le serveur : une photo déjà présente n'est pas ajoutée (doublon).
+    if (!serveur.includes(fichier.name)) serveur.push(fichier.name);
+    return { images: [...serveur], url: fichier.name };
   });
   const file = new FilePhotos({
     compresser: async (f) => new File([f], f.name.replace(/\.\w+$/, ".webp"), { type: "image/webp" }),
@@ -181,5 +182,22 @@ describe("FilePhotos", () => {
     file.vider();
     expect(revoquer).toHaveBeenCalledWith("blob:a.webp");
     expect(file.getSnapshot().apercusLocaux).toEqual({});
+  });
+
+  it("doublon reconnu : l'aperçu va à la bonne photo, pas à la dernière", async () => {
+    // [A, B] envoyées, puis A renvoyée (réponse perdue, « Réessayer ») :
+    // la liste serveur reste [A, B], l'aperçu de A ne doit pas couvrir B.
+    const { file } = fabriquer();
+    await file.ajouter([photo("a.jpg"), photo("b.jpg")]);
+    await file.demarrer("annonce-1");
+    file.vider();
+    file.reprendre();
+
+    await file.ajouter([photo("a.jpg")]);
+    await file.demarrer("annonce-1");
+
+    const apercus = file.getSnapshot().apercusLocaux;
+    expect(apercus["a.webp"]).toBe("blob:a.webp");
+    expect(apercus["b.webp"]).toBeUndefined();
   });
 });

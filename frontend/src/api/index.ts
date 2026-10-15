@@ -201,7 +201,8 @@ export const listingsAPI = {
     const form = new FormData();
     // Le nom (avec extension) est obligatoire : le serveur en déduit le format.
     form.append("file", fichier, fichier.name);
-    return envoyerFichier<{ message: string; images: string[] }>(
+    // `url` : celle de cette photo, ajoutée ou déjà présente (doublon).
+    return envoyerFichier<{ message: string; images: string[]; url: string | null }>(
       `/listings/${id}/photos`,
       form,
       options,

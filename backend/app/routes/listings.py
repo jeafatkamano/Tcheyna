@@ -499,6 +499,7 @@ def televerser_photos(current_user, listing_id):
     #    une photo renvoyée après une réponse perdue (« Réessayer ») porte la
     #    même empreinte que celle déjà enregistrée, elle n'est pas ajoutée.
     preparees = []
+    empreintes = []  # de chaque fichier reçu, doublons compris, dans l'ordre
     erreur = None
     for fichier in fichiers:
         try:
@@ -506,6 +507,7 @@ def televerser_photos(current_user, listing_id):
         except stockage.ErreurStockage as exc:
             erreur = exc
             break
+        empreintes.append(image.empreinte)
         if deja_presente(image.empreinte, existantes) or any(
                 p.empreinte == image.empreinte for p in preparees):
             continue
@@ -544,10 +546,17 @@ def televerser_photos(current_user, listing_id):
     if erreur is not None:
         return jsonify({"error": str(erreur), "ajoutees": len(nouvelles)}), erreur.statut
 
+    images = listing.to_dict()["images"]
+    # URL de chaque fichier envoyé, ajouté ou reconnu comme doublon : le client
+    # sait ainsi quelle vignette correspond à sa photo, sans supposer qu'elle
+    # est la dernière de la liste.
+    urls = [next((u for u in images if f"-{e}." in u), None) for e in empreintes]
     return jsonify({
         "message": f"{len(nouvelles)} photo(s) ajoutée(s)" if nouvelles
         else "Photo déjà enregistrée",
-        "images": listing.to_dict()["images"],
+        "images": images,
+        "url": urls[-1] if urls else None,
+        "urls": urls,
     }), 201 if nouvelles else 200
 
 

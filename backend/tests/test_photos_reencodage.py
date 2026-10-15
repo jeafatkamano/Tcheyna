@@ -130,3 +130,50 @@ def test_avatar_reencode_sans_gps(app, client, fabrique, entetes):
     assert b"Exif" not in octets
     with Image.open(io.BytesIO(octets)) as image:
         assert image.format == "WEBP" and image.size == (20, 40)
+
+
+def test_avatar_illisible_refuse_en_422(client, fabrique, entetes):
+    utilisateur = fabrique.bailleur()
+
+    reponse = client.post("/api/users/me/avatar", headers=entetes(utilisateur),
+                          data={"file": (io.BytesIO(b"pas une image"), "moi.png")},
+                          content_type="multipart/form-data")
+
+    assert reponse.status_code == 422
+    assert "pas une image lisible" in reponse.get_json()["error"]
+
+
+def test_grande_photo_reduite_avant_rotation_garde_l_orientation(app, client, annonce,
+                                                                   bailleur, entetes):
+    # 4000 × 2000 couché, orientation 6 : décodage réduit (draft), réduction,
+    # puis rotation. Résultat attendu debout : 640 × 1280. Un repère rouge en
+    # haut à gauche du capteur doit finir en haut à droite.
+    image = Image.new("RGB", (4000, 2000), (255, 255, 255))
+    image.paste((255, 0, 0), (0, 0, 800, 400))
+    exif = Image.Exif()
+    exif[ORIENTATION] = 6
+    flux = io.BytesIO()
+    image.save(flux, "JPEG", exif=exif.tobytes(), quality=90)
+    flux.seek(0)
+
+    reponse = _envoyer(client, annonce, bailleur, entetes, flux, "grande.jpg")
+
+    assert reponse.status_code == 201
+    with Image.open(io.BytesIO(_fichier_stocke(app, reponse.get_json()["url"]))) as stockee:
+        assert stockee.size == (640, 1280)
+        rouge = stockee.convert("RGB").getpixel((600, 40))
+        blanc = stockee.convert("RGB").getpixel((40, 40))
+        assert rouge[0] > 200 and rouge[1] < 60
+        assert blanc[1] > 200
+
+
+def test_reponse_donne_l_url_de_la_photo_meme_en_doublon(client, annonce, bailleur, entetes,
+                                                          fichier_image):
+    # [A, B] puis A renvoyé : l'URL rendue est celle de A, pas la dernière (B).
+    a = _envoyer(client, annonce, bailleur, entetes, *fichier_image("a.png")).get_json()
+    b = _envoyer(client, annonce, bailleur, entetes, *fichier_image("b.png")).get_json()
+    a_bis = _envoyer(client, annonce, bailleur, entetes, *fichier_image("a.png"))
+
+    assert a_bis.status_code == 200
+    assert a_bis.get_json()["url"] == a["url"] != b["url"]
+    assert a_bis.get_json()["images"][-1] == b["url"]
