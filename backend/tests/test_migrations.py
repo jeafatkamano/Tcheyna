@@ -117,3 +117,45 @@ def test_revision_comptes_sur_une_base_remplie(tmp_path, monkeypatch):
         assert "token_version" not in {c["name"] for c in inspect(db.engine).get_columns("users")}
         db.session.remove()
         db.engine.dispose()
+
+
+def test_revision_donnees_personnelles_date_les_pieces_existantes(tmp_path, monkeypatch):
+    """Lot 1.5 : les pièces déjà déposées reçoivent une date de dépôt (celle
+    de la dernière modification du passeport), les autres restent à NULL."""
+    from sqlalchemy import text
+
+    monkeypatch.setattr(logging.config, "fileConfig", lambda *_a, **_k: None)
+
+    class ConfigMigration(TestingConfig):
+        SQLALCHEMY_DATABASE_URI = f"sqlite:///{tmp_path / 'pieces.sqlite'}"
+
+    application = create_app(ConfigMigration)
+    with application.app_context():
+        upgrade(directory=DOSSIER_MIGRATIONS, revision="7c4f1d2e9a6b")
+        with db.engine.begin() as connexion:
+            for n in (1, 2):
+                connexion.execute(text(
+                    "INSERT INTO users (id, email, password_hash, full_name, role) "
+                    f"VALUES ('u{n}', 'l{n}@exemple.test', 'x', 'L{n}', 'tenant')"))
+            connexion.execute(text(
+                "INSERT INTO tenant_passports (id, tenant_id, cni_recto_url, updated_at) "
+                "VALUES ('p1', 'u1', 'supabase://documents/recto.png', '2026-01-02 03:04:05')"))
+            connexion.execute(text(
+                "INSERT INTO tenant_passports (id, tenant_id, income_doc_url, created_at) "
+                "VALUES ('p2', 'u2', 'supabase://documents/paie.pdf', '2026-02-01 00:00:00')"))
+
+        upgrade(directory=DOSSIER_MIGRATIONS)
+        with db.engine.begin() as connexion:
+            lignes = {i: (a, b) for i, a, b in connexion.execute(text(
+                "SELECT id, identite_deposee_le, revenus_deposes_le FROM tenant_passports"))}
+            assert lignes == {"p1": ("2026-01-02 03:04:05", None),
+                              "p2": (None, "2026-02-01 00:00:00")}
+            assert connexion.execute(text("SELECT COUNT(*) FROM verifications")).scalar() == 0
+
+        downgrade(directory=DOSSIER_MIGRATIONS, revision="7c4f1d2e9a6b")
+        inspecteur = inspect(db.engine)
+        assert "verifications" not in inspecteur.get_table_names()
+        assert "fichiers_a_supprimer" not in inspecteur.get_table_names()
+        assert "supprime_le" not in {c["name"] for c in inspecteur.get_columns("users")}
+        db.session.remove()
+        db.engine.dispose()

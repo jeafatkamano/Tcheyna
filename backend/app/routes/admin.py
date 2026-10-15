@@ -22,6 +22,7 @@ from app.routes import role_required
 from app.schemas import erreur_champ, valider_corps
 from app.schemas.admin import Decision, StatutCompte
 from app.schemas.payments import PAIEMENTS_HORS_PLATEFORME
+from app.services import donnees_personnelles as dp
 from app.services import notifications as notify
 from app.services import stockage
 
@@ -218,24 +219,28 @@ def verify_cni(current_user, user_id, corps):
         user.update_trust_level()
         if passeport:
             passeport.calculate_score()
+        dp.consigner(current_user, user.id, "identite", "classee",
+                     corps.motif or "Aucune pièce déposée")
         db.session.commit()
         return jsonify({"message": "Aucune pièce déposée : demande retirée de la file",
                         "trust_level": user.trust_level, "badge": user.badge}), 200
 
     user.cni_verified = bool(approuve)
-    if not approuve:
-        # Le document est écarté : l'utilisateur doit en redéposer un.
-        user.cni_uploaded = False
-        if user.passport:
-            user.passport.cni_recto_url = None
-            user.passport.cni_verso_url = None
-            user.passport.passport_url = None
-            user.passport.docs_uploaded = False
+    # Politique de confidentialité §7 : la pièce est supprimée dès la décision,
+    # qu'elle soit validée ou refusée. Seul le résultat (`cni_verified`) et
+    # le journal `verifications` en gardent la trace.
+    a_supprimer = dp.planifier_suppression(dp.retirer_pieces_identite(passeport),
+                                           "decision_identite")
+    # Validée : le dépôt reste acquis (score, file d'attente) sans le fichier.
+    # Refusée : l'utilisateur doit en redéposer une.
+    user.cni_uploaded = bool(approuve)
+    passeport.docs_uploaded = bool(approuve)
+    dp.consigner(current_user, user.id, "identite",
+                 "approuvee" if approuve else "refusee", corps.motif)
 
     ancien = user.trust_level or 0
     nouveau = user.update_trust_level()
-    if user.passport:
-        user.passport.calculate_score()
+    passeport.calculate_score()
 
     if approuve and nouveau > ancien:
         niveau = TRUST_LEVELS[nouveau]
@@ -249,6 +254,7 @@ def verify_cni(current_user, user_id, corps):
         )
 
     db.session.commit()
+    dp.executer_suppressions(a_supprimer)
 
     return jsonify({
         "message": "Identité validée" if approuve else "Identité refusée",
@@ -291,6 +297,11 @@ def verify_revenus(current_user, user_id, corps):
 
     user.passport.income_verified = bool(approuve)
     user.income_verified = bool(approuve)
+    # Supprimé dès la décision, comme les pièces d'identité.
+    a_supprimer = dp.planifier_suppression(dp.retirer_justificatif_revenus(user.passport),
+                                           "decision_revenus")
+    dp.consigner(current_user, user.id, "revenus",
+                 "approuvee" if approuve else "refusee", corps.motif)
 
     ancien = user.trust_level or 0
     nouveau = user.update_trust_level()
@@ -307,6 +318,7 @@ def verify_revenus(current_user, user_id, corps):
         )
 
     db.session.commit()
+    dp.executer_suppressions(a_supprimer)
     return jsonify({"message": "Revenus validés" if approuve else "Revenus refusés",
                     "trust_level": user.trust_level}), 200
 
@@ -352,6 +364,11 @@ def certifier_annonce(current_user, listing_id, corps):
         listing.certified_at = None
         listing.certification_note = motif
 
+    # Les pièces de propriété restent (question ouverte à Kamano) : la
+    # politique de confidentialité ne fixe pas leur durée, et après un refus
+    # le bailleur complète son dossier au lieu de tout redéposer.
+    dp.consigner(current_user, listing.id, "certification_annonce",
+                 "approuvee" if approuve else "refusee", motif)
     notify.certification_traitee(
         listing.landlord_id, approuve, listing.title_fr, listing.id, motif
     )
@@ -398,7 +415,16 @@ def basculer_statut(current_user, user_id, corps):
     if user.id == current_user.id:
         return jsonify({"error": "Vous ne pouvez pas désactiver votre propre compte"}), 400
 
-    user.is_active = (not user.is_active) if corps.is_active is None else corps.is_active
+    actif = (not user.is_active) if corps.is_active is None else corps.is_active
+    if actif and user.supprime_le:
+        # Ses données ont été effacées à sa demande : le réactiver rendrait un
+        # compte vide, sans titulaire joignable.
+        return jsonify({"error": "Ce compte a été supprimé par son titulaire : "
+                                 "il ne peut pas être réactivé"}), 409
+    if actif != user.is_active:
+        dp.consigner(current_user, user.id, "statut_compte",
+                     "activation" if actif else "desactivation")
+    user.is_active = actif
     if not user.is_active:
         # Les jetons déjà émis sont révoqués : sans cela, un compte désactivé
         # pour fraude gardait l'accès aux routes qui ne relisent pas

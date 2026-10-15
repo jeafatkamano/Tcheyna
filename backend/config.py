@@ -106,6 +106,15 @@ class Config:
     SUPABASE_BUCKET_PUBLIC = os.getenv("SUPABASE_BUCKET_PUBLIC", "tcheyna-photos")
     SUPABASE_BUCKET_PRIVE = os.getenv("SUPABASE_BUCKET_PRIVE", "tcheyna-documents")
 
+    # ─── Conservation des pièces (décision D5) ──────────────
+    # Nombre de jours au-delà duquel une pièce d'identité ou de revenus
+    # restée SANS décision est supprimée par `flask donnees purger-pieces`.
+    # D5 (15/10/2026) : 12 mois, comme l'annonce la politique de confidentialité ;
+    # une pièce examinée est, elle, supprimée dès la décision.
+    # Lue telle quelle : une valeur invalide ne doit pas empêcher l'application
+    # de démarrer, c'est la purge qui la refuse (`purger_pieces_sans_decision`).
+    DUREE_CONSERVATION_PIECES_JOURS = os.getenv("DUREE_CONSERVATION_PIECES_JOURS", "365").strip() or None
+
     # ─── Africa's Talking (OTP SMS) ─────────────────────────
     AT_API_KEY = os.getenv("AT_API_KEY", "")
     AT_USERNAME = os.getenv("AT_USERNAME", "sandbox")
