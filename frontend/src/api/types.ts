@@ -225,6 +225,13 @@ export type TypePaiement =
   | "abonnement_passeport"
   | "mise_en_avant";
 
+/**
+ * Caution et premier loyer se règlent directement entre bailleur et locataire
+ * (décision D2 = A) : l'API refuse de les initier. Ils restent dans
+ * `TypePaiement` pour afficher les paiements déjà enregistrés.
+ */
+export type TypePaiementPayable = Exclude<TypePaiement, "caution" | "premier_loyer">;
+
 export interface Payment {
   id: string;
   reference: string;
@@ -244,7 +251,7 @@ export interface Payment {
 }
 
 export interface Tarif {
-  type: TypePaiement;
+  type: TypePaiementPayable;
   libelle: string;
   montant: number;
   payeur: string;

@@ -69,3 +69,20 @@ def test_un_admin_ne_se_desactive_pas_lui_meme(client, admin, entetes):
 def test_liste_des_utilisateurs_filtree(client, admin, locataire, bailleur, entetes):
     corps = client.get("/api/admin/users?role=tenant", headers=entetes(admin)).get_json()
     assert [u["id"] for u in corps["users"]] == [locataire.id]
+
+
+def test_revenus_sans_les_fonds_de_tiers(client, fabrique, admin, locataire, bailleur, entetes):
+    # Avant D2 = A : caution et premier loyer encaissés pour le compte du bailleur.
+    fabrique.paiement(locataire, type_paiement="caution", montant=4_000_000, statut="success")
+    fabrique.paiement(locataire, type_paiement="premier_loyer", montant=2_000_000,
+                      commission=120_000, statut="success")
+    fabrique.paiement(bailleur, type_paiement="commission", montant=120_000, statut="success")
+    fabrique.paiement(bailleur, type_paiement="certification", montant=250_000, statut="success")
+    fabrique.paiement(bailleur, type_paiement="boost", montant=50_000, statut="failed")
+
+    revenus = client.get("/api/admin/stats", headers=entetes(admin)).get_json()["revenus"]
+
+    assert revenus["total_encaisse"] == 120_000 + 250_000 + 120_000
+    assert revenus["commissions"] == 120_000 + 120_000
+    assert revenus["nb_paiements"] == 2
+    assert revenus["fonds_de_tiers_historiques"] == 6_000_000

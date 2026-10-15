@@ -184,8 +184,8 @@ export function Hero() {
           </h1>
 
           <p className="mx-auto mb-8 max-w-md text-base leading-relaxed text-pretty text-white/70">
-            Annonces certifiées sur pièces, locataires vérifiés, paiement Mobile Money avec
-            reçu. Vous visitez l'esprit tranquille.
+            Annonces certifiées sur pièces, locataires vérifiés, messagerie intégrée. Vous
+            visitez l'esprit tranquille.
           </p>
 
           <div className="mx-auto flex w-full max-w-xs flex-col gap-3 sm:max-w-none sm:flex-row sm:justify-center">

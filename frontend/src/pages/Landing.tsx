@@ -24,9 +24,9 @@ const ETAPES = [
   {
     numero: "03",
     icone: Smartphone,
-    titre: "Visite, accord et paiement tracé",
+    titre: "Visite et accord",
     description:
-      "Messagerie intégrée, puis caution et premier loyer réglés par Mobile Money, avec reçu numérique pour les deux parties.",
+      "Messagerie intégrée pour organiser la visite et convenir des conditions. Caution et loyer se règlent ensuite directement entre bailleur et locataire.",
     couleur: "#10B981",
   },
 ];
@@ -41,7 +41,7 @@ const NIVEAUX = [
 const GARANTIES = [
   "Annonces certifiées sur pièces de propriété",
   "Passeport Locataire vérifié à quatre niveaux",
-  "Paiement Mobile Money tracé, avec reçu",
+  "Services Tcheyna payables par Mobile Money, avec reçu",
   "Avis croisés après chaque location",
 ];
 

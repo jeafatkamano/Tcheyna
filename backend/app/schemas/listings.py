@@ -23,8 +23,10 @@ MAX_IMAGES = 10
 # `listings.prix` est un BIGINT : un prix de vente dépasse vite 2^31 GNF
 # (≈ 250 000 $). La borne arrête une saisie absurde, pas une vraie vente.
 PRIX_MAX = 10**12
-# Un loyer, ses charges et sa caution sont réglés par `payments.montant`,
-# encore en INTEGER : loyer + charges doit y tenir (premier loyer).
+# Borne posée quand le premier loyer passait par `payments.montant` (INTEGER).
+# Caution et loyer se règlent désormais hors plateforme (D2 = A), mais la borne
+# reste : le loyer sert d'assiette à la commission et un loyer mensuel au-delà
+# d'un milliard trahit une erreur de saisie.
 LOYER_MAX = 1_000_000_000
 
 Prix = Entier(1, PRIX_MAX)

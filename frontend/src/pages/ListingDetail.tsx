@@ -455,7 +455,7 @@ export function ListingDetail() {
             </span>
           </div>
           <p className="text-xs mt-2.5 leading-relaxed" style={{ color: "#C2410C" }}>
-            Payable par Mobile Money via Tcheyna, avec reçu numérique pour les deux parties.
+            À régler directement au propriétaire : Tcheyna n'encaisse ni la caution ni le loyer.
           </p>
         </div>
         )}

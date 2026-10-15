@@ -1,20 +1,27 @@
 """
 routes/payments.py — Paiements Mobile Money via CinetPay.
 
-Couvre les cinq flux du modèle économique : caution et premier loyer (payés par
-le locataire), commission de mise en relation, certification d'annonce et mise
-en avant (payées par le propriétaire), abonnement Passeport (locataire).
+Couvre les services Tcheyna : commission de mise en relation, certification
+d'annonce et mise en avant (payées par le propriétaire), abonnement Passeport
+(locataire).
+
+Caution et premier loyer ne passent plus par la plateforme (décision D2 = A,
+PRD §8.2) : Tcheyna n'a pas d'agrément pour détenir des fonds de tiers. Les
+paiements de ces types déjà enregistrés restent lisibles (historique, reçus) ;
+leur refus à l'initiation est porté par `schemas.payments.InitierPaiement`.
 
 Chaque paiement réussi produit un reçu numérique consultable par les deux
 parties — la traçabilité promise dans le business plan.
 """
 import uuid
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 import requests
 from flask import Blueprint, current_app, jsonify, request
+from sqlalchemy import select
 
-from app import db
+from app import db, limiter
 from app.models import (
     COMMISSION_RATE,
     PAYMENT_TYPES,
@@ -44,6 +51,12 @@ TARIFS_GNF = {
 }
 DUREE_MISE_EN_AVANT = timedelta(days=30)
 
+# Issues possibles d'une vérification auprès de CinetPay. « Inconnu » couvre
+# tout ce qui n'est ni un succès ni un refus explicite (panne réseau, réponse
+# illisible, transaction encore en cours, montant non conforme) : le paiement
+# reste alors en attente, car un client a peut-être déjà été débité.
+ACCEPTE, REFUSE, INCONNU = "accepte", "refuse", "inconnu"
+
 
 def _reference():
     """Référence de reçu lisible : TCH-XXXXXXXX."""
@@ -56,24 +69,12 @@ def _montant_attendu(type_paiement, user, match, listing):
     Le montant vient toujours du serveur : le client ne choisit jamais combien
     il paie, sauf pour les paiements libres entre parties.
     """
-    # Caution, loyer et commission découlent d'un bail : aucun n'a de sens sur
-    # une vente, dont le règlement se fait par acte notarié hors plateforme.
+    # La commission découle d'un bail : elle n'a pas de sens sur une vente,
+    # dont le règlement se fait par acte notarié hors plateforme.
     vente = bool(match and match.listing and match.listing.est_vente)
-    if vente and type_paiement in ("caution", "premier_loyer", "commission"):
+    if vente and type_paiement == "commission":
         return None, None, ("Ce paiement ne s'applique qu'à une location. La cession "
                             "d'un bien se règle devant notaire, hors plateforme.")
-
-    if type_paiement == "caution":
-        if not match or not match.listing:
-            return None, None, "Un match accepté est requis pour payer la caution"
-        montant = match.listing.caution or match.listing.prix
-        return montant, f"Caution — {match.listing.title_fr}", None
-
-    if type_paiement == "premier_loyer":
-        if not match or not match.listing:
-            return None, None, "Un match accepté est requis pour payer le loyer"
-        montant = (match.listing.prix or 0) + (match.listing.charges or 0)
-        return montant, f"Premier loyer — {match.listing.title_fr}", None
 
     if type_paiement == "commission":
         if not match or not match.listing:
@@ -126,7 +127,7 @@ def tarifs():
             "libelle": "Commission de mise en relation",
             "payeur": "Propriétaire",
             "description": f"{int(COMMISSION_RATE * 100)} % du premier loyer, "
-                           "prélevés lors d'une location conclue via Tcheyna",
+                           "dus par le propriétaire lorsqu'une location est conclue via Tcheyna",
         },
     }), 200
 
@@ -146,6 +147,11 @@ def initier_paiement(current_user, corps):
         return jsonify({"error": "Cette mise en relation ne vous concerne pas"}), 403
     if listing and listing.landlord_id != current_user.id:
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+    # La commission revient au bailleur (CGU, PRD) : l'autre partie du match
+    # ne peut pas la régler à sa place. Certification et mise en avant sont
+    # déjà réservées au propriétaire de l'annonce, l'abonnement au locataire.
+    if type_paiement == "commission" and match and current_user.id != match.listing.landlord_id:
+        return jsonify({"error": "La commission est réglée par le propriétaire"}), 403
 
     montant, description, erreur = _montant_attendu(type_paiement, current_user, match, listing)
     if erreur:
@@ -159,6 +165,11 @@ def initier_paiement(current_user, corps):
               else listing.devise if listing
               else DEVISE_TARIFS)
 
+    # Les tarifs fixes n'existent qu'en GNF : appliqués à une annonce dans une
+    # autre devise, ils factureraient 250 000 XOF au lieu de 250 000 GNF.
+    if type_paiement in TARIFS_GNF and devise != DEVISE_TARIFS:
+        return jsonify({"error": f"Ce service n'est proposé qu'en {DEVISE_TARIFS} pour le moment"}), 400
+
     transaction_id = uuid.uuid4().hex[:20].upper()
 
     paiement = Payment(
@@ -169,7 +180,6 @@ def initier_paiement(current_user, corps):
         type_paiement=type_paiement,
         description=description,
         montant=montant,
-        commission=int(montant * COMMISSION_RATE) if type_paiement == "premier_loyer" else 0,
         devise=devise,
         methode=methode,
         cinetpay_transaction_id=transaction_id,
@@ -233,7 +243,15 @@ def initier_paiement(current_user, corps):
 
 # ─── POST /api/payments/callback ─────────────────────────────
 
+# Chaque appel déclenche une vérification sortante (jusqu'à 15 s) sur un
+# serveur à deux workers : sans plafond, un rejeu massif le bloquerait.
+# Large pour ne pas gêner les relances légitimes de CinetPay.
+LIMITE_CALLBACK = "60 per minute"
+LIMITE_VERIFICATION = "10 per minute"
+
+
 @payments_bp.route("/callback", methods=["POST"])
+@limiter.limit(LIMITE_CALLBACK)
 @valider_corps(CallbackCinetPay, source="json_ou_form")
 def cinetpay_callback(corps):
     """Webhook CinetPay.
@@ -248,20 +266,27 @@ def cinetpay_callback(corps):
         current_app.logger.warning("Callback pour une transaction inconnue : %s", transaction_id)
         return jsonify({"message": "Transaction inconnue"}), 200
 
-    if paiement.statut == "success":
+    if paiement.statut != "pending":
         return jsonify({"message": "Déjà traité"}), 200
 
-    reussi = _verifier_aupres_de_cinetpay(transaction_id)
-    _appliquer_resultat(paiement, reussi)
-    db.session.commit()
+    paiement_id = paiement.id
+    # Ne pas garder une transaction ouverte pendant l'appel sortant.
+    db.session.rollback()
+    issue, donnees = _verifier_aupres_de_cinetpay(transaction_id)
+    _appliquer_verification(paiement_id, issue, donnees)
 
     return jsonify({"message": "OK"}), 200
 
 
 def _verifier_aupres_de_cinetpay(transaction_id):
-    """Interroge CinetPay pour connaître le statut réel de la transaction."""
+    """Interroge CinetPay pour connaître le statut réel de la transaction.
+
+    Renvoie `(issue, donnees)` : `issue` vaut ACCEPTE, REFUSE ou INCONNU,
+    `donnees` est le bloc `data` de la réponse (montant, devise…), à contrôler
+    contre le paiement avant tout succès.
+    """
     if not current_app.config.get("CINETPAY_API_KEY"):
-        return False
+        return INCONNU, {}
     try:
         reponse = requests.post(CINETPAY_CHECK_URL, json={
             "apikey":         current_app.config["CINETPAY_API_KEY"],
@@ -269,19 +294,80 @@ def _verifier_aupres_de_cinetpay(transaction_id):
             "transaction_id": transaction_id,
         }, timeout=15)
         resultat = reponse.json()
-        return (str(resultat.get("code")) == "00"
-                and resultat.get("data", {}).get("status") == "ACCEPTED")
     except (requests.RequestException, ValueError) as exc:
-        current_app.logger.error("Vérification CinetPay impossible : %s", exc)
-        return False
+        current_app.logger.error("Vérification CinetPay impossible (%s) : %s", transaction_id, exc)
+        return INCONNU, {}
+
+    donnees = resultat.get("data") if isinstance(resultat, dict) else None
+    if not isinstance(donnees, dict):
+        current_app.logger.error("Réponse CinetPay inexploitable (%s) : %r", transaction_id, resultat)
+        return INCONNU, {}
+
+    statut = donnees.get("status")
+    if str(resultat.get("code")) == "00" and statut == "ACCEPTED":
+        return ACCEPTE, donnees
+    # Seul un refus explicite clôt le paiement. Tout autre statut (attente du
+    # client, code inattendu) laisse la porte ouverte à un succès ultérieur.
+    if statut == "REFUSED":
+        return REFUSE, donnees
+    current_app.logger.info("Transaction CinetPay %s non conclue : %s", transaction_id, resultat)
+    return INCONNU, donnees
 
 
-def _appliquer_resultat(paiement, reussi):
-    """Met à jour le paiement et déclenche l'effet métier associé."""
-    if not reussi:
-        paiement.statut = "failed"
-        return
+def _montant_conforme(paiement, donnees):
+    """Le montant et la devise encaissés sont-ils ceux du paiement ?
 
+    Un statut ACCEPTED ne suffit pas : il faut que CinetPay ait encaissé ce
+    que Tcheyna a facturé, pas un montant modifié en cours de route.
+    """
+    try:
+        montant = Decimal(str(donnees.get("amount")))
+    except InvalidOperation:
+        montant = None
+    if montant is not None and not montant.is_finite():
+        montant = None  # « NaN » ou « Infinity » renvoyés tels quels
+    devise = str(donnees.get("currency") or "").strip().upper()
+    if montant == paiement.montant and devise == (paiement.devise or "").upper():
+        return True
+    current_app.logger.error(
+        "Paiement %s accepté par CinetPay avec un écart : attendu %s %s, reçu %r %r",
+        paiement.id, paiement.montant, paiement.devise,
+        donnees.get("amount"), donnees.get("currency"),
+    )
+    return False
+
+
+def _requete_verrouillee(payment_id):
+    """Relecture du paiement sous verrou de ligne (`SELECT … FOR UPDATE`).
+
+    `populate_existing` force la relecture même si l'objet est déjà dans la
+    session : sans elle, on lirait le statut d'avant l'attente du verrou.
+    """
+    return (select(Payment).where(Payment.id == payment_id)
+            .with_for_update().execution_options(populate_existing=True))
+
+
+def _appliquer_verification(payment_id, issue, donnees):
+    """Applique une vérification CinetPay, une seule fois par paiement.
+
+    Le callback et « vérifier » peuvent arriver en même temps : chacun relit
+    le paiement sous verrou et n'agit que s'il est encore en attente. Le
+    second attend que le premier ait validé, puis ne trouve plus rien à faire,
+    sans quoi la mise en avant serait prolongée deux fois et la notification
+    envoyée en double. L'appel réseau a lieu avant, hors du verrou.
+    """
+    paiement = db.session.execute(_requete_verrouillee(payment_id)).scalar_one()
+    if paiement.statut == "pending":
+        if issue == REFUSE:
+            paiement.statut = "failed"
+        elif issue == ACCEPTE and _montant_conforme(paiement, donnees):
+            _confirmer(paiement)
+    db.session.commit()
+    return paiement
+
+
+def _confirmer(paiement):
+    """Passe le paiement en succès et déclenche l'effet métier associé."""
     paiement.statut = "success"
     paiement.paid_at = datetime.utcnow()
 
@@ -292,10 +378,17 @@ def _appliquer_resultat(paiement, reussi):
             paiement.listing.certification_status = "pending"
             paiement.listing.certification_requested_at = datetime.utcnow()
 
-    elif paiement.type_paiement == "mise_en_avant" and paiement.listing:
-        base = max(paiement.listing.premium_until or datetime.utcnow(), datetime.utcnow())
-        paiement.listing.is_premium = True
-        paiement.listing.premium_until = base + DUREE_MISE_EN_AVANT
+    elif paiement.type_paiement == "mise_en_avant" and paiement.listing_id:
+        # Deux mises en avant distinctes de la même annonce peuvent être
+        # confirmées en même temps : le verrou du paiement ne les sépare pas.
+        # On relit donc l'annonce sous verrou, sinon une prolongation se perd.
+        annonce = db.session.execute(
+            select(Listing).where(Listing.id == paiement.listing_id)
+            .with_for_update().execution_options(populate_existing=True)
+        ).scalar_one()
+        base = max(annonce.premium_until or datetime.utcnow(), datetime.utcnow())
+        annonce.is_premium = True
+        annonce.premium_until = base + DUREE_MISE_EN_AVANT
 
     notify.paiement_confirme(
         paiement.user_id, paiement.montant, paiement.devise,
@@ -352,6 +445,7 @@ def recu(current_user, payment_id):
 # ─── POST /api/payments/<id>/verifier ────────────────────────
 
 @payments_bp.route("/<string:payment_id>/verifier", methods=["POST"])
+@limiter.limit(LIMITE_VERIFICATION)
 @current_user_required
 def verifier_paiement(current_user, payment_id):
     """Re-vérifie un paiement resté en attente (retour utilisateur sur le site)."""
@@ -362,12 +456,13 @@ def verifier_paiement(current_user, payment_id):
     if paiement.statut != "pending":
         return jsonify({"message": "Paiement déjà traité", "paiement": paiement.to_dict()}), 200
 
-    reussi = _verifier_aupres_de_cinetpay(paiement.cinetpay_transaction_id)
-    if reussi:
-        _appliquer_resultat(paiement, True)
-        db.session.commit()
+    paiement_id, transaction_id = paiement.id, paiement.cinetpay_transaction_id
+    db.session.rollback()
+    issue, donnees = _verifier_aupres_de_cinetpay(transaction_id)
+    paiement = _appliquer_verification(paiement_id, issue, donnees)
 
+    messages = {"success": "Paiement confirmé", "failed": "Paiement refusé"}
     return jsonify({
-        "message": "Paiement confirmé" if reussi else "Paiement toujours en attente",
+        "message": messages.get(paiement.statut, "Paiement toujours en attente"),
         "paiement": paiement.to_dict(),
     }), 200

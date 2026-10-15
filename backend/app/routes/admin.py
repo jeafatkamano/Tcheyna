@@ -21,6 +21,7 @@ from app.models import (
 from app.routes import role_required
 from app.schemas import erreur_champ, valider_corps
 from app.schemas.admin import Decision, StatutCompte
+from app.schemas.payments import PAIEMENTS_HORS_PLATEFORME
 from app.services import notifications as notify
 from app.services import stockage
 
@@ -127,6 +128,11 @@ def stats(current_user):
     il_y_a_30j = datetime.utcnow() - timedelta(days=30)
 
     paiements_ok = Payment.query.filter_by(statut="success").all()
+    # Caution et loyer encaissés avant D2 = A sont des fonds de tiers, pas des
+    # revenus Tcheyna : comptés à part. Les commissions historiques retenues sur
+    # un premier loyer restent comptées comme commissions.
+    services = [p for p in paiements_ok if p.type_paiement not in PAIEMENTS_HORS_PLATEFORME]
+    fonds_de_tiers = [p for p in paiements_ok if p.type_paiement in PAIEMENTS_HORS_PLATEFORME]
     matches_conclus = Match.query.filter_by(status="completed").count()
 
     return jsonify({
@@ -153,9 +159,12 @@ def stats(current_user):
             "conclues":   matches_conclus,
         },
         "revenus": {
-            "total_encaisse": sum(p.montant for p in paiements_ok),
-            "commissions":    sum(p.commission or 0 for p in paiements_ok),
-            "nb_paiements":   len(paiements_ok),
+            "total_encaisse": sum(p.montant for p in services)
+                              + sum(p.commission or 0 for p in fonds_de_tiers),
+            "commissions":    sum(p.montant for p in services if p.type_paiement == "commission")
+                              + sum(p.commission or 0 for p in fonds_de_tiers),
+            "nb_paiements":   len(services),
+            "fonds_de_tiers_historiques": sum(p.montant for p in fonds_de_tiers),
             "devise":         "GNF",
         },
         "file_de_verification": {
