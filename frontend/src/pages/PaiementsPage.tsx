@@ -95,7 +95,7 @@ export function PaiementsPage() {
           ) : !paiements.data?.paiements.length ? (
             <ListeVide
               titre="Aucun paiement"
-              description="Vos cautions, loyers et services Tcheyna réglés par Mobile Money apparaîtront ici avec leur reçu."
+              description="Vos services Tcheyna réglés par Mobile Money apparaîtront ici avec leur reçu. La caution et le loyer se règlent directement avec le propriétaire, hors plateforme."
               icone={<Receipt size={26} style={{ color: "#94A3B8" }} />}
             />
           ) : (

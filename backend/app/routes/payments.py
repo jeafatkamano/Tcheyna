@@ -1,9 +1,14 @@
 """
 routes/payments.py — Paiements Mobile Money via CinetPay.
 
-Couvre les cinq flux du modèle économique : caution et premier loyer (payés par
-le locataire), commission de mise en relation, certification d'annonce et mise
-en avant (payées par le propriétaire), abonnement Passeport (locataire).
+Couvre les services Tcheyna : commission de mise en relation, certification
+d'annonce et mise en avant (payées par le propriétaire), abonnement Passeport
+(locataire).
+
+Caution et premier loyer ne passent plus par la plateforme (décision D2 = A,
+PRD §8.2) : Tcheyna n'a pas d'agrément pour détenir des fonds de tiers. Les
+paiements de ces types déjà enregistrés restent lisibles (historique, reçus) ;
+leur refus à l'initiation est porté par `schemas.payments.InitierPaiement`.
 
 Chaque paiement réussi produit un reçu numérique consultable par les deux
 parties — la traçabilité promise dans le business plan.
@@ -64,24 +69,12 @@ def _montant_attendu(type_paiement, user, match, listing):
     Le montant vient toujours du serveur : le client ne choisit jamais combien
     il paie, sauf pour les paiements libres entre parties.
     """
-    # Caution, loyer et commission découlent d'un bail : aucun n'a de sens sur
-    # une vente, dont le règlement se fait par acte notarié hors plateforme.
+    # La commission découle d'un bail : elle n'a pas de sens sur une vente,
+    # dont le règlement se fait par acte notarié hors plateforme.
     vente = bool(match and match.listing and match.listing.est_vente)
-    if vente and type_paiement in ("caution", "premier_loyer", "commission"):
+    if vente and type_paiement == "commission":
         return None, None, ("Ce paiement ne s'applique qu'à une location. La cession "
                             "d'un bien se règle devant notaire, hors plateforme.")
-
-    if type_paiement == "caution":
-        if not match or not match.listing:
-            return None, None, "Un match accepté est requis pour payer la caution"
-        montant = match.listing.caution or match.listing.prix
-        return montant, f"Caution — {match.listing.title_fr}", None
-
-    if type_paiement == "premier_loyer":
-        if not match or not match.listing:
-            return None, None, "Un match accepté est requis pour payer le loyer"
-        montant = (match.listing.prix or 0) + (match.listing.charges or 0)
-        return montant, f"Premier loyer — {match.listing.title_fr}", None
 
     if type_paiement == "commission":
         if not match or not match.listing:
@@ -187,7 +180,6 @@ def initier_paiement(current_user, corps):
         type_paiement=type_paiement,
         description=description,
         montant=montant,
-        commission=int(montant * COMMISSION_RATE) if type_paiement == "premier_loyer" else 0,
         devise=devise,
         methode=methode,
         cinetpay_transaction_id=transaction_id,

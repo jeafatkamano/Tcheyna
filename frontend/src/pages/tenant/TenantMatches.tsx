@@ -12,7 +12,6 @@ import {
   type TypePaiement,
 } from "../../api";
 import { Erreur, ListeVide, MessageErreur, SqueletteCartes } from "../../components/Etats";
-import { BoutonPaiement, ModalePaiement } from "../../components/ModalePaiement";
 import { useAction, useApi } from "../../hooks/useApi";
 import { formatDateHeure, formatMontant, formatMontantCourt, formatRelatif } from "../../lib/format";
 
@@ -34,14 +33,13 @@ const FILTRES = [
 export function TenantMatches() {
   const [filtre, setFiltre] = useState<MatchStatus | undefined>(undefined);
   const [avisOuvert, setAvisOuvert] = useState<string | null>(null);
-  const [paiementOuvert, setPaiementOuvert] = useState<{ match: Match; type: TypePaiement } | null>(null);
 
   const candidatures = useApi(() => matchesAPI.mesCandidatures(filtre), [filtre]);
   const avisADonner = useApi(() => avisAPI.aDonner(), []);
   const paiements = useApi(() => paiementsAPI.mesPaiements(), []);
   const retrait = useAction(matchesAPI.retirer);
 
-  /** Un règlement déjà passé ne doit pas être proposé une seconde fois. */
+  /** Caution ou loyer réglés via Tcheyna avant la décision D2 : rappel de l'historique. */
   function dejaRegle(matchId: string, type: TypePaiement) {
     return (paiements.data?.paiements ?? []).some(
       (p) => p.match_id === matchId && p.type_paiement === type && p.statut !== "failed",
@@ -231,11 +229,7 @@ export function TenantMatches() {
                   </div>
 
                   {(match.status === "accepted" || match.status === "completed") && (
-                    <ReglementsEntree
-                      match={match}
-                      dejaRegle={dejaRegle}
-                      onPayer={(type) => setPaiementOuvert({ match, type })}
-                    />
+                    <ReglementsEntree match={match} dejaRegle={dejaRegle} />
                   )}
                 </div>
               </div>
@@ -245,23 +239,6 @@ export function TenantMatches() {
 
         <MessageErreur message={retrait.erreur} />
       </div>
-
-      {paiementOuvert && (
-        <ModalePaiement
-          type={paiementOuvert.type}
-          titre={paiementOuvert.type === "caution" ? "Dépôt de garantie" : "Premier loyer"}
-          description={
-            paiementOuvert.type === "caution"
-              ? "La caution est conservée par le propriétaire et vous est restituée en fin de bail. Le règlement via Tcheyna laisse une trace opposable aux deux parties."
-              : "Le premier mois de loyer, charges comprises. Un reçu numérique est émis pour vous et pour le propriétaire."
-          }
-          montant={montantDu(paiementOuvert.match, paiementOuvert.type)}
-          devise={paiementOuvert.match.listing?.devise}
-          matchId={paiementOuvert.match.id}
-          onFerme={() => setPaiementOuvert(null)}
-          onPaye={() => void paiements.recharger()}
-        />
-      )}
 
       {avisOuvert && (
         <ModaleAvis
@@ -278,27 +255,18 @@ export function TenantMatches() {
   );
 }
 
-/** Montant affiché avant redirection ; le serveur reste seul juge du montant réel. */
-function montantDu(match: Match, type: TypePaiement): number {
-  const listing = match.listing;
-  if (!listing) return 0;
-  if (type === "caution") return listing.caution ?? listing.prix;
-  return (listing.prix ?? 0) + (listing.charges ?? 0);
-}
-
 /**
- * Les deux règlements qui ouvrent l'entrée dans les lieux. Ils n'apparaissent
- * qu'une fois la candidature acceptée : payer avant l'accord n'aurait pas de
- * sens, et le serveur le refuserait.
+ * Coût d'entrée d'une candidature acceptée. Caution et premier loyer se
+ * règlent directement entre bailleur et locataire (décision D2 = A) : Tcheyna
+ * n'a pas d'agrément pour détenir des fonds de tiers. Les règlements passés
+ * par la plateforme avant cette décision restent rappelés.
  */
 function ReglementsEntree({
   match,
   dejaRegle,
-  onPayer,
 }: {
   match: Match;
   dejaRegle: (matchId: string, type: TypePaiement) => boolean;
-  onPayer: (type: TypePaiement) => void;
 }) {
   const listing = match.listing;
   if (!listing) return null;
@@ -315,17 +283,11 @@ function ReglementsEntree({
     );
   }
 
-  const etapes: { type: TypePaiement; label: string; montant: number }[] = [
-    { type: "caution", label: "Payer la caution", montant: listing.caution ?? listing.prix },
-    {
-      type: "premier_loyer",
-      label: "Payer le premier loyer",
-      montant: (listing.prix ?? 0) + (listing.charges ?? 0),
-    },
+  const anciens: { type: TypePaiement; label: string }[] = [
+    { type: "caution", label: "Caution" },
+    { type: "premier_loyer", label: "Premier loyer" },
   ];
-
-  const restants = etapes.filter((e) => !dejaRegle(match.id, e.type));
-  const regles = etapes.filter((e) => dejaRegle(match.id, e.type));
+  const regles = anciens.filter((e) => dejaRegle(match.id, e.type));
 
   return (
     <div className="pt-3 mt-1 border-t border-gray-100 space-y-2">
@@ -345,20 +307,13 @@ function ReglementsEntree({
           style={{ background: "#ECFDF5", color: "#047857" }}
         >
           <CheckCircle2 size={14} />
-          {e.label.replace("Payer ", "")} — réglé via Tcheyna
+          {e.label} — réglé via Tcheyna
         </div>
       ))}
 
-      {restants.map((e, i) => (
-        <BoutonPaiement
-          key={e.type}
-          label={e.label}
-          montant={e.montant}
-          devise={listing.devise}
-          variante={i === 0 ? "principal" : "secondaire"}
-          onClick={() => onPayer(e.type)}
-        />
-      ))}
+      <p className="text-xs leading-relaxed" style={{ color: "#64748B" }}>
+        La caution et le loyer se règlent directement avec le propriétaire, hors plateforme.
+      </p>
     </div>
   );
 }

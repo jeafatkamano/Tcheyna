@@ -235,7 +235,7 @@ def test_prix_de_vente_au_dela_d_un_int32(client, bailleur, entetes):
 
 
 def test_loyer_borne_par_les_paiements(client, annonce, bailleur, entetes):
-    # Le premier loyer est réglé par `payments.montant` (INTEGER).
+    # Borne historique (premier loyer en `payments.montant`), conservée.
     reponse = client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur),
                          json={"prix": LOYER_MAX + 1})
 
@@ -628,8 +628,8 @@ def test_front_mise_en_relation(client, fabrique, locataire, bailleur, annonce, 
     assert client.post("/api/payments/initier", headers=entetes(bailleur), json={
         "type_paiement": "certification", "listing_id": annonce.id, "methode": "orange_money",
     }).status_code == 200
-    assert client.post("/api/payments/initier", headers=entetes(locataire), json={
-        "type_paiement": "caution", "match_id": match_id, "methode": "mtn_momo",
+    assert client.post("/api/payments/initier", headers=entetes(bailleur), json={
+        "type_paiement": "commission", "match_id": match_id, "methode": "mtn_momo",
     }).status_code == 200
 
 

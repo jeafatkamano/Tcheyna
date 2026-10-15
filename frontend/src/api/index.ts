@@ -21,7 +21,7 @@ import type {
   Role,
   Tarif,
   TenantPassport,
-  TypePaiement,
+  TypePaiementPayable,
   TypeTransaction,
   User,
 } from "./types";
@@ -401,7 +401,7 @@ export const paiementsAPI = {
     }>("/payments/tarifs", { optionnel: true }),
 
   initier: (data: {
-    type_paiement: TypePaiement;
+    type_paiement: TypePaiementPayable;
     match_id?: string;
     listing_id?: string;
     methode?: string;

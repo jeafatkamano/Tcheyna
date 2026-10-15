@@ -12,7 +12,66 @@ from app.routes import payments
 def test_tarifs_publics(client):
     reponse = client.get("/api/payments/tarifs")
     assert reponse.status_code == 200
-    assert reponse.get_json()["devise"] == "GNF"
+    corps = reponse.get_json()
+    assert corps["devise"] == "GNF"
+    # D2 = A : caution et premier loyer ne sont pas des services Tcheyna.
+    types = {service["type"] for service in corps["services"]}
+    assert types == {"certification", "mise_en_avant", "abonnement_passeport"}
+
+
+# ─── D2 = A · Caution et premier loyer hors plateforme ───────
+
+@pytest.mark.parametrize("type_paiement", ["caution", "premier_loyer"])
+@pytest.mark.parametrize("payeur", ["locataire", "bailleur"])
+def test_caution_et_loyer_refuses(client, match, entetes, cinetpay, request, type_paiement,
+                                  payeur):
+    user = request.getfixturevalue(payeur)
+    reponse = client.post("/api/payments/initier", headers=entetes(user), json={
+        "type_paiement": type_paiement, "match_id": match.id, "methode": "orange_money",
+    })
+
+    assert reponse.status_code == 422
+    corps = reponse.get_json()
+    assert corps["error"] == ("La caution et le loyer ne se paient pas via Tcheyna : ils se "
+                              "règlent directement entre le bailleur et le locataire.")
+    assert corps["details"][0]["champ"] == "type_paiement"
+    assert corps["details"][0]["code"] == "hors_plateforme"
+    assert Payment.query.count() == 0
+    assert cinetpay.reseau.appels_vers(cinetpay.url_init) == []
+
+
+def test_type_de_paiement_requis(client, locataire, entetes):
+    # Le type valait « caution » par défaut : un corps sans type est désormais refusé.
+    reponse = client.post("/api/payments/initier", headers=entetes(locataire), json={})
+
+    assert reponse.status_code == 422
+    assert reponse.get_json()["details"][0]["code"] == "missing"
+    assert Payment.query.count() == 0
+
+
+def test_ancienne_caution_reste_lisible(client, fabrique, match, locataire, bailleur, admin,
+                                        entetes):
+    ancienne = fabrique.paiement(locataire, type_paiement="caution", match_id=match.id,
+                                 listing_id=match.listing_id, montant=4_000_000,
+                                 statut="success", paid_at=datetime(2026, 9, 1),
+                                 description="Caution — Appartement")
+
+    historique = client.get("/api/payments/mes-paiements", headers=entetes(locataire)).get_json()
+    assert historique["total"] == 1 and historique["total_paye"] == 4_000_000
+    (ligne,) = historique["paiements"]
+    assert (ligne["type_paiement"], ligne["type_label"]) == ("caution", "Dépôt de garantie")
+
+    # Reçu : le payeur, l'autre partie du match et l'administration.
+    for user in (locataire, bailleur, admin):
+        recu = client.get(f"/api/payments/{ancienne.id}", headers=entetes(user))
+        assert recu.status_code == 200
+        corps = recu.get_json()
+        assert (corps["reference"], corps["montant"], corps["statut"]) == (
+            ancienne.reference, 4_000_000, "success")
+        assert corps["payeur"]["id"] == locataire.id
+        assert corps["listing"]["id"] == match.listing_id
+
+    assert Payment.query.get(ancienne.id).statut == "success"
 
 
 def test_initiation_sans_passerelle_reste_en_attente(client, annonce, bailleur, entetes, reseau):

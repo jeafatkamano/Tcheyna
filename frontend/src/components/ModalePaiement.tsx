@@ -11,7 +11,7 @@
 import { CheckCircle, ExternalLink, Smartphone, X } from "lucide-react";
 import { useState } from "react";
 
-import { paiementsAPI, type TypePaiement } from "../api";
+import { paiementsAPI, type TypePaiementPayable } from "../api";
 import { useAction } from "../hooks/useApi";
 import { formatMontant } from "../lib/format";
 import { MessageErreur } from "./Etats";
@@ -25,7 +25,7 @@ const METHODES = [
 ] as const;
 
 interface Props {
-  type: TypePaiement;
+  type: TypePaiementPayable;
   titre: string;
   /** Ce que le paiement débloque, dit simplement. */
   description: string;
