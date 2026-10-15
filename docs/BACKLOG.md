@@ -20,7 +20,7 @@ Couloirs : voir [agents/LANES.md](agents/LANES.md).
 
 | Lot | Couloir | Tâche | Statut |
 |---|---|---|---|
-| 0.1 | — | D10 : organisation des dépôts (un seul, ou backend et frontend séparés) | bloqué D10 |
+| 0.1 | — | D10 : organisation des dépôts (un seul, ou backend et frontend séparés) | fait : D10 = A |
 | 0.2 | L6 | Backlog, couloirs, règles multi-agents, `scripts/agent-setup.sh` | en PR (cette PR) |
 | 0.3 | L6 | `docs/TCHEYNA_SPEC_TECHNIQUE.md` : machines à états du PRD §6 et contrat d'API | prêt |
 | 0.4 | L6 | Subagent `pr-reviewer` dans `.claude/agents/` (remplace le gabarit `kamano.agent.md`) | prêt |
@@ -67,6 +67,8 @@ Les PR sont empilées : les merger **dans cet ordre**. Avant le merge de #4, tam
 | 3.6 | L6 | Journal d'événements et tableau des indicateurs du PRD §4 | après phase 1 |
 | 3.7 | L4 | Notifications web push | après 2.8 |
 | 3.8 | L1 | Connexion par téléphone, mot de passe oublié par OTP | après 1.5 |
+| 3.9 | L6 | Déploiement séparé : `buildFilter` Render par service (chacun ne se redéploie que si son dossier change) | après phase 1 (D10 = A) |
+| 3.10 | socle | Contrat d'API : spécification OpenAPI publiée par le backend, types TypeScript du frontend générés depuis elle | après phase 1 (D10 = A) |
 
 ## Phase 4 — Sur données terrain uniquement
 
@@ -85,6 +87,6 @@ Séquestre de caution, application Expo, interface anglaise, second marché, esp
 | D7 | Plafond de candidatures actives par locataire | ouverte |
 | D8 | Délai pour noter après conclusion | ouverte |
 | D9 | Hébergement : plan Render payant ou ping de réveil | ouverte |
-| D10 | Un seul dépôt, ou backend et frontend dans des dépôts séparés | ouverte (Kamano penche pour la séparation) |
+| D10 | Un seul dépôt, ou backend et frontend dans des dépôts séparés | A : un seul dépôt jusqu'au merge de la phase 1, puis déploiement séparé (3.9) et contrat d'API (3.10) ; séparation en deux dépôts possible ensuite (15/10/2026) |
 | D11 | Identité légale de l'éditeur (`frontend/src/lib/editeur.ts`) | ouverte |
 | D12 | Durée de validité d'un justificatif de revenus | ouverte |
