@@ -225,19 +225,35 @@ function Formulaire({
     // réessayer (changer d'URL démonterait le formulaire et sa file).
     setCreee(reponse.listing);
     if (photos.etat.photos.length) {
-      setSucces("Annonce publiée. Envoi des photos en cours…");
       await photos.file.demarrer(reponse.listing.id);
       if (!monte.current || photos.file.estArretee()) return;
       const bilan = resumer(photos.file.getSnapshot());
-      if (bilan.enEchec > 0 || bilan.restantes > 0) {
-        setSucces("Annonce publiée. Certaines photos restent à envoyer.");
-        return;
-      }
+      if (bilan.enEchec > 0 || bilan.restantes > 0) return; // reprise manuelle
     }
 
     confirmer("Annonce publiée");
     onSauvegarde(reponse.listing);
   }
+
+  /** Après « Réessayer » en création : tout est parti, on va sur l'annonce. */
+  function apresReprise() {
+    if (!creee || existante || !monte.current || photos.file.estArretee()) return;
+    const bilan = resumer(photos.file.getSnapshot());
+    if (bilan.enEchec > 0 || bilan.restantes > 0) return;
+    confirmer("Annonce publiée");
+    onSauvegarde(creee);
+  }
+
+  // Bandeau de création, dérivé de la file : il disparaît de lui-même quand
+  // les photos manquantes finissent par partir.
+  const messageCreation =
+    creee && !existante
+      ? photos.resume.envoiActif
+        ? "Annonce publiée. Envoi des photos en cours…"
+        : photos.resume.enEchec > 0
+          ? "Annonce publiée. Certaines photos restent à envoyer."
+          : null
+      : null;
 
   async function supprimer() {
     if (!existante) return;
@@ -265,7 +281,7 @@ function Formulaire({
       </div>
 
       <div className="px-4 pt-5 space-y-5">
-        <MessageSucces message={succes} />
+        <MessageSucces message={succes ?? messageCreation} />
 
         {/* Bloc certification (édition seulement) */}
         {existante && (
@@ -657,6 +673,7 @@ function Formulaire({
               images={images}
               onImagesChange={setImages}
               photos={photos}
+              onRepriseTerminee={apresReprise}
             />
           </section>
 

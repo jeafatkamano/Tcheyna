@@ -14,6 +14,8 @@ import {
   delaiEnvoi,
   envoyerFichier,
   MESSAGE_RESEAU,
+  MESSAGE_SERVEUR_ENDORMI,
+  reveilServeur,
   tokens,
 } from "./client";
 
@@ -556,5 +558,50 @@ describe("envoyerFichier", () => {
     expect(appelsRefresh).toHaveLength(1);
     FauxXhr.instances.slice(2).forEach((x) => x.repondre(201, { images: [] }));
     await Promise.all([a, b, c]);
+  });
+});
+
+describe("réveil du serveur", () => {
+  it("signale le réveil pendant les reprises d'un 503, puis l'éteint", async () => {
+    fetchSimule
+      .mockResolvedValueOnce(new Response("<html>503</html>", { status: 503 }))
+      .mockResolvedValueOnce(json({ ok: 1 }));
+    const vu: boolean[] = [];
+    const desabonner = reveilServeur.subscribe(() => vu.push(reveilServeur.enCours()));
+
+    const r = await jusquauBout(api.get("/listings/"));
+    desabonner();
+
+    expect(r.ok).toBe(true);
+    expect(vu).toEqual([true, false]);
+    expect(reveilServeur.enCours()).toBe(false);
+  });
+
+  it("une coupure du téléphone n'est pas présentée comme un réveil", async () => {
+    fetchSimule.mockRejectedValue(new TypeError("Failed to fetch"));
+    const vu: boolean[] = [];
+    const desabonner = reveilServeur.subscribe(() => vu.push(reveilServeur.enCours()));
+
+    const r = await jusquauBout(api.get("/listings/"));
+    desabonner();
+
+    expect(vu).toEqual([]);
+    expect((r as { erreur: ApiError }).erreur.message).toBe(MESSAGE_RESEAU);
+  });
+
+  it("délai final : message « serveur », pas « réseau du téléphone »", async () => {
+    fetchSimule.mockImplementation(sansReponse);
+
+    const r = await jusquauBout(api.get("/listings/"));
+
+    expect((r as { erreur: ApiError }).erreur.message).toBe(MESSAGE_SERVEUR_ENDORMI);
+  });
+
+  it("502 final : même message « serveur »", async () => {
+    fetchSimule.mockImplementation(async () => new Response("Bad Gateway", { status: 502 }));
+
+    const r = await jusquauBout(api.get("/listings/"));
+
+    expect((r as { erreur: ApiError }).erreur.message).toBe(MESSAGE_SERVEUR_ENDORMI);
   });
 });

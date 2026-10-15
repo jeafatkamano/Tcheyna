@@ -6,6 +6,7 @@ import {
   avisAPI,
   matchesAPI,
   paiementsAPI,
+  urlFichier,
   type Match,
   type MatchStatus,
   type TypePaiement,
@@ -163,7 +164,7 @@ export function TenantMatches() {
                 >
                   <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0" style={{ background: "#F0F4FA" }}>
                     {listing.images[0] && (
-                      <img src={listing.images[0]} alt="" className="w-full h-full object-cover" />
+                      <img src={urlFichier(listing.images[0])} alt="" className="w-full h-full object-cover" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">

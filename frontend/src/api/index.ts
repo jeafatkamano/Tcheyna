@@ -33,6 +33,9 @@ export {
   estAnnulation,
   lireMotifDeconnexion,
   MESSAGE_RESEAU,
+  MESSAGE_REVEIL,
+  MESSAGE_SERVEUR_ENDORMI,
+  reveilServeur,
   tokens,
   urlFichier,
 } from "./client";

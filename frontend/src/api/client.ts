@@ -57,6 +57,13 @@ function poidsFormulaire(form: FormData): number {
 
 export const MESSAGE_RESEAU =
   "Connexion lente ou absente. Vérifiez votre réseau, puis réessayez.";
+/**
+ * Délai dépassé ou 502/503/504 : c'est le plus souvent le serveur (Render
+ * gratuit dort et met 30 à 60 s à se réveiller), pas le téléphone.
+ */
+export const MESSAGE_SERVEUR_ENDORMI =
+  "Le serveur ne répond pas encore. Réessayez dans un instant.";
+export const MESSAGE_REVEIL = "Le serveur démarre, cela peut prendre jusqu'à une minute…";
 
 const CLE_ACCESS = "tcheyna_access_token";
 const CLE_REFRESH = "tcheyna_refresh_token";
@@ -97,8 +104,32 @@ export function estAnnulation(err: unknown): boolean {
 }
 
 function erreurReseau(cause: "reseau" | "delai") {
-  return new ApiError(MESSAGE_RESEAU, 0, { cause });
+  return new ApiError(cause === "delai" ? MESSAGE_SERVEUR_ENDORMI : MESSAGE_RESEAU, 0, { cause });
 }
+
+/* ─── Réveil du serveur (observable par l'interface) ──────────── */
+
+/**
+ * Nombre de GET en reprise parce que le serveur tarde (délai, 502/503/504).
+ * Les écrans de chargement s'y abonnent pour dire que le serveur démarre.
+ */
+let reveilsEnCours = 0;
+const abonnesReveil = new Set<() => void>();
+
+function compterReveil(delta: number) {
+  reveilsEnCours += delta;
+  abonnesReveil.forEach((abonne) => abonne());
+}
+
+export const reveilServeur = {
+  subscribe(abonne: () => void) {
+    abonnesReveil.add(abonne);
+    return () => {
+      abonnesReveil.delete(abonne);
+    };
+  },
+  enCours: () => reveilsEnCours > 0,
+};
 
 function erreurAnnulation() {
   return new DOMException("Requête annulée", "AbortError");
@@ -262,7 +293,7 @@ function deconnecter(raison?: string): ApiError {
 function messageStatut(statut: number): string {
   if (statut === 413) return "Fichier trop lourd pour le serveur.";
   if (statut >= 502 && statut <= 504) {
-    return "Le serveur démarre ou est indisponible. Réessayez dans un instant.";
+    return MESSAGE_SERVEUR_ENDORMI;
   }
   return `Erreur ${statut}`;
 }
@@ -351,16 +382,32 @@ export async function request<T>(endpoint: string, options: Options = {}): Promi
   // Seul un GET se rejoue sans risque : voir l'en-tête du fichier.
   const pauses = methode === "GET" ? PAUSES_REPRISE_MS.slice(0, options.reprises ?? 2) : [];
 
-  for (let essai = 0; ; essai++) {
-    try {
-      return await tentative<T>(endpoint, options);
-    } catch (err) {
-      const pause = pauses[essai];
-      if (pause === undefined || !estPassagere(err)) throw err;
-      // Aléa de ±30 % : des clients coupés ensemble ne reviennent pas ensemble.
-      await attendre(pause * (0.7 + Math.random() * 0.6), options.signal);
+  let enReveil = false;
+  try {
+    for (let essai = 0; ; essai++) {
+      try {
+        return await tentative<T>(endpoint, options);
+      } catch (err) {
+        const pause = pauses[essai];
+        if (pause === undefined || !estPassagere(err)) throw err;
+        if (!enReveil && serveurEnCause(err)) {
+          enReveil = true;
+          compterReveil(1);
+        }
+        // Aléa de ±30 % : des clients coupés ensemble ne reviennent pas ensemble.
+        await attendre(pause * (0.7 + Math.random() * 0.6), options.signal);
+      }
     }
+  } finally {
+    if (enReveil) compterReveil(-1);
   }
+}
+
+/** Le serveur tarde (délai, 502/503/504), par opposition au réseau coupé. */
+function serveurEnCause(err: unknown) {
+  if (!(err instanceof ApiError)) return false;
+  if (err.statut >= 502 && err.statut <= 504) return true;
+  return err.statut === 0 && (err.details as { cause?: string } | undefined)?.cause === "delai";
 }
 
 /* ─── Envoi de fichier avec progression ───────────────────── */

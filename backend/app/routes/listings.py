@@ -486,45 +486,69 @@ def televerser_photos(current_user, listing_id):
                      f"Vous pouvez encore en ajouter {restant}."
         }), 400
 
-    # Premier contrôle sans verrou : évite de stocker des fichiers voués au refus.
-    if len(_photos(listing)) + len(fichiers) > MAX_IMAGES:
-        return refus_limite(len(_photos(listing)))
+    def deja_presente(empreinte, urls):
+        return any(f"-{empreinte}." in url for url in urls)
 
+    existantes = _photos(listing)
     # Le stockage (Supabase) peut être lent : ni verrou ni transaction ouverte
     # pendant l'appel, qui retiendrait une connexion du pool. La transaction
     # de lecture est close ici ; la suivante ne s'ouvre qu'à la relecture.
     db.session.rollback()
-    ajoutees = []
+
+    # 1. Ré-encodage (EXIF/GPS retirés, 1280 px) et repérage des doublons :
+    #    une photo renvoyée après une réponse perdue (« Réessayer ») porte la
+    #    même empreinte que celle déjà enregistrée, elle n'est pas ajoutée.
+    preparees = []
     erreur = None
     for fichier in fichiers:
         try:
-            ajoutees.append(stockage.televerser(fichier, "photos", f"annonce-{listing_id}",
-                                                stockage.IMAGES))
+            image = stockage.preparer_image(fichier, "photos")
         except stockage.ErreurStockage as exc:
-            # Les photos déjà enregistrées sont conservées : l'utilisateur n'a
-            # pas à tout recommencer parce qu'un seul fichier pose problème.
+            erreur = exc
+            break
+        if deja_presente(image.empreinte, existantes) or any(
+                p.empreinte == image.empreinte for p in preparees):
+            continue
+        preparees.append(image)
+
+    if len(existantes) + len(preparees) > MAX_IMAGES:
+        return refus_limite(len(existantes))
+
+    # 2. Stockage. Les photos déjà enregistrées sont conservées si une suivante
+    #    échoue : l'utilisateur n'a pas à tout recommencer.
+    ajoutees = []
+    for image in preparees:
+        try:
+            ajoutees.append(stockage.enregistrer_image(
+                image, "photos", stockage.nom_image(f"annonce-{listing_id}", image)))
+        except stockage.ErreurStockage as exc:
             erreur = exc
             break
 
-    if ajoutees:
-        # Relecture sous verrou : la liste a pu changer pendant le stockage.
-        listing = _annonce_verrouillee(listing_id)
-        existantes = _photos(listing)
-        if len(existantes) + len(ajoutees) > MAX_IMAGES:
+    # 3. Relecture sous verrou : la liste a pu changer pendant le stockage
+    #    (autre onglet, même photo renvoyée en parallèle).
+    listing = _annonce_verrouillee(listing_id)
+    existantes = _photos(listing)
+    nouvelles = [u for u in ajoutees if u not in existantes]
+    if nouvelles:
+        if len(existantes) + len(nouvelles) > MAX_IMAGES:
             db.session.rollback()
-            for url in ajoutees:
+            for url in nouvelles:
                 stockage.supprimer(url)
             return refus_limite(len(existantes))
-        listing.images_urls = ",".join(existantes + ajoutees)
+        listing.images_urls = ",".join(existantes + nouvelles)
         db.session.commit()
+    else:
+        db.session.rollback()
 
     if erreur is not None:
-        return jsonify({"error": str(erreur), "ajoutees": len(ajoutees)}), 400
+        return jsonify({"error": str(erreur), "ajoutees": len(nouvelles)}), erreur.statut
 
     return jsonify({
-        "message": f"{len(ajoutees)} photo(s) ajoutée(s)",
+        "message": f"{len(nouvelles)} photo(s) ajoutée(s)" if nouvelles
+        else "Photo déjà enregistrée",
         "images": listing.to_dict()["images"],
-    }), 201
+    }), 201 if nouvelles else 200
 
 
 @listings_bp.route("/<string:listing_id>/photos", methods=["DELETE"])

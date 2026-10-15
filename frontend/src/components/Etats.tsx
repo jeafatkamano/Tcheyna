@@ -5,17 +5,23 @@
  * d'afficher un écran blanc quand l'API ne répond pas.
  */
 import { AlertCircle, Inbox, RefreshCw } from "lucide-react";
-import type { ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { Link } from "react-router";
 
+import { MESSAGE_REVEIL, reveilServeur } from "../api";
+
 export function Chargement({ texte = "Chargement…" }: { texte?: string }) {
+  // Serveur en train de se réveiller (reprises en cours) : on le dit, sinon
+  // l'attente d'une minute passe pour une panne.
+  const reveil = useSyncExternalStore(reveilServeur.subscribe, reveilServeur.enCours);
+  const affiche = reveil ? MESSAGE_REVEIL : texte;
   return (
     <div className="flex flex-col items-center justify-center py-16 gap-3" role="status">
       <div
         className="w-8 h-8 rounded-full border-[3px] animate-spin"
         style={{ borderColor: "#E2E8F0", borderTopColor: "#F97316" }}
       />
-      <p className="text-sm text-gray-400">{texte}</p>
+      <p className="text-sm text-gray-400">{affiche}</p>
     </div>
   );
 }

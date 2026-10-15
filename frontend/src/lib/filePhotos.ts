@@ -47,6 +47,12 @@ export interface EtatFile {
   nonCompressees: number;
   /** Faux tant qu'aucune annonce n'est désignée (création en cours). */
   demarree: boolean;
+  /**
+   * URL serveur d'une photo envoyée → son aperçu local (fichier compressé
+   * encore en mémoire). La grille l'affiche au lieu de retélécharger la photo
+   * (≈ 300 Ko en 3G) et reste correcte pendant une coupure.
+   */
+  apercusLocaux: Readonly<Record<string, string>>;
 }
 
 export interface DependancesFile {
@@ -75,7 +81,13 @@ function messageErreur(err: unknown): string {
 
 export class FilePhotos {
   private onImages?: (images: string[]) => void;
-  private etat: EtatFile = { photos: [], envoyees: 0, nonCompressees: 0, demarree: false };
+  private etat: EtatFile = {
+    photos: [],
+    envoyees: 0,
+    nonCompressees: 0,
+    demarree: false,
+    apercusLocaux: {},
+  };
   private fichiers = new Map<string, File>();
   private abonnes = new Set<() => void>();
   private listingId?: string;
@@ -111,9 +123,9 @@ export class FilePhotos {
     });
   }
 
-  private enlever(id: string) {
+  private enlever(id: string, garderApercu = false) {
     const photo = this.etat.photos.find((p) => p.id === id);
-    if (photo?.apercu) this.deps.revoquerApercu?.(photo.apercu);
+    if (photo?.apercu && !garderApercu) this.deps.revoquerApercu?.(photo.apercu);
     this.fichiers.delete(id);
     this.publier({ photos: this.etat.photos.filter((p) => p.id !== id) });
   }
@@ -176,8 +188,9 @@ export class FilePhotos {
   vider() {
     this.arreter();
     this.etat.photos.forEach((p) => p.apercu && this.deps.revoquerApercu?.(p.apercu));
+    Object.values(this.etat.apercusLocaux).forEach((url) => this.deps.revoquerApercu?.(url));
     this.fichiers.clear();
-    this.publier({ photos: [] });
+    this.publier({ photos: [], apercusLocaux: {} });
   }
 
   /** Promesse résolue quand plus rien n'est à faire. */
@@ -240,8 +253,15 @@ export class FilePhotos {
         signal: this.controleur.signal,
         onProgression: (fraction) => this.modifier(photo.id, { progression: fraction }),
       });
-      this.enlever(photo.id);
+      // Le serveur ajoute en fin de liste ; un doublon reconnu (même photo
+      // déjà enregistrée) renvoie la liste inchangée, dont la dernière est
+      // justement cette photo.
+      const url = reponse.images.at(-1);
+      const apercu = this.etat.photos.find((p) => p.id === photo.id)?.apercu;
+      const garder = Boolean(url && apercu && !this.etat.apercusLocaux[url]);
+      this.enlever(photo.id, garder);
       this.publier({
+        ...(garder ? { apercusLocaux: { ...this.etat.apercusLocaux, [url!]: apercu! } } : {}),
         envoyees: this.etat.envoyees + 1,
         nonCompressees: this.etat.nonCompressees + (photo.nonCompressee ? 1 : 0),
       });

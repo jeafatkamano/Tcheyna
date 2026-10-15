@@ -13,12 +13,16 @@ redémarrage et au réveil après mise en veille — soit, en pratique, sous
 quinze minutes. Les photos d'annonces et les pièces d'identité doivent donc
 sortir de la machine.
 """
+import hashlib
+import io
 import mimetypes
 import os
 import uuid
+import warnings
 
 import requests
 from flask import current_app
+from PIL import Image, ImageOps, UnidentifiedImageError
 from werkzeug.utils import secure_filename
 
 # Types réellement acceptés, par usage.
@@ -36,9 +40,35 @@ TAILLE_MAX = {
 # un nom difficile à deviner n'est pas une protection.
 DOSSIERS_PRIVES = {"documents"}
 
+# Images publiques ré-encodées par le serveur, quelle que soit leur source
+# (application, script, navigateur sans compression) : voir `preparer_image`.
+DOSSIERS_REENCODES = {"photos", "avatars"}
+COTE_MAX = 1280
+QUALITE_WEBP = 80
+# Au-delà, l'image n'est pas décodée : une « bombe de décompression » de
+# quelques Ko peut exiger des Go de mémoire. 50 Mpx couvrent tout téléphone.
+PIXELS_MAX = 50_000_000
+Image.MAX_IMAGE_PIXELS = PIXELS_MAX
+Image.init()  # enregistre tous les formats avant le filtre `formats=`
+# Les JPEG multi-images des iPhone (MPO) passent par l'ouvreur JPEG.
+FORMATS_LUS = ["JPEG", "PNG", "WEBP"]
+TYPES_CONTENU = {"webp": "image/webp", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                 "png": "image/png", "pdf": "application/pdf"}
+
 
 class ErreurStockage(Exception):
-    """Échec de téléversement ou de suppression, avec un message affichable."""
+    """Échec de téléversement ou de suppression, avec un message affichable.
+
+    `statut` est le code HTTP à renvoyer (400 par défaut).
+    """
+
+    statut = 400
+
+
+class ImageIllisible(ErreurStockage):
+    """Le contenu n'est pas une image exploitable (corrompu, piégé, trop grand)."""
+
+    statut = 422
 
 
 # ─── Validation ──────────────────────────────────────────────
@@ -147,35 +177,110 @@ def _entetes(type_contenu=None):
 
 # ─── Téléversement ───────────────────────────────────────────
 
+class ImagePreparee:
+    """Image ré-encodée, prête à stocker.
+
+    `empreinte` (SHA-256 abrégé des octets reçus) entre dans le nom du
+    fichier : renvoyer la même photo (reprise après une réponse perdue)
+    redonne le même nom, ce qui permet de reconnaître le doublon.
+    """
+
+    def __init__(self, octets, ext, empreinte):
+        self.octets = octets
+        self.ext = ext
+        self.empreinte = empreinte
+
+
+def preparer_image(fichier, dossier):
+    """Valide puis ré-encode une image publique.
+
+    Le fichier reçu n'est jamais stocké tel quel : il peut porter la position
+    GPS du logement (EXIF), une miniature, du XMP, un profil ICC, voire un
+    contenu qui n'est pas une image. On le décode, on applique l'orientation
+    EXIF, on réduit le côté long à 1280 px et on réécrit un WebP neuf, sans
+    aucune métadonnée. Les photos déjà compressées par l'application passent
+    par le même chemin.
+    """
+    valider(fichier, dossier, IMAGES)
+    recu = fichier.stream.read()
+    fichier.stream.seek(0)
+    empreinte = hashlib.sha256(recu).hexdigest()[:20]
+
+    try:
+        with warnings.catch_warnings():
+            # Entre PIXELS_MAX et son double, Pillow n'émet qu'un avertissement.
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(recu), formats=FORMATS_LUS) as source:
+                if source.width * source.height > PIXELS_MAX:
+                    raise ImageIllisible("Image trop grande (50 mégapixels maximum).")
+                source.load()
+                image = ImageOps.exif_transpose(source)
+    except ImageIllisible:
+        raise
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise ImageIllisible("Image trop grande (50 mégapixels maximum).") from exc
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as exc:
+        raise ImageIllisible("Ce fichier n'est pas une image lisible. "
+                             "Choisissez une photo JPG, PNG ou WEBP.") from exc
+
+    transparente = image.mode in ("RGBA", "LA", "PA") or (
+        image.mode == "P" and "transparency" in image.info)
+    image = image.convert("RGBA" if transparente else "RGB")
+    image.thumbnail((COTE_MAX, COTE_MAX), Image.Resampling.LANCZOS)
+
+    sortie = io.BytesIO()
+    # Ni `exif`, ni `xmp`, ni `icc_profile` : le fichier écrit n'en porte aucun.
+    image.save(sortie, "WEBP", quality=QUALITE_WEBP, method=4)
+    return ImagePreparee(sortie.getvalue(), "webp", empreinte)
+
+
+def nom_image(prefixe, image):
+    """Nom stable d'une image préparée : préfixe du propriétaire + empreinte."""
+    return f"{secure_filename(prefixe)}-{image.empreinte}.{image.ext}"
+
+
+def enregistrer_image(image, dossier, nom):
+    """Stocke une image préparée sous le nom donné ; retourne son URL."""
+    return _enregistrer(io.BytesIO(image.octets), dossier, nom, image.ext)
+
+
 def televerser(fichier, dossier, prefixe, extensions_permises=None):
     """Enregistre un fichier et retourne l'URL permettant de le relire.
 
     `dossier` sépare les usages (photos, avatars, documents) ; `prefixe`
     rattache le fichier à son propriétaire, ce qui rend les suppressions et
-    les audits possibles.
+    les audits possibles. Photos et avatars sont ré-encodés (`preparer_image`).
     """
+    if dossier in DOSSIERS_REENCODES:
+        image = preparer_image(fichier, dossier)
+        return enregistrer_image(image, dossier, nom_image(prefixe, image))
+
     extensions_permises = extensions_permises or DOCUMENTS
     ext = valider(fichier, dossier, extensions_permises)
 
     # Un nom aléatoire évite qu'une URL devinée expose le document d'un autre.
     nom = f"{secure_filename(prefixe)}-{uuid.uuid4().hex[:12]}.{ext}"
-    chemin = f"{dossier}/{nom}"
+    return _enregistrer(fichier.stream, dossier, nom, ext)
 
+
+def _enregistrer(flux, dossier, nom, ext):
     if supabase_configure():
-        return _televerser_supabase(fichier, dossier, chemin, ext)
-    return _televerser_disque(fichier, nom)
+        return _televerser_supabase(flux, dossier, f"{dossier}/{nom}", ext)
+    return _televerser_disque(flux, nom)
 
 
-def _televerser_supabase(fichier, dossier, chemin, ext):
+def _televerser_supabase(flux, dossier, chemin, ext):
     bucket = _bucket(dossier)
     url = f"{current_app.config['SUPABASE_URL']}/storage/v1/object/{bucket}/{chemin}"
-    type_contenu = mimetypes.types_map.get(f".{ext}", "application/octet-stream")
+    # `.webp` n'est connu de `mimetypes` qu'à partir de Python 3.13.
+    type_contenu = TYPES_CONTENU.get(ext) or mimetypes.types_map.get(
+        f".{ext}", "application/octet-stream")
 
     try:
         reponse = requests.post(
             url,
             headers={**_entetes(type_contenu), "x-upsert": "true"},
-            data=fichier.stream.read(),
+            data=flux.read(),
             timeout=60,
         )
     except requests.RequestException as exc:
@@ -194,7 +299,7 @@ def _televerser_supabase(fichier, dossier, chemin, ext):
     return f"{current_app.config['SUPABASE_URL']}/storage/v1/object/public/{bucket}/{chemin}"
 
 
-def _televerser_disque(fichier, nom):
+def _televerser_disque(flux, nom):
     # En production, le disque de l'instance est éphémère : accepter le fichier
     # reviendrait à le perdre au prochain redémarrage, sans que personne ne s'en
     # aperçoive avant que la photo ne disparaisse de l'annonce.
@@ -206,7 +311,8 @@ def _televerser_disque(fichier, nom):
 
     dossier_local = current_app.config["UPLOAD_FOLDER"]
     os.makedirs(dossier_local, exist_ok=True)
-    fichier.save(os.path.join(dossier_local, nom))
+    with open(os.path.join(dossier_local, nom), "wb") as cible:
+        cible.write(flux.read())
     return f"/uploads/{nom}"
 
 

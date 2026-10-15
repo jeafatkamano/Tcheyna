@@ -24,6 +24,7 @@ vi.mock("../../lib/image", async (original) => ({
 }));
 
 const { OwnerListingForm } = await import("./OwnerListingForm");
+const { ApiError, MESSAGE_RESEAU } = await import("../../api/client");
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -40,6 +41,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => racine?.unmount());
   racine = null;
+  document.body.innerHTML = "";
 });
 
 async function creerAvecUnePhoto() {
@@ -98,6 +100,25 @@ describe("OwnerListingForm — création avec photos", () => {
 
     const router = await creerAvecUnePhoto();
 
+    expect(router.state.location.pathname).toBe("/owner/listings/L1");
+  });
+
+  it("après un échec puis « Réessayer » réussi, bandeau retiré et navigation", async () => {
+    creer.mockResolvedValue({ message: "ok", listing: { id: "L1" } });
+    televerserPhoto
+      .mockRejectedValueOnce(new ApiError(MESSAGE_RESEAU, 0))
+      .mockResolvedValueOnce({ message: "ok", images: ["/uploads/a.webp"] });
+
+    const router = await creerAvecUnePhoto();
+    const page = document.body;
+    expect(router.state.location.pathname).toBe("/owner/listings/nouveau");
+    expect(page.textContent).toContain("Certaines photos restent à envoyer");
+
+    const bouton = page.querySelector<HTMLButtonElement>('button[aria-label^="Réessayer"]')!;
+    act(() => bouton.click());
+    await attendreUnPeu();
+
+    expect(televerserPhoto).toHaveBeenCalledTimes(2);
     expect(router.state.location.pathname).toBe("/owner/listings/L1");
   });
 });

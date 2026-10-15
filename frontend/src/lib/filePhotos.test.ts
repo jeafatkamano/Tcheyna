@@ -168,4 +168,18 @@ describe("FilePhotos", () => {
 
     expect(file.getSnapshot().photos[0]).toMatchObject({ etat: "attente", progression: 0 });
   });
+
+  it("garde l'aperçu local d'une photo envoyée, libéré seulement au démontage", async () => {
+    const { file } = fabriquer();
+    const revoquer = (file as unknown as { deps: DependancesFile }).deps.revoquerApercu!;
+    await file.ajouter([photo("a.jpg")]);
+    await file.demarrer("annonce-1");
+
+    expect(file.getSnapshot().apercusLocaux).toEqual({ "a.webp": "blob:a.webp" });
+    expect(revoquer).not.toHaveBeenCalled();
+
+    file.vider();
+    expect(revoquer).toHaveBeenCalledWith("blob:a.webp");
+    expect(file.getSnapshot().apercusLocaux).toEqual({});
+  });
 });

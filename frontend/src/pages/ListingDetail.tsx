@@ -29,7 +29,7 @@ import {
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { favorisAPI, listingsAPI, matchesAPI } from "../api";
+import { favorisAPI, listingsAPI, matchesAPI, urlFichier } from "../api";
 import { Avatar } from "../components/Avatar";
 import { BadgeCertifie, BadgeVerification, ScoreMatch } from "../components/BadgeVerification";
 import { Chargement, Erreur, MessageErreur } from "../components/Etats";
@@ -141,7 +141,7 @@ export function ListingDetail() {
       {/* Carrousel */}
       <div className="relative h-64 sm:h-80">
         <img
-          src={photos[indexPhoto]}
+          src={urlFichier(photos[indexPhoto])}
           alt={listing.title}
           className="w-full h-full object-cover"
           onError={(e) => {

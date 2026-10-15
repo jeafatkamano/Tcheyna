@@ -15,7 +15,7 @@
  * attendre la fin des envois avant de changer de page.
  */
 import { AlertCircle, ImagePlus, Loader2, RotateCcw, Star, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { listingsAPI, urlFichier } from "../api";
 import type { FilePhotosReact } from "../hooks/useFilePhotos";
@@ -35,9 +35,17 @@ interface Props {
   onImagesChange: (images: string[]) => void;
   /** File d'envoi, portée par le formulaire. */
   photos: FilePhotosReact;
+  /** Appelé quand une reprise (« Réessayer ») est terminée. */
+  onRepriseTerminee?: () => void;
 }
 
-export function TeleversementPhotos({ listingId, images, onImagesChange, photos }: Props) {
+export function TeleversementPhotos({
+  listingId,
+  images,
+  onImagesChange,
+  photos,
+  onRepriseTerminee,
+}: Props) {
   const [erreur, setErreur] = useState<string | null>(null);
   const [surviole, setSurviole] = useState(false);
   const { file, etat, resume } = photos;
@@ -81,8 +89,13 @@ export function TeleversementPhotos({ listingId, images, onImagesChange, photos 
     }
   }
 
+  async function reessayer(ids: string[]) {
+    await Promise.all(ids.map((id) => file.reessayer(id)));
+    onRepriseTerminee?.();
+  }
+
   function reessayerTout() {
-    etat.photos.filter((p) => p.etat === "erreur").forEach((p) => void file.reessayer(p.id));
+    void reessayer(etat.photos.filter((p) => p.etat === "erreur").map((p) => p.id));
   }
 
   // Messages d'échec distincts, lisibles sous la grille (la vignette est trop petite).
@@ -107,11 +120,10 @@ export function TeleversementPhotos({ listingId, images, onImagesChange, photos 
         <div className="grid grid-cols-3 gap-2">
           {images.map((url, i) => (
             <figure key={url} className="relative aspect-square rounded-xl overflow-hidden group">
-              <img
-                src={urlFichier(url)}
+              <ImageServeur
+                url={url}
+                apercuLocal={etat.apercusLocaux[url]}
                 alt={`Photo ${i + 1}`}
-                className="w-full h-full object-cover"
-                loading="lazy"
               />
               {i === 0 && (
                 <figcaption
@@ -152,7 +164,7 @@ export function TeleversementPhotos({ listingId, images, onImagesChange, photos 
               key={photo.id}
               photo={photo}
               differe={!listingId}
-              onReessayer={() => void file.reessayer(photo.id)}
+              onReessayer={() => void reessayer([photo.id])}
               onRetirer={() => file.retirer(photo.id)}
             />
           ))}
@@ -252,6 +264,44 @@ export function TeleversementPhotos({ listingId, images, onImagesChange, photos 
 
       <MessageErreur message={erreur} />
     </div>
+  );
+}
+
+/**
+ * Photo déjà enregistrée. Juste envoyée depuis ce téléphone : on montre le
+ * fichier local (pas de retéléchargement). Sinon l'URL du serveur, rechargée
+ * d'elle-même si le réseau l'a coupée (au retour en ligne, ou au toucher).
+ */
+function ImageServeur({ url, apercuLocal, alt }: { url: string; apercuLocal?: string; alt: string }) {
+  const [essai, setEssai] = useState(0);
+  const [cassee, setCassee] = useState(false);
+  const source = apercuLocal ?? urlFichier(url);
+
+  useEffect(() => {
+    if (!cassee) return;
+    const recharger = () => {
+      setCassee(false);
+      setEssai((n) => n + 1);
+    };
+    const minuterie = setTimeout(recharger, 5_000);
+    window.addEventListener("online", recharger);
+    return () => {
+      clearTimeout(minuterie);
+      window.removeEventListener("online", recharger);
+    };
+  }, [cassee]);
+
+  return (
+    <img
+      key={essai}
+      src={source}
+      alt={alt}
+      className="w-full h-full object-cover"
+      style={{ background: "#E2E8F0" }}
+      loading="lazy"
+      onError={() => essai < 5 && setCassee(true)}
+      onClick={() => cassee && setEssai((n) => n + 1)}
+    />
   );
 }
 

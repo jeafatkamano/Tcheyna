@@ -139,8 +139,12 @@ def _envoyer_photo(client, annonce, bailleur, entetes, fichier):
 def test_photo_webp_compressee_par_le_navigateur_acceptee(client, annonce, bailleur, entetes):
     import io
 
-    webp = b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"\x00" * 32
-    reponse = _envoyer_photo(client, annonce, bailleur, entetes, (io.BytesIO(webp), "photo-1.webp"))
+    from PIL import Image
+
+    webp = io.BytesIO()
+    Image.new("RGB", (1280, 960), (200, 120, 40)).save(webp, "WEBP", quality=80)
+    webp.seek(0)
+    reponse = _envoyer_photo(client, annonce, bailleur, entetes, (webp, "photo-1.webp"))
 
     assert reponse.status_code == 201
     assert reponse.get_json()["images"][-1].endswith(".webp")
@@ -172,10 +176,10 @@ def _ecriture_concurrente(monkeypatch, annonce_id, url_intruse):
     from app import db
     from app.services import stockage
 
-    vrai_televerser = stockage.televerser
+    vrai_enregistrer = stockage.enregistrer_image
 
-    def televerser_lent(*args, **kwargs):
-        url = vrai_televerser(*args, **kwargs)
+    def enregistrer_lent(*args, **kwargs):
+        url = vrai_enregistrer(*args, **kwargs)
         actuelle = db.session.execute(
             db.select(Listing.images_urls).filter_by(id=annonce_id)).scalar()
         db.session.execute(
@@ -184,7 +188,7 @@ def _ecriture_concurrente(monkeypatch, annonce_id, url_intruse):
         db.session.commit()
         return url
 
-    monkeypatch.setattr(stockage, "televerser", televerser_lent)
+    monkeypatch.setattr(stockage, "enregistrer_image", enregistrer_lent)
 
 
 def test_ajout_concurrent_ne_perd_aucune_photo(client, annonce, bailleur, entetes,
@@ -198,7 +202,7 @@ def test_ajout_concurrent_ne_perd_aucune_photo(client, annonce, bailleur, entete
     assert reponse.status_code == 201
     images = Listing.query.get(annonce.id).images_urls.split(",")
     assert "/uploads/autre-onglet.png" in images
-    assert images[-1].endswith(".png") and images[-1] != "/uploads/autre-onglet.png"
+    assert images[-1].endswith(".webp") and images[-1] != "/uploads/autre-onglet.png"
 
 
 def test_limite_de_photos_reverifiee_apres_stockage(app, client, fabrique, bailleur, entetes,
@@ -247,14 +251,14 @@ def test_aucune_transaction_ouverte_pendant_le_stockage(client, annonce, bailleu
     from app import db
     from app.services import stockage
 
-    vrai_televerser = stockage.televerser
+    vrai_enregistrer = stockage.enregistrer_image
     pendant = []
 
-    def televerser_observe(*args, **kwargs):
+    def enregistrer_observe(*args, **kwargs):
         pendant.append(db.session().in_transaction())
-        return vrai_televerser(*args, **kwargs)
+        return vrai_enregistrer(*args, **kwargs)
 
-    monkeypatch.setattr(stockage, "televerser", televerser_observe)
+    monkeypatch.setattr(stockage, "enregistrer_image", enregistrer_observe)
 
     reponse = _envoyer_photo(client, annonce, bailleur, entetes, fichier_image("a.png"))
 
