@@ -63,10 +63,6 @@ def _verifier_loyer(type_transaction, prix):
                            maximum=LOYER_MAX)
 
 
-# Déplacée dans app/routes (lot 1.6) : partagée avec le profil public.
-_utilisateur_optionnel = utilisateur_optionnel
-
-
 # ─── GET /api/listings ────────────────────────────────────────
 
 @listings_bp.route("/", methods=["GET"])
@@ -134,7 +130,7 @@ def get_listings():
     paginated = query.paginate(page=page, per_page=per_page, error_out=False)
 
     # Un locataire connecté voit le score de compatibilité et ses favoris
-    user = _utilisateur_optionnel()
+    user = utilisateur_optionnel()
     favoris = set()
     passport = None
     if user:
@@ -236,7 +232,7 @@ def get_listing(listing_id):
     lang = request.args.get("lang", "fr")
     listing = Listing.query.get_or_404(listing_id)
 
-    user = _utilisateur_optionnel()
+    user = utilisateur_optionnel()
 
     # Une annonce retirée n'existe plus que pour son propriétaire, l'admin et
     # ses candidats : pour les autres, elle est introuvable.

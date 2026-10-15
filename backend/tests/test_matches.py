@@ -51,7 +51,8 @@ def test_decision_refusee_a_un_autre_bailleur(client, fabrique, locataire, annon
 
 def test_candidature_illisible_par_un_tiers(client, fabrique, match, entetes):
     tiers = fabrique.locataire()
-    assert client.get(f"/api/matches/{match.id}", headers=entetes(tiers)).status_code == 403
+    # 404 et non 403 (lot 1.6) : pas d'oracle sur l'existence de la candidature.
+    assert client.get(f"/api/matches/{match.id}", headers=entetes(tiers)).status_code == 404
 
 
 def test_conclusion_libere_les_autres_candidats(client, fabrique, match, annonce, bailleur, entetes):

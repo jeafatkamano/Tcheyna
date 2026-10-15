@@ -15,7 +15,7 @@ from app.routes import current_user_required, role_required
 from app.schemas import valider_corps
 from app.schemas.matches import Candidature, DecisionCandidature, Visite
 from app.services import notifications as notify
-from app.services.acces import passeport_pour, profil_suggestion
+from app.services.acces import locataires_ouverts, passeport_pour, profil_suggestion
 from app.services.matching import score_compatibilite
 
 matches_bp = Blueprint("matches", __name__)
@@ -127,14 +127,13 @@ def mes_demandes(current_user):
 
     # Le propriétaire voit le dossier du candidat, sans ses données
     # bancaires, tant que la règle d'accès l'y autorise (candidature refusée
-    # ou retirée : plus de dossier). Une seule évaluation par locataire.
-    passeports = {}
+    # ou retirée : plus de dossier). Règle précalculée en une requête.
+    niveau_passeport = locataires_ouverts(current_user)
     resultats = []
     for match in matches:
         data = match.to_dict(lang=lang, viewer=current_user)
-        if match.tenant_id not in passeports:
-            passeports[match.tenant_id] = passeport_pour(current_user, match.tenant)
-        data["passeport"] = passeports[match.tenant_id]
+        data["passeport"] = passeport_pour(current_user, match.tenant,
+                                           niveau=niveau_passeport(match.tenant))
         resultats.append(data)
 
     resultats.sort(
@@ -214,7 +213,8 @@ def get_match(current_user, match_id):
     est_locataire = match.tenant_id == current_user.id
     est_bailleur = match.listing and match.listing.landlord_id == current_user.id
     if not (est_locataire or est_bailleur or current_user.role == "admin"):
-        return jsonify({"error": "Non autorisé"}), 403
+        # Même réponse qu'une candidature inexistante : pas d'oracle.
+        return jsonify({"error": "Ressource introuvable", "details": []}), 404
 
     data = match.to_dict(lang=request.args.get("lang", "fr"), viewer=current_user)
     # Le locataire et l'admin voient le passeport complet, le bailleur la

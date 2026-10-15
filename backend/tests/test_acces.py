@@ -99,6 +99,80 @@ def test_passeport_dans_le_profil(client, locataire, lecteur_passeport, entetes,
     assert "email" not in corps and "phone" not in corps
 
 
+@pytest.mark.parametrize("lecteur", LECTEURS_PASSEPORT)
+def test_identite_du_locataire_dans_le_profil(client, fabrique, lecteur_passeport, entetes,
+                                              locataire, lecteur):
+    locataire.full_name = "Mariama Bah Diallo"
+    locataire.bio = "Infirmière à Donka"
+    locataire.quartier = "Ratoma"
+    locataire.avatar_url = "/uploads/profil-x.png"
+    db.session.commit()
+    user = lecteur_passeport(lecteur)
+
+    corps = client.get(f"/api/users/{locataire.id}", headers=entetes(user) if user else {}).get_json()
+
+    if _niveau_attendu(lecteur) is None:
+        assert corps["full_name"] == "Mariama D."
+        assert not {"avatar_url", "bio", "quartier"} & set(corps)
+        assert "Diallo" not in repr(corps)
+    else:
+        assert corps["full_name"] == "Mariama Bah Diallo"
+        assert corps["bio"] == "Infirmière à Donka"
+
+
+def test_suggestion_ne_revele_pas_l_identite_par_le_profil(client, fabrique, bailleur, annonce,
+                                                         entetes):
+    suggere = fabrique.locataire(full_name="Mariama Bah Diallo", bio="Infirmière",
+                                 quartier="Ratoma")
+    (candidat,) = client.get(f"/api/matches/candidats-suggeres?listing_id={annonce.id}",
+                             headers=entetes(bailleur)).get_json()["candidats"]
+
+    for en_tetes in ({}, entetes(bailleur)):
+        corps = client.get(f"/api/users/{candidat['tenant']['id']}", headers=en_tetes).get_json()
+        assert corps["full_name"] == "Mariama D."
+        assert "Diallo" not in repr(corps) and "Ratoma" not in repr(corps)
+    assert suggere.id == candidat["tenant"]["id"]
+
+
+def test_profil_inconnu_ou_desactive_meme_reponse(client, fabrique):
+    desactive = fabrique.locataire(is_active=False)
+    inconnu = client.get("/api/users/inexistant")
+    ferme = client.get(f"/api/users/{desactive.id}")
+
+    assert inconnu.status_code == ferme.status_code == 404
+    assert inconnu.get_json() == ferme.get_json()
+
+
+def test_candidature_d_un_autre_introuvable(client, fabrique, entetes):
+    match = fabrique.match(status="accepted")
+    tiers = fabrique.bailleur()
+
+    reponse = client.get(f"/api/matches/{match.id}", headers=entetes(tiers))
+    inconnue = client.get("/api/matches/inexistante", headers=entetes(tiers))
+
+    assert reponse.status_code == inconnue.status_code == 404
+    assert reponse.get_json() == inconnue.get_json()
+
+
+def test_mes_demandes_sans_requete_par_candidat(client, fabrique, bailleur, annonce, entetes,
+                                                compteur_sql):
+    """La règle du passeport est évaluée en UNE requête pour toute la liste,
+    quel que soit le nombre de candidats."""
+    def requetes_de_la_regle(nb_candidats):
+        for statut in STATUTS * nb_candidats:
+            fabrique.match(fabrique.locataire(), annonce, status=statut)
+        with compteur_sql() as requetes:
+            reponse = client.get("/api/matches/mes-demandes", headers=entetes(bailleur))
+        assert reponse.status_code == 200
+        # Requêtes de la règle : candidatures jointes aux annonces, filtrées
+        # sur les statuts ouvrants.
+        return [r for r in requetes
+                if "JOIN listings" in r and "matches.status IN" in r]
+
+    assert len(requetes_de_la_regle(1)) == 1
+    assert len(requetes_de_la_regle(3)) == 1
+
+
 def test_profil_avec_jeton_invalide_traite_comme_anonyme(client, locataire, fabrique):
     bailleur = fabrique.bailleur()
     fabrique.match(locataire, fabrique.annonce(bailleur), status="pending")
@@ -134,6 +208,11 @@ def test_passeport_dans_mes_demandes(client, fabrique, bailleur, annonce, entete
         assert "revenu_mensuel" not in demande["passeport"]
     else:
         assert demande["passeport"] is None
+
+
+def test_candidature_sans_lecteur_masque_l_adresse(fabrique):
+    match = fabrique.match(status="accepted")
+    assert match.to_dict()["listing"]["adresse"] is None
 
 
 @pytest.mark.parametrize("statut", STATUTS)

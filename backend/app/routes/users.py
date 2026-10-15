@@ -7,9 +7,13 @@ from app.routes import current_user_required, utilisateur_optionnel
 from app.schemas import valider_corps
 from app.schemas.users import MajProfil
 from app.services import stockage
-from app.services.acces import passeport_pour, visibilite_adresse
+from app.services.acces import nom_reduit, passeport_pour, peut_voir_passeport, visibilite_adresse
 
 users_bp = Blueprint("users", __name__)
+
+# Champs retirés du profil public d'un locataire pour qui ne peut pas lire son
+# dossier (voir get_user) ; le nom est réduit au prénom et à l'initiale.
+CHAMPS_IDENTITE_LOCATAIRE = ("avatar_url", "bio", "quartier")
 
 
 # ─── GET /api/users/<id> ─────────────────────────────────────
@@ -24,11 +28,23 @@ def get_user(user_id):
     """
     user = User.query.get_or_404(user_id)
     if not user.is_active:
-        return jsonify({"error": "Ce compte n'est plus actif"}), 404
+        # Même réponse qu'un identifiant inconnu : pas d'oracle.
+        return jsonify({"error": "Ressource introuvable", "details": []}), 404
 
     lecteur = utilisateur_optionnel()
 
     data = user.to_dict(public=True)
+
+    # Un locataire n'est identifiable que par qui peut lire son dossier :
+    # sinon l'identifiant d'une suggestion (version réduite) suffirait à
+    # retrouver nom complet, photo, bio et quartier.
+    niveau_passeport = None
+    if user.role == "tenant":
+        niveau_passeport = peut_voir_passeport(lecteur, user)
+        if niveau_passeport is None:
+            data["full_name"] = nom_reduit(user.full_name)
+            for champ in CHAMPS_IDENTITE_LOCATAIRE:
+                data.pop(champ, None)
 
     avis = user.reviews_received.order_by(Review.created_at.desc()).limit(10).all()
     data["avis"] = [r.to_dict() for r in avis]
@@ -42,7 +58,7 @@ def get_user(user_id):
         data["nb_annonces"] = len(annonces)
 
     if user.role == "tenant":
-        passeport = passeport_pour(lecteur, user)
+        passeport = passeport_pour(lecteur, user, niveau=niveau_passeport)
         if passeport is not None:
             data["passeport"] = passeport
 

@@ -432,13 +432,11 @@ class Match(db.Model):
     def to_dict(self, lang="fr", viewer=None):
         """`viewer` : l'utilisateur à qui la réponse est destinée. Il décide de
         l'adresse du bien (propriétaire, admin, ou candidature qui l'ouvre).
-        Sans viewer, seul le statut de la candidature compte."""
-        from app.services.acces import adresse_ouverte_par_candidature, peut_voir_adresse
+        Sans viewer, l'adresse est masquée : masquer par défaut."""
+        from app.services.acces import peut_voir_adresse
 
-        if viewer is not None:
-            avec_adresse = peut_voir_adresse(viewer, self.listing, candidature=self)
-        else:
-            avec_adresse = adresse_ouverte_par_candidature(self)
+        avec_adresse = (viewer is not None
+                        and peut_voir_adresse(viewer, self.listing, candidature=self))
         return {
             "id":         self.id,
             "tenant":     self.tenant.to_dict() if self.tenant else None,

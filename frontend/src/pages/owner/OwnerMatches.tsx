@@ -217,7 +217,10 @@ export function OwnerMatches() {
                             <ChevronRight size={14} style={{ color: "#CBD5E1" }} />
                           </Link>
                           <p className="text-xs text-gray-400 mb-1">
-                            {match.passeport?.situation_pro ?? "Situation non précisée"}
+                            {/* Candidature refusée ou retirée : le dossier n'est plus communiqué. */}
+                            {!match.passeport && (match.status === "rejected" || match.status === "cancelled")
+                              ? "Dossier fermé"
+                              : (match.passeport?.situation_pro ?? "Situation non précisée")}
                             {match.passeport?.a_un_garant && " · avec garant"}
                           </p>
                           <div className="flex items-center gap-2 flex-wrap">

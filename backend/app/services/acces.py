@@ -44,20 +44,50 @@ def peut_voir_passeport(viewer, tenant):
     if viewer.role not in ROLES_BAILLEUR:
         return None
 
-    lien = (Match.query.join(Listing, Match.listing_id == Listing.id)
-            .filter(Match.tenant_id == tenant.id,
-                    Listing.landlord_id == viewer.id,
-                    Match.status.in_(STATUTS_OUVRANT_PASSEPORT))
-            .first())
+    lien = _candidatures_ouvrantes(viewer).filter(Match.tenant_id == tenant.id).first()
     return PASSEPORT_PUBLIC if lien else None
 
 
-def passeport_pour(viewer, tenant):
+def _candidatures_ouvrantes(bailleur):
+    """Candidatures reçues par `bailleur` sur ses annonces, dont le statut
+    ouvre le passeport du candidat."""
+    return (Match.query.join(Listing, Match.listing_id == Listing.id)
+            .filter(Listing.landlord_id == bailleur.id,
+                    Match.status.in_(STATUTS_OUVRANT_PASSEPORT)))
+
+
+def locataires_ouverts(viewer):
+    """Même règle que `peut_voir_passeport`, précalculée pour une liste :
+    renvoie une fonction `locataire -> niveau | None` au prix d'une seule
+    requête (identifiants distincts des candidats ouvrants du bailleur)."""
+    if viewer is None or not getattr(viewer, "is_active", True):
+        return lambda _locataire: None
+    if viewer.role not in ROLES_BAILLEUR:
+        return lambda locataire: peut_voir_passeport(viewer, locataire)
+
+    ids = {tenant_id for (tenant_id,) in
+           _candidatures_ouvrantes(viewer).with_entities(Match.tenant_id).distinct()}
+
+    def regle(locataire):
+        if locataire is None:
+            return None
+        if locataire.id == viewer.id:
+            return PASSEPORT_COMPLET
+        return PASSEPORT_PUBLIC if locataire.id in ids else None
+
+    return regle
+
+
+def passeport_pour(viewer, tenant, niveau=...):
     """Le passeport de `tenant` tel que `viewer` a le droit de le lire, ou
-    `None` (aucun droit, ou pas de passeport)."""
+    `None` (aucun droit, ou pas de passeport).
+
+    `niveau`, s'il est fourni, vient de `locataires_ouverts` : il évite une
+    requête par locataire dans une liste."""
     if tenant is None or tenant.passport is None:
         return None
-    niveau = peut_voir_passeport(viewer, tenant)
+    if niveau is ...:
+        niveau = peut_voir_passeport(viewer, tenant)
     if niveau is None:
         return None
     return tenant.passport.to_dict(public=niveau != PASSEPORT_COMPLET)
