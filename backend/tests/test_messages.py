@@ -37,4 +37,4 @@ def test_fil_illisible_par_un_tiers(client, fabrique, match, entetes):
 def test_message_vide_refuse(client, match, locataire, entetes):
     reponse = client.post(f"/api/messages/conversations/{match.conversation.id}",
                           headers=entetes(locataire), json={"contenu": "   "})
-    assert reponse.status_code == 400
+    assert reponse.status_code == 422

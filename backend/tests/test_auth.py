@@ -27,7 +27,7 @@ def test_inscription_refuse_le_role_admin(client):
     # Un compte administrateur ne s'obtient jamais par l'inscription publique.
     reponse = _inscription(client, role="admin")
 
-    assert reponse.status_code == 400
+    assert reponse.status_code == 422
     assert User.query.count() == 0
 
 

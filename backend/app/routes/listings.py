@@ -5,28 +5,37 @@ Inclut le parcours « Annonce Certifiée » : le propriétaire dépose un docume
 propriété, l'annonce passe en `pending`, un administrateur tranche. Une annonce
 certifiée remonte dans les résultats et affiche un badge visible.
 """
-from datetime import date, datetime
+from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
+from pydantic_core import PydanticCustomError
 
 from app import db
 from app.models import (
-    TYPES_BIEN,
     TYPES_BIEN_SANS_PIECES,
-    TYPES_TRANSACTION,
     Favorite,
     Listing,
     Payment,
     User,
 )
 from app.routes import current_user_required, role_required
+from app.routes.geo import CURRENCIES
+from app.schemas import erreur_champ, valider_corps
+from app.schemas.listings import (
+    LOYER_MAX,
+    MAX_IMAGES,
+    CreationAnnonce,
+    MajAnnonce,
+    OrdrePhotos,
+    UrlFichier,
+    verifier_lieu,
+)
 from app.services import stockage
 from app.services.matching import score_compatibilite, trier_par_compatibilite
 
 listings_bp = Blueprint("listings", __name__)
 
-MAX_IMAGES = 10
 MAX_DOCUMENTS = 6
 
 
@@ -34,13 +43,25 @@ def _bool_arg(nom):
     return request.args.get(nom, "").lower() in ("true", "1", "yes")
 
 
-def _parse_date(valeur):
-    if not valeur:
-        return None
-    try:
-        return date.fromisoformat(valeur)
-    except (TypeError, ValueError):
-        return None
+def _devise(pays):
+    """La devise découle du pays : le client ne la choisit jamais."""
+    return CURRENCIES.get(pays, {}).get("code")
+
+
+def _verifier_devise(envoyee, attendue):
+    """Une devise envoyée n'est tolérée que si elle vaut celle du pays ; elle
+    n'est jamais enregistrée telle quelle."""
+    if envoyee is not None and envoyee != attendue:
+        raise erreur_champ("devise", "devise_incoherente",
+                           "Devise incohérente avec le pays : {attendue} attendue", envoyee,
+                           attendue=attendue)
+
+
+def _verifier_loyer(type_transaction, prix):
+    if type_transaction == "location" and prix > LOYER_MAX:
+        raise erreur_champ("prix", "montant_trop_eleve",
+                           "Loyer mensuel trop élevé ({maximum} maximum)", prix,
+                           maximum=LOYER_MAX)
 
 
 def _utilisateur_optionnel():
@@ -249,100 +270,77 @@ def get_listing(listing_id):
 
 @listings_bp.route("/", methods=["POST"])
 @role_required("landlord", "agency")
-def create_listing(current_user):
-    data = request.get_json() or {}
+@valider_corps(CreationAnnonce)
+def create_listing(current_user, corps):
+    valeurs = corps.model_dump()
+    _verifier_devise(valeurs.pop("devise"), _devise(valeurs["pays"]))
+    _verifier_loyer(valeurs["type_transaction"], valeurs["prix"])
 
-    for field in ("title_fr", "description_fr", "pays", "ville", "type_bien", "prix", "devise"):
-        if not data.get(field):
-            return jsonify({"error": f"Champ requis : {field}"}), 400
-
-    if data["type_bien"] not in TYPES_BIEN:
-        return jsonify({"error": f"Type de bien invalide : {' | '.join(TYPES_BIEN)}"}), 400
-
-    transaction = data.get("type_transaction", "location")
-    if transaction not in TYPES_TRANSACTION:
-        return jsonify({"error": f"Type de transaction invalide : "
-                                 f"{' | '.join(TYPES_TRANSACTION)}"}), 400
-
-    try:
-        prix = int(data["prix"])
-    except (TypeError, ValueError):
-        return jsonify({"error": "Le prix doit être un nombre entier"}), 400
-    if prix <= 0:
-        return jsonify({"error": "Le prix doit être supérieur à zéro"}), 400
-
-    images = data.get("images") or []
-    if len(images) > MAX_IMAGES:
-        return jsonify({"error": f"{MAX_IMAGES} photos maximum par annonce"}), 400
-
+    sans_pieces = valeurs["type_bien"] in TYPES_BIEN_SANS_PIECES
+    location = valeurs["type_transaction"] == "location"
     listing = Listing(
         landlord_id=current_user.id,
-        title_fr=data["title_fr"].strip(),
-        title_en=data.get("title_en"),
-        description_fr=data["description_fr"].strip(),
-        description_en=data.get("description_en"),
-        pays=data["pays"],
-        ville=data["ville"],
-        quartier=data.get("quartier"),
-        adresse=data.get("adresse"),
-        type_transaction=transaction,
-        type_bien=data["type_bien"],
-        prix=prix,
-        # Charges et caution n'existent que dans un bail ; un terrain ou un
-        # hangar ne se décrit pas en pièces, en étage ni en ameublement.
-        charges=0 if transaction == "vente" else (data.get("charges", 0) or 0),
-        caution=None if transaction == "vente" else data.get("caution"),
-        devise=data["devise"],
-        nb_pieces=(None if data["type_bien"] in TYPES_BIEN_SANS_PIECES
-                   else data.get("nb_pieces", 1)),
-        superficie=data.get("superficie"),
-        etage=None if data["type_bien"] in TYPES_BIEN_SANS_PIECES else data.get("etage"),
-        meuble=False if data["type_bien"] in TYPES_BIEN_SANS_PIECES else data.get("meuble", False),
-        disponible_a_partir=_parse_date(data.get("disponible_a_partir")),
-        has_generator=data.get("has_generator", False),
-        has_water=data.get("has_water", False),
-        has_wifi=data.get("has_wifi", False),
-        is_secured=data.get("is_secured", False),
-        has_parking=data.get("has_parking", False),
-        has_ac=data.get("has_ac", False),
-        images_urls=",".join(images) if images else None,
+        **valeurs,
+        devise=_devise(valeurs["pays"]),
     )
+    # Charges et caution n'existent que dans un bail ; un terrain ou un
+    # hangar ne se décrit pas en pièces, en étage ni en ameublement.
+    listing.charges = (valeurs["charges"] or 0) if location else 0
+    if not location:
+        listing.caution = None
+    if sans_pieces:
+        listing.nb_pieces, listing.etage, listing.meuble = None, None, False
 
     db.session.add(listing)
     db.session.commit()
 
-    message = ("Annonce de vente publiée avec succès" if transaction == "vente"
+    message = ("Annonce de vente publiée avec succès" if not location
                else "Annonce publiée avec succès")
     return jsonify({"message": message, "listing": listing.to_dict()}), 201
 
 
 # ─── PUT /api/listings/<id> ──────────────────────────────────
 
+# Modifier l'un de ces champs invalide la certification : elle portait sur
+# l'ancien état du bien.
+CHAMPS_CERTIFIES = ("adresse", "quartier", "ville", "type_bien", "type_transaction", "superficie")
+
+
 @listings_bp.route("/<string:listing_id>", methods=["PUT"])
 @role_required("landlord", "agency")
-def update_listing(current_user, listing_id):
+@valider_corps(MajAnnonce)
+def update_listing(current_user, listing_id, corps):
     listing = Listing.query.get_or_404(listing_id)
     if listing.landlord_id != current_user.id:
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
 
-    data = request.get_json() or {}
+    valeurs = corps.model_dump(exclude_unset=True)
+    devise_envoyee = valeurs.pop("devise", None)
+    # Les contrôles croisés portent sur l'état final : un champ absent garde
+    # sa valeur en base.
+    final = {c: valeurs.get(c, getattr(listing, c))
+             for c in ("pays", "ville", "type_transaction", "prix")}
+    if "pays" in valeurs or "ville" in valeurs:
+        try:
+            verifier_lieu(final["pays"], final["ville"])
+        except PydanticCustomError as exc:
+            raise erreur_champ("ville", exc.type, exc.message(), final["ville"]) from None
+    if "prix" in valeurs or "type_transaction" in valeurs:
+        _verifier_loyer(final["type_transaction"], final["prix"])
+    # Une annonce hors marché ouvert (créée avant ce contrôle) garde sa devise.
+    devise = _devise(final["pays"]) or listing.devise
+    _verifier_devise(devise_envoyee, devise)
 
-    if "type_bien" in data and data["type_bien"] not in TYPES_BIEN:
-        return jsonify({"error": f"Type de bien invalide : {' | '.join(TYPES_BIEN)}"}), 400
-    if "type_transaction" in data and data["type_transaction"] not in TYPES_TRANSACTION:
-        return jsonify({"error": f"Type de transaction invalide : "
-                                 f"{' | '.join(TYPES_TRANSACTION)}"}), 400
+    # Le front renvoie toujours ville, type de bien… : seule une valeur qui
+    # change réellement compte, sinon chaque sauvegarde décertifierait.
+    modifie_le_bien = any(c in valeurs and valeurs[c] != getattr(listing, c)
+                          for c in CHAMPS_CERTIFIES)
 
-    modifiables = (
-        "title_fr", "title_en", "description_fr", "description_en",
-        "pays", "ville", "quartier", "adresse", "type_transaction", "type_bien",
-        "prix", "charges", "caution", "devise", "nb_pieces", "superficie",
-        "etage", "meuble", "has_generator", "has_water", "has_wifi",
-        "is_secured", "has_parking", "has_ac", "status", "is_visible",
-    )
-    for champ in modifiables:
-        if champ in data:
-            setattr(listing, champ, data[champ])
+    if valeurs.get("charges", 0) is None:
+        valeurs["charges"] = 0
+    for champ, valeur in valeurs.items():
+        setattr(listing, champ, valeur)
+    listing.devise = devise
 
     # Basculer de la location vers la vente laisserait sinon traîner une caution
     # et des charges qui n'ont plus d'objet.
@@ -354,19 +352,7 @@ def update_listing(current_user, listing_id):
         listing.etage = None
         listing.meuble = False
 
-    if "disponible_a_partir" in data:
-        listing.disponible_a_partir = _parse_date(data["disponible_a_partir"])
-
-    if "images" in data:
-        images = data["images"] or []
-        if len(images) > MAX_IMAGES:
-            return jsonify({"error": f"{MAX_IMAGES} photos maximum par annonce"}), 400
-        listing.images_urls = ",".join(images) if images else None
-
-    # Modifier le bien invalide la certification : elle portait sur l'ancien état.
-    champs_sensibles = {"adresse", "quartier", "ville", "type_bien",
-                        "type_transaction", "superficie"}
-    if listing.is_certified and champs_sensibles & set(data):
+    if listing.is_certified and modifie_le_bien:
         listing.certification_status = "none"
         listing.certified_at = None
         listing.certification_note = (
@@ -494,15 +480,14 @@ def televerser_photos(current_user, listing_id):
 
 @listings_bp.route("/<string:listing_id>/photos", methods=["DELETE"])
 @role_required("landlord", "agency")
-def supprimer_photo(current_user, listing_id):
+@valider_corps(UrlFichier)
+def supprimer_photo(current_user, listing_id, corps):
     """Retire une photo, désignée par son URL."""
     listing = Listing.query.get_or_404(listing_id)
     if listing.landlord_id != current_user.id:
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
 
-    url = (request.get_json() or {}).get("url")
-    if not url:
-        return jsonify({"error": "url requise"}), 400
+    url = corps.url
 
     existantes = listing.images_urls.split(",") if listing.images_urls else []
     if url not in existantes:
@@ -520,16 +505,16 @@ def supprimer_photo(current_user, listing_id):
 
 @listings_bp.route("/<string:listing_id>/photos/ordre", methods=["PUT"])
 @role_required("landlord", "agency")
-def reordonner_photos(current_user, listing_id):
+@valider_corps(OrdrePhotos)
+def reordonner_photos(current_user, listing_id, corps):
     """Redéfinit l'ordre des photos ; la première sert de vignette."""
     listing = Listing.query.get_or_404(listing_id)
     if listing.landlord_id != current_user.id:
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
 
-    ordre = (request.get_json() or {}).get("images")
-    if not isinstance(ordre, list):
-        return jsonify({"error": "images doit être une liste d'URLs"}), 400
-
+    # Seule une permutation des photos actuelles est acceptée : cette route
+    # ne peut pas introduire d'URL.
+    ordre = corps.images
     existantes = listing.images_urls.split(",") if listing.images_urls else []
     if sorted(ordre) != sorted(existantes):
         return jsonify({"error": "La liste doit contenir exactement les photos "
@@ -613,7 +598,8 @@ def lister_documents(current_user, listing_id):
 
 @listings_bp.route("/<string:listing_id>/documents", methods=["DELETE"])
 @role_required("landlord", "agency")
-def supprimer_document(current_user, listing_id):
+@valider_corps(UrlFichier)
+def supprimer_document(current_user, listing_id, corps):
     listing = Listing.query.get_or_404(listing_id)
     if listing.landlord_id != current_user.id:
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
@@ -622,9 +608,9 @@ def supprimer_document(current_user, listing_id):
         return jsonify({"error": "Impossible de retirer une pièce pendant "
                                  "l'examen de la certification"}), 409
 
-    url = (request.get_json() or {}).get("url")
+    url = corps.url
     existants = listing.documents
-    if not url or url not in existants:
+    if url not in existants:
         return jsonify({"error": "Ce document n'appartient pas à l'annonce"}), 404
 
     restants = [u for u in existants if u != url]

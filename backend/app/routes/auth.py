@@ -9,7 +9,7 @@ import re
 import string
 from datetime import datetime, timedelta
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify
 from flask_jwt_extended import (
     create_access_token,
     create_refresh_token,
@@ -21,11 +21,18 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from app import db
 from app.models import TRUST_LEVELS, OTPCode, TenantPassport, User
 from app.routes import current_user_required
+from app.schemas import valider_corps
+from app.schemas.auth import (
+    ChangementMotDePasse,
+    Connexion,
+    EnvoiOTP,
+    Inscription,
+    VerificationOTP,
+)
 from app.services import notifications as notify
 
 auth_bp = Blueprint("auth", __name__)
 
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[a-zA-Z]{2,}$")
 PHONE_RE = re.compile(r"^\+?[0-9]{8,15}$")
 
 OTP_TTL_MINUTES = 10
@@ -83,27 +90,13 @@ def emettre_tokens(user):
 # ─── POST /api/auth/register ──────────────────────────────────
 
 @auth_bp.route("/register", methods=["POST"])
-def register():
-    data = request.get_json() or {}
-
-    for field in ("email", "password", "full_name", "role"):
-        if not data.get(field):
-            return jsonify({"error": f"Champ requis : {field}"}), 400
-
-    email = data["email"].lower().strip()
-    if not EMAIL_RE.match(email):
-        return jsonify({"error": "Adresse e-mail invalide"}), 400
-
-    if len(data["password"]) < 8:
-        return jsonify({"error": "Le mot de passe doit contenir au moins 8 caractères"}), 400
-
-    if data["role"] not in ("tenant", "landlord", "agency"):
-        return jsonify({"error": "Rôle invalide : tenant | landlord | agency"}), 400
-
+@valider_corps(Inscription)
+def register(corps):
+    email = corps.email
     if User.query.filter_by(email=email).first():
         return jsonify({"error": "Cette adresse e-mail est déjà utilisée"}), 409
 
-    phone = normaliser_phone(data.get("phone"))
+    phone = normaliser_phone(corps.phone)
     if phone:
         if not PHONE_RE.match(phone):
             return jsonify({"error": "Numéro de téléphone invalide"}), 400
@@ -112,14 +105,14 @@ def register():
 
     user = User(
         email=email,
-        password_hash=generate_password_hash(data["password"]),
-        full_name=data["full_name"].strip(),
-        role=data["role"],
+        password_hash=generate_password_hash(corps.password),
+        full_name=corps.full_name,
+        role=corps.role,
         phone=phone,
-        pays=data.get("pays", "Guinée"),
-        ville=data.get("ville", "Conakry"),
-        quartier=data.get("quartier"),
-        preferred_lang=data.get("preferred_lang", "fr"),
+        pays=corps.pays,
+        ville=corps.ville,
+        quartier=corps.quartier,
+        preferred_lang=corps.preferred_lang,
         trust_level=0,
     )
     db.session.add(user)
@@ -128,7 +121,7 @@ def register():
     # Le locataire dispose d'un passeport dès l'inscription : il n'a plus qu'à
     # le compléter, ce qui rend la progression de confiance visible tout de suite.
     if user.role == "tenant":
-        passport = TenantPassport(tenant_id=user.id, devise=data.get("devise", "GNF"))
+        passport = TenantPassport(tenant_id=user.id, devise="GNF")
         passport.calculate_score()
         db.session.add(passport)
 
@@ -144,14 +137,10 @@ def register():
 # ─── POST /api/auth/login ─────────────────────────────────────
 
 @auth_bp.route("/login", methods=["POST"])
-def login():
-    data = request.get_json() or {}
-
-    if not data.get("email") or not data.get("password"):
-        return jsonify({"error": "E-mail et mot de passe requis"}), 400
-
-    user = User.query.filter_by(email=data["email"].lower().strip()).first()
-    if not user or not check_password_hash(user.password_hash, data["password"]):
+@valider_corps(Connexion)
+def login(corps):
+    user = User.query.filter_by(email=corps.email.lower()).first()
+    if not user or not check_password_hash(user.password_hash, corps.password):
         return jsonify({"error": "Identifiants incorrects"}), 401
 
     if not user.is_active:
@@ -190,18 +179,12 @@ def me(current_user):
 
 @auth_bp.route("/password", methods=["PUT"])
 @current_user_required
-def change_password(current_user):
-    data = request.get_json() or {}
-    ancien, nouveau = data.get("ancien_mot_de_passe"), data.get("nouveau_mot_de_passe")
-
-    if not ancien or not nouveau:
-        return jsonify({"error": "Ancien et nouveau mot de passe requis"}), 400
-    if not check_password_hash(current_user.password_hash, ancien):
+@valider_corps(ChangementMotDePasse)
+def change_password(current_user, corps):
+    if not check_password_hash(current_user.password_hash, corps.ancien_mot_de_passe):
         return jsonify({"error": "Ancien mot de passe incorrect"}), 401
-    if len(nouveau) < 8:
-        return jsonify({"error": "Le mot de passe doit contenir au moins 8 caractères"}), 400
 
-    current_user.password_hash = generate_password_hash(nouveau)
+    current_user.password_hash = generate_password_hash(corps.nouveau_mot_de_passe)
     db.session.commit()
     return jsonify({"message": "Mot de passe modifié"}), 200
 
@@ -210,12 +193,11 @@ def change_password(current_user):
 
 @auth_bp.route("/send-otp", methods=["POST"])
 @current_user_required
-def send_otp(current_user):
-    data = request.get_json() or {}
-
+@valider_corps(EnvoiOTP)
+def send_otp(current_user, corps):
     # Permet de renseigner (ou corriger) le numéro au moment de la vérification
-    if data.get("phone"):
-        phone = normaliser_phone(data["phone"])
+    if corps.phone:
+        phone = normaliser_phone(corps.phone)
         if not PHONE_RE.match(phone or ""):
             return jsonify({"error": "Numéro de téléphone invalide"}), 400
         existant = User.query.filter_by(phone=phone).first()
@@ -265,11 +247,8 @@ def send_otp(current_user):
 
 @auth_bp.route("/verify-otp", methods=["POST"])
 @current_user_required
-def verify_otp(current_user):
-    data = request.get_json() or {}
-    if not data.get("code"):
-        return jsonify({"error": "Code OTP requis"}), 400
-
+@valider_corps(VerificationOTP)
+def verify_otp(current_user, corps):
     otp = (OTPCode.query.filter_by(user_id=current_user.id, is_used=False)
            .order_by(OTPCode.created_at.desc()).first())
 
@@ -284,7 +263,7 @@ def verify_otp(current_user):
         db.session.commit()
         return jsonify({"error": "Trop de tentatives. Demandez un nouveau code."}), 429
 
-    if otp.code != data["code"].strip():
+    if otp.code != corps.code:
         otp.attempts += 1
         db.session.commit()
         restantes = OTP_MAX_ATTEMPTS - otp.attempts

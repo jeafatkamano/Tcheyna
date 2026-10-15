@@ -8,6 +8,7 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+from pydantic import ValidationError
 
 from config import Config
 
@@ -44,6 +45,7 @@ def create_app(config_class=Config):
     from app.routes.payments import payments_bp
     from app.routes.reviews import reviews_bp
     from app.routes.users import users_bp
+    from app.schemas import reponse_422
 
     app.register_blueprint(auth_bp,          url_prefix="/api/auth")
     app.register_blueprint(users_bp,         url_prefix="/api/users")
@@ -73,6 +75,27 @@ def create_app(config_class=Config):
     @app.errorhandler(404)
     def not_found(_):
         return jsonify({"error": "Ressource introuvable"}), 404
+
+    # Flask répond en HTML à une requête mal formée ; le front, qui lit
+    # `error`, n'afficherait alors qu'un message générique.
+    @app.errorhandler(400)
+    def bad_request(_):
+        return jsonify({"error": "Requête invalide"}), 400
+
+    @app.errorhandler(405)
+    def method_not_allowed(_):
+        return jsonify({"error": "Méthode non autorisée"}), 405
+
+    @app.errorhandler(415)
+    def unsupported_media_type(_):
+        return jsonify({"error": "Format non pris en charge : JSON attendu"}), 415
+
+    # Contrôle levé par une route après validation du corps (état en base) :
+    # même réponse 422 qu'un schéma.
+    @app.errorhandler(ValidationError)
+    def validation_error(exc):
+        db.session.rollback()
+        return reponse_422(exc)
 
     @app.errorhandler(413)
     def too_large(_):

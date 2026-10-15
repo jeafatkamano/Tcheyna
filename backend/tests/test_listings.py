@@ -8,7 +8,8 @@ NOUVELLE_ANNONCE = {
     "title_fr": "Studio meublé à Kaloum",
     "description_fr": "Proche du port, gardien jour et nuit.",
     "pays": "Guinée", "ville": "Conakry", "quartier": "Kaloum Centre",
-    "type_bien": "studio", "prix": 1_500_000, "devise": "GNF",
+    # Pas de `devise` : elle découle du pays, côté serveur.
+    "type_bien": "studio", "prix": 1_500_000,
 }
 
 
@@ -39,7 +40,7 @@ def test_publication_par_un_bailleur(client, bailleur, entetes):
     reponse = client.post("/api/listings/", headers=entetes(bailleur), json=NOUVELLE_ANNONCE)
 
     assert reponse.status_code == 201
-    assert Listing.query.filter_by(landlord_id=bailleur.id).count() == 1
+    assert Listing.query.filter_by(landlord_id=bailleur.id).one().devise == "GNF"
 
 
 def test_publication_refusee_a_un_locataire(client, locataire, entetes):

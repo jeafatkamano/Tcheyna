@@ -181,7 +181,6 @@ function Formulaire({
       // Le serveur les remet à zéro pour une vente ; on évite de les envoyer.
       charges: estVente ? 0 : form.charges ? Number(form.charges) : 0,
       caution: estVente || !form.caution ? undefined : Number(form.caution),
-      devise: "GNF",
       nb_pieces: bienSansPieces ? undefined : Number(form.nb_pieces) || 1,
       superficie: form.superficie ? Number(form.superficie) : undefined,
       etage: bienSansPieces || !form.etage ? undefined : Number(form.etage),

@@ -26,7 +26,7 @@ def test_preferences_enregistrees(client, locataire, entetes):
 def test_preferences_budget_incoherent_refuse(client, locataire, entetes):
     reponse = client.put("/api/passport/preferences", headers=entetes(locataire),
                          json={"budget_min": 3_000_000, "budget_max": 1_000_000})
-    assert reponse.status_code == 400
+    assert reponse.status_code == 422
 
 
 def test_cni_deposee_dans_le_compartiment_prive(client, locataire, entetes, supabase, fichier_image):

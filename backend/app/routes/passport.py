@@ -4,13 +4,13 @@ routes/passport.py — Passeport Locataire.
 Regroupe le dossier du locataire (documents, revenus, garant) et ses critères de
 recherche, qui alimentent directement le moteur de matching.
 """
-from datetime import date
-
 from flask import Blueprint, jsonify, request
 
 from app import db
 from app.models import TRUST_LEVELS, TenantPassport, abonnements_passeport
 from app.routes import role_required
+from app.schemas import erreur_champ, valider_corps
+from app.schemas.passport import Criteres, MajPasseport
 from app.services import stockage
 
 passport_bp = Blueprint("passport", __name__)
@@ -22,8 +22,6 @@ DOC_TYPES = {
     "income":    "income_doc_url",
 }
 
-SITUATIONS_PRO = ("salarié", "indépendant", "étudiant", "commerçant", "fonctionnaire", "autre")
-
 
 def _obtenir_ou_creer(user):
     passport = user.passport
@@ -32,13 +30,6 @@ def _obtenir_ou_creer(user):
         db.session.add(passport)
         db.session.flush()
     return passport
-
-
-def _parse_date(valeur):
-    try:
-        return date.fromisoformat(valeur) if valeur else None
-    except (TypeError, ValueError):
-        return None
 
 
 # ─── GET /api/passport ───────────────────────────────────────
@@ -98,31 +89,22 @@ def _etapes_verification(user, passport):
 
 @passport_bp.route("/", methods=["POST"])
 @role_required("tenant")
-def create_or_update_passport(current_user):
+@valider_corps(MajPasseport)
+def create_or_update_passport(current_user, corps):
     """Met à jour la situation professionnelle et le garant."""
     passport = _obtenir_ou_creer(current_user)
-    data = request.get_json() or {}
+    valeurs = corps.model_dump(exclude_unset=True)
 
-    if (situation := data.get("situation_pro")) and situation not in SITUATIONS_PRO:
-        return jsonify({"error": f"Situation invalide : {' | '.join(SITUATIONS_PRO)}"}), 400
-
-    if "revenu_mensuel" in data and data["revenu_mensuel"] is not None:
-        try:
-            revenu = int(data["revenu_mensuel"])
-        except (TypeError, ValueError):
-            return jsonify({"error": "Le revenu doit être un nombre"}), 400
-        if revenu < 0:
-            return jsonify({"error": "Le revenu ne peut pas être négatif"}), 400
+    # `null` laisse le revenu déclaré inchangé (comportement historique).
+    if (revenu := valeurs.pop("revenu_mensuel", None)) is not None:
         # Déclarer un nouveau revenu remet la validation à zéro : l'admin doit revoir.
         if passport.revenu_mensuel != revenu and current_user.income_verified:
             current_user.income_verified = False
             passport.income_verified = False
         passport.revenu_mensuel = revenu
 
-    for champ in ("devise", "employeur", "situation_pro",
-                  "a_un_garant", "garant_nom", "garant_revenu"):
-        if champ in data:
-            setattr(passport, champ, data[champ])
+    for champ, valeur in valeurs.items():
+        setattr(passport, champ, valeur)
 
     passport.calculate_score()
     current_user.update_trust_level()
@@ -135,29 +117,24 @@ def create_or_update_passport(current_user):
 
 @passport_bp.route("/preferences", methods=["PUT"])
 @role_required("tenant")
-def update_preferences(current_user):
+@valider_corps(Criteres)
+def update_preferences(current_user, corps):
     """Critères de recherche : ce que le moteur de matching utilise."""
     passport = _obtenir_ou_creer(current_user)
-    data = request.get_json() or {}
+    valeurs = corps.model_dump(exclude_unset=True)
 
-    budget_min = data.get("budget_min", passport.budget_min)
-    budget_max = data.get("budget_max", passport.budget_max)
-    if budget_min and budget_max and int(budget_min) > int(budget_max):
-        return jsonify({"error": "Le budget minimum dépasse le budget maximum"}), 400
+    # Comparé à l'état final : envoyer le seul minimum le confronte au
+    # maximum déjà enregistré.
+    budget_min = valeurs.get("budget_min", passport.budget_min)
+    budget_max = valeurs.get("budget_max", passport.budget_max)
+    if budget_min is not None and budget_max is not None and budget_min > budget_max:
+        raise erreur_champ("budget_min", "budget_incoherent",
+                           "Le budget minimum dépasse le budget maximum", budget_min)
 
-    for champ in ("budget_min", "budget_max", "ville_souhaitee",
-                  "type_bien_souhaite", "nb_pieces_min", "nb_occupants"):
-        if champ in data:
-            setattr(passport, champ, data[champ])
-
-    if "quartiers_souhaites" in data:
-        quartiers = data["quartiers_souhaites"]
-        if isinstance(quartiers, list):
-            quartiers = ",".join(str(q).strip() for q in quartiers if str(q).strip())
-        passport.quartiers_souhaites = quartiers or None
-
-    if "date_emmenagement" in data:
-        passport.date_emmenagement = _parse_date(data["date_emmenagement"])
+    if "quartiers_souhaites" in valeurs:
+        valeurs["quartiers_souhaites"] = ",".join(valeurs["quartiers_souhaites"] or []) or None
+    for champ, valeur in valeurs.items():
+        setattr(passport, champ, valeur)
 
     passport.calculate_score()
     db.session.commit()

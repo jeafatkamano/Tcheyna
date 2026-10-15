@@ -24,6 +24,8 @@ from app.models import (
     abonnements_passeport,
 )
 from app.routes import current_user_required
+from app.schemas import valider_corps
+from app.schemas.payments import CallbackCinetPay, InitierPaiement
 from app.services import notifications as notify
 
 payments_bp = Blueprint("payments", __name__)
@@ -31,9 +33,9 @@ payments_bp = Blueprint("payments", __name__)
 CINETPAY_INIT_URL = "https://api-checkout.cinetpay.com/v2/payment"
 CINETPAY_CHECK_URL = "https://api-checkout.cinetpay.com/v2/payment/check"
 
-METHODES = ("orange_money", "mtn_momo", "wave", "moov", "carte")
-
-# Tarifs des services Tcheyna, en GNF (base : Conakry)
+# Tarifs des services Tcheyna, en GNF (base : Conakry). Ouvrir un marché
+# dans une autre devise demandera une grille par devise.
+DEVISE_TARIFS = "GNF"
 TARIFS_GNF = {
     "certification":        250_000,
     "abonnement_passeport": 150_000,
@@ -106,7 +108,7 @@ def _montant_attendu(type_paiement, user, match, listing):
 def tarifs():
     """Grille tarifaire publique."""
     return jsonify({
-        "devise": "GNF",
+        "devise": DEVISE_TARIFS,
         "services": [
             {"type": "certification", "libelle": PAYMENT_TYPES["certification"],
              "montant": TARIFS_GNF["certification"], "payeur": "Propriétaire",
@@ -132,19 +134,11 @@ def tarifs():
 
 @payments_bp.route("/initier", methods=["POST"])
 @current_user_required
-def initier_paiement(current_user):
-    data = request.get_json() or {}
-
-    type_paiement = data.get("type_paiement", "caution")
-    if type_paiement not in PAYMENT_TYPES:
-        return jsonify({"error": f"Type invalide : {' | '.join(PAYMENT_TYPES)}"}), 400
-
-    methode = data.get("methode")
-    if methode and methode not in METHODES:
-        return jsonify({"error": f"Méthode invalide : {' | '.join(METHODES)}"}), 400
-
-    match = Match.query.get(data["match_id"]) if data.get("match_id") else None
-    listing = Listing.query.get(data["listing_id"]) if data.get("listing_id") else None
+@valider_corps(InitierPaiement)
+def initier_paiement(current_user, corps):
+    type_paiement, methode = corps.type_paiement, corps.methode
+    match = Match.query.get(corps.match_id) if corps.match_id else None
+    listing = Listing.query.get(corps.listing_id) if corps.listing_id else None
 
     # Contrôles d'accès : on ne paie que pour ses propres opérations.
     if match and current_user.id not in (match.tenant_id, match.listing.landlord_id):
@@ -158,9 +152,11 @@ def initier_paiement(current_user):
     if not montant or montant <= 0:
         return jsonify({"error": "Montant à payer indéterminé"}), 400
 
+    # La devise n'est jamais choisie par le client : celle de l'annonce, ou,
+    # pour un service sans annonce (abonnement Passeport), celle des tarifs.
     devise = (match.listing.devise if match and match.listing
               else listing.devise if listing
-              else data.get("devise", "GNF"))
+              else DEVISE_TARIFS)
 
     transaction_id = uuid.uuid4().hex[:20].upper()
 
@@ -237,17 +233,14 @@ def initier_paiement(current_user):
 # ─── POST /api/payments/callback ─────────────────────────────
 
 @payments_bp.route("/callback", methods=["POST"])
-def cinetpay_callback():
+@valider_corps(CallbackCinetPay, source="json_ou_form")
+def cinetpay_callback(corps):
     """Webhook CinetPay.
 
     Le statut n'est jamais lu depuis le corps de la requête : on rappelle
     CinetPay pour le vérifier, sinon n'importe qui pourrait valider un paiement.
     """
-    data = request.get_json(silent=True) or request.form
-    transaction_id = data.get("cpm_trans_id")
-
-    if not transaction_id:
-        return jsonify({"error": "cpm_trans_id manquant"}), 400
+    transaction_id = corps.cpm_trans_id
 
     paiement = Payment.query.filter_by(cinetpay_transaction_id=transaction_id).first()
     if not paiement:
