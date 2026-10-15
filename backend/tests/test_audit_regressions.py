@@ -25,8 +25,9 @@ def faille(code, lot, constat):
 
 
 # ─── R1 · Validation d'identité par défaut ───────────────────
+# Corrigée au lot 1.4 (`approuve` requis, pièce exigée) : le test reste en
+# garde-fou.
 
-@faille("R1", "1.4", "approuve vaut True par défaut, même sans pièce déposée")
 def test_r1_verify_cni_sans_decision_ni_piece_est_refuse(client, fabrique, admin, entetes):
     # Locataire au téléphone vérifié, qui n'a déposé aucune pièce d'identité.
     sans_piece = fabrique.locataire(niveau=1)
@@ -41,7 +42,6 @@ def test_r1_verify_cni_sans_decision_ni_piece_est_refuse(client, fabrique, admin
     assert reponse.status_code in (400, 422)
 
 
-@faille("R1", "1.4", "verify-revenus : approuve vaut aussi True par défaut (admin.py:239)")
 def test_r1_bis_verify_revenus_sans_decision_ni_justificatif_est_refuse(client, fabrique, admin,
                                                                        entetes):
     # Locataire identifié (niveau 2) qui n'a déposé aucun justificatif de revenus.
@@ -140,8 +140,9 @@ def test_r6_budget_non_numerique_refuse_proprement(app, client, locataire, entet
 
 
 # ─── R7 · Aucune limitation de débit ─────────────────────────
+# Corrigée au lot 1.4 (flask-limiter, quota de SMS en base) : les tests
+# restent en garde-fou.
 
-@faille("R7", "1.4", "30 mauvais mots de passe d'affilée, aucun blocage")
 def test_r7_force_brute_sur_login_bloquee(client, locataire, monkeypatch):
     # La limitation se juge au nombre d'essais, pas au mot de passe : on évite
     # 30 vérifications scrypt (~3 s) qui n'apprendraient rien de plus.
@@ -153,6 +154,74 @@ def test_r7_force_brute_sur_login_bloquee(client, locataire, monkeypatch):
     ]
 
     assert 429 in codes, "aucune limitation de débit sur /auth/login"
+
+
+def test_r7_inscriptions_en_boucle_bloquees(client):
+    codes = [
+        client.post("/api/auth/register", json={
+            "email": f"robot{i}@exemple.test", "password": "motdepasse-robot",
+            "full_name": f"Robot {i}", "role": "tenant",
+        }).status_code
+        for i in range(6)
+    ]
+
+    assert codes[:5] == [201] * 5
+    assert codes[5] == 429, "inscriptions illimitées depuis une même IP"
+    assert User.query.count() == 5
+
+
+def _vieillir_envois(phone):
+    """Recule les envois de 2 min : l'anti-spam de 60 s par compte ne doit
+    pas masquer le quota quotidien, qui est l'objet du test."""
+    from datetime import timedelta
+
+    from app import db
+    from app.models import OTPCode
+
+    for otp in OTPCode.query.filter_by(phone=phone).all():
+        otp.created_at -= timedelta(minutes=2)
+    db.session.commit()
+
+
+def test_r7_send_otp_plafonne_par_numero(app, client, fabrique, entetes, sms):
+    app.config["AT_API_KEY"] = "cle-at-de-test"
+    user = fabrique.locataire(niveau=0)
+    en_tetes = entetes(user)
+
+    codes = []
+    for _ in range(6):
+        codes.append(client.post("/api/auth/send-otp", headers=en_tetes, json={}).status_code)
+        _vieillir_envois(user.phone)
+
+    assert codes == [200] * 5 + [429], "SMS illimités vers un même numéro"
+    assert len(sms) == 5
+
+
+def test_r7_send_otp_plafond_partage_entre_comptes(app, client, fabrique, entetes, sms):
+    # Changer de compte (ou libérer le numéro puis le reprendre) ne remet
+    # pas le compteur à zéro : chaque SMS est facturé au même numéro.
+    app.config["AT_API_KEY"] = "cle-at-de-test"
+    numero = "+224620000123"
+    premier = fabrique.locataire(niveau=0, phone=None, phone_verified=False)
+    second = fabrique.locataire(niveau=0, phone=None, phone_verified=False)
+
+    for _ in range(3):
+        assert client.post("/api/auth/send-otp", headers=entetes(premier),
+                           json={"phone": numero}).status_code == 200
+        _vieillir_envois(numero)
+    # Le premier compte passe à un autre numéro : celui-ci redevient libre.
+    assert client.post("/api/auth/send-otp", headers=entetes(premier),
+                       json={"phone": "+224620000999"}).status_code == 200
+    _vieillir_envois("+224620000999")
+
+    codes = []
+    for _ in range(3):
+        codes.append(client.post("/api/auth/send-otp", headers=entetes(second),
+                                 json={"phone": numero}).status_code)
+        _vieillir_envois(numero)
+
+    assert codes == [200, 200, 429], "quota du numéro remis à zéro par un second compte"
+    assert len([s for s in sms if s["destinataires"] == [numero]]) == 5
 
 
 # ─── R8 · N+1 sur la recherche ───────────────────────────────

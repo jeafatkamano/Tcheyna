@@ -102,6 +102,13 @@ Révision 3b8e2c41f7a9 (lot 1.2, `listings.prix` en BIGINT) : elle s'applique
 par `flask db upgrade` APRÈS le `stamp d5a017c5d0f3` de l'étape 3, jamais
 avant (sans tampon, `upgrade` tenterait de recréer toutes les tables).
 
+Révision 7c4f1d2e9a6b (lot 1.4 : `users.token_version`, `otp_codes.code_hash`
+et `otp_codes.phone`, `otp_codes.code` rendu nullable) : `flask db upgrade`
+AVANT de déployer le code du lot ; elle est compatible avec l'ancien code.
+Vérifiée sur PostgreSQL 16 avec des comptes et des OTP en clair existants
+(montée, `flask db check`, retour arrière). La suppression de
+`otp_codes.code` viendra dans une révision ultérieure, après déploiement.
+
 
 2. Nouvelle base (développement, CI, nouvel environnement)
 ---------------------------------------------------------

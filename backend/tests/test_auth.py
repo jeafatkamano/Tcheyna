@@ -1,5 +1,7 @@
 """Blueprint auth : inscription, connexion, jetons, vérification du téléphone."""
-from app.models import OTPCode, TenantPassport, User
+import re
+
+from app.models import TenantPassport, User
 from tests.conftest import MOT_DE_PASSE
 
 
@@ -66,9 +68,17 @@ def test_refresh_accepte_le_jeton_de_rafraichissement_seulement(client, locatair
 
 
 def test_changement_mot_de_passe_exige_l_ancien(client, locataire, entetes):
-    reponse = client.put("/api/auth/password", headers=entetes(locataire),
+    en_tetes = entetes(locataire)
+    reponse = client.put("/api/auth/password", headers=en_tetes,
                          json={"ancien_mot_de_passe": "faux", "nouveau_mot_de_passe": "nouveau-mdp"})
-    assert reponse.status_code == 401
+    # 422 et non 401 : le front lirait un 401 comme une session expirée et
+    # déconnecterait l'utilisateur pour une faute de frappe.
+    assert reponse.status_code == 422
+    assert reponse.get_json()["details"][0] == {
+        "champ": "ancien_mot_de_passe", "code": "mot_de_passe_incorrect",
+        "message": "Ancien mot de passe incorrect"}
+    # Rien n'est révoqué : la session reste ouverte.
+    assert client.get("/api/auth/me", headers=en_tetes).status_code == 200
 
 
 def test_otp_envoye_par_sms_puis_verifie(app, client, fabrique, entetes, sms):
@@ -81,19 +91,19 @@ def test_otp_envoye_par_sms_puis_verifie(app, client, fabrique, entetes, sms):
     assert "debug_code" not in envoi.get_json()
     assert len(sms) == 1 and sms[0]["destinataires"] == [user.phone]
 
-    code = OTPCode.query.filter_by(user_id=user.id, is_used=False).one().code
-    assert code in sms[0]["message"]
+    # La base ne garde qu'une empreinte : le code se lit dans le SMS.
+    code = re.search(r"\b(\d{6})\b", sms[0]["message"]).group(1)
     verif = client.post("/api/auth/verify-otp", headers=entetes(user), json={"code": code})
 
     assert verif.status_code == 200
     assert verif.get_json()["trust_level"] == 1
 
 
-def test_otp_incorrect_refuse(client, fabrique, entetes):
+def test_otp_incorrect_refuse(client, fabrique, entetes, codes_otp):
     user = fabrique.locataire(niveau=0)
     client.post("/api/auth/send-otp", headers=entetes(user), json={})
 
-    code = OTPCode.query.filter_by(user_id=user.id).one().code
+    code = codes_otp[-1]
     faux = "000000" if code != "000000" else "111111"
     reponse = client.post("/api/auth/verify-otp", headers=entetes(user), json={"code": faux})
 

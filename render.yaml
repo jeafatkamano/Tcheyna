@@ -34,6 +34,24 @@ services:
         generateValue: true
       - key: JWT_SECRET_KEY
         generateValue: true
+      # Clé du HMAC des codes OTP (lot 1.4). Absente, elle est dérivée de
+      # SECRET_KEY ; la changer n'invalide que les codes des 10 dernières
+      # minutes.
+      - key: OTP_HMAC_KEY
+        generateValue: true
+
+      # Limitation de débit (lot 1.4). Nombre de proxys devant l'API qui
+      # ajoutent une entrée à X-Forwarded-For : 1 (répartiteur Render) est
+      # une hypothèse, À CONFIRMER avant de se fier aux limites par IP —
+      # comparer `reseau.remote_addr` de GET /api/admin/diagnostic à sa
+      # propre IP publique. Trop petit : tous les clients partagent une IP ;
+      # trop grand : la limite de connexion se contourne.
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"
+      # Compteurs en mémoire, propres à chaque worker (plafond réel jusqu'à
+      # 2× le quota) ; `redis://…` les partagerait.
+      - key: RATELIMIT_STORAGE_URI
+        value: memory://
 
       # Chaîne de connexion PostgreSQL (Supabase) — à renseigner dans le
       # tableau de bord. Sans elle, l'API refuse de démarrer : le repli SQLite

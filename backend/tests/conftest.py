@@ -419,18 +419,39 @@ def entetes(app):
     """`entetes(user)` → en-têtes portant un jeton d'accès valide.
 
     Le jeton est émis comme le fait `auth.emettre_tokens` (identité = id de
-    l'utilisateur). Le parcours de connexion réel est testé à part, dans
-    test_auth.py : inutile de payer un `check_password_hash` par test.
+    l'utilisateur, claim `tv` = version actuelle de ses jetons). Le parcours
+    de connexion réel est testé à part, dans test_auth.py : inutile de payer
+    un `check_password_hash` par test.
     """
     def fabriquer(user, refresh=False):
+        claims = {"tv": user.token_version}
         if refresh:
             from flask_jwt_extended import create_refresh_token
-            jeton = create_refresh_token(identity=user.id)
+            jeton = create_refresh_token(identity=user.id, additional_claims=claims)
         else:
-            jeton = create_access_token(identity=user.id)
+            jeton = create_access_token(identity=user.id, additional_claims=claims)
         return {"Authorization": f"Bearer {jeton}"}
 
     return fabriquer
+
+
+@pytest.fixture
+def codes_otp(monkeypatch):
+    """Codes OTP générés pendant le test, dans l'ordre. La base n'en garde
+    qu'une empreinte (lot 1.4) : c'est le seul moyen de les connaître sans
+    passer par le faux SMS."""
+    from app.routes import auth
+
+    generes = []
+    generer = auth.generate_otp
+
+    def espion(*args, **kwargs):
+        code = generer(*args, **kwargs)
+        generes.append(code)
+        return code
+
+    monkeypatch.setattr(auth, "generate_otp", espion)
+    return generes
 
 
 # ─── Intégrations simulées ───────────────────────────────────

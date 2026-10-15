@@ -49,6 +49,37 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=2)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
 
+    # ─── Limitation de débit (flask-limiter) ────────────────
+    # Stockage déclaré explicitement : sans valeur, flask-limiter retombe sur
+    # la mémoire en émettant un avertissement (qui ferait échouer les tests,
+    # `filterwarnings = error`). Avec `memory://`, chaque worker gunicorn
+    # (render.yaml : 2) tient ses propres compteurs, remis à zéro à chaque
+    # redémarrage : le plafond réel de login et register va donc de 1× à 2×
+    # le quota affiché. Passer à Redis (`redis://…`) ne demande que cette
+    # variable et l'extra `flask-limiter[redis]`. Le quota d'envoi de SMS, qui
+    # coûte de l'argent, est compté en base et ne dépend pas de ce stockage.
+    RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
+    # Retry-After et X-RateLimit-* sur les routes limitées.
+    RATELIMIT_HEADERS_ENABLED = True
+    # Fenêtre glissante : une fenêtre fixe laisserait passer 2× le quota à
+    # cheval sur deux périodes (10 essais à 14 min 59, 10 à 15 min 01).
+    RATELIMIT_STRATEGY = "moving-window"
+
+    # Nombre de proxys de confiance devant l'API, qui ajoutent chacun une
+    # entrée à X-Forwarded-For. L'IP du client sert de clé aux limites de
+    # débit : trop petit, tout le monde partage l'IP du proxy (inscriptions
+    # bloquées pour tout le pays) ; trop grand, un client choisit sa clé en
+    # ajoutant une fausse IP en tête de l'en-tête (force brute illimitée).
+    # 1 = le répartiteur de Render ; à confirmer par la section « reseau »
+    # de GET /api/admin/diagnostic.
+    TRUSTED_PROXY_HOPS = int(os.getenv("TRUSTED_PROXY_HOPS", "1"))
+
+    # ─── Codes OTP ──────────────────────────────────────────
+    # Clé du HMAC qui protège les codes OTP en base. Vide : dérivée de
+    # SECRET_KEY. Une clé dédiée permet de changer l'une sans l'autre ; la
+    # changer invalide seulement les codes en cours (10 minutes de validité).
+    OTP_HMAC_KEY = os.getenv("OTP_HMAC_KEY", "")
+
     # ─── CORS ───────────────────────────────────────────────
     CORS_ORIGINS = [
         origine.strip()

@@ -89,6 +89,11 @@ class User(db.Model):
 
     is_active     = db.Column(db.Boolean, default=True)
     last_login_at = db.Column(db.DateTime, nullable=True)
+    # Version des jetons JWT du compte (claim `tv`). L'incrémenter révoque
+    # tous les jetons déjà émis : changement de mot de passe, désactivation.
+    # `server_default` : les comptes existants prennent 0 à la migration,
+    # comme les jetons émis avant elle, qui n'ont pas de claim.
+    token_version = db.Column(db.Integer, nullable=False, default=0, server_default="0")
 
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -135,6 +140,15 @@ class User(db.Model):
         notes = [r.note for r in self.reviews_received]
         return round(sum(notes) / len(notes), 1) if notes else None
 
+    def revoquer_jetons(self):
+        """Invalide tous les jetons déjà émis pour ce compte (tous appareils).
+
+        Incrément en SQL (`token_version + 1`) et non en Python : deux
+        révocations simultanées ne peuvent pas se neutraliser. La nouvelle
+        valeur est relue de la base au premier accès après le commit.
+        """
+        self.token_version = type(self).token_version + 1
+
     def to_dict(self, public=True):
         data = {
             "id":             self.id,
@@ -175,7 +189,16 @@ class OTPCode(db.Model):
 
     id         = db.Column(db.String(36), primary_key=True, default=generate_uuid)
     user_id    = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False, index=True)
-    code       = db.Column(db.String(6),  nullable=False)
+    # OBSOLÈTE : le code en clair n'est plus écrit (lot 1.4). La colonne reste
+    # le temps du déploiement, l'ancien code y écrivant encore ; elle sera
+    # vidée puis supprimée par une révision ultérieure.
+    code       = db.Column(db.String(6),  nullable=True)
+    # HMAC-SHA256 du code (hexadécimal) : une fuite de la base seule ne livre
+    # aucun code, la clé vit hors base (OTP_HMAC_KEY ou SECRET_KEY).
+    code_hash  = db.Column(db.String(64), nullable=True)
+    # Numéro auquel le code a été envoyé : le quota quotidien de SMS se compte
+    # par numéro, tous comptes confondus.
+    phone      = db.Column(db.String(20), nullable=True, index=True)
     is_used    = db.Column(db.Boolean, default=False)
     attempts   = db.Column(db.Integer, default=0)
     expires_at = db.Column(db.DateTime, nullable=False)

@@ -12,7 +12,7 @@ import pytest
 from flask import request
 
 from app import db
-from app.models import Listing, Match, OTPCode, Payment, Review, TenantPassport, User
+from app.models import Listing, Match, Payment, Review, TenantPassport, User
 from app.schemas.listings import LOYER_MAX, PRIX_MAX
 from tests.conftest import MOT_DE_PASSE
 
@@ -496,7 +496,7 @@ def test_callback_sans_identifiant_ou_trop_long(client):
 # Corps copiés des appels de frontend/src (api/index.ts et formulaires) :
 # aucun ne doit être refusé.
 
-def test_front_inscription_et_compte(client, fabrique, entetes):
+def test_front_inscription_et_compte(client, fabrique, entetes, codes_otp):
     # RegisterPage.soumettre : `...form`, `role`, phone et quartier facultatifs.
     reponse = client.post("/api/auth/register", json={
         "full_name": "Mariama Diallo", "email": "mariama@exemple.test", "phone": "622 52 92 52",
@@ -513,13 +513,15 @@ def test_front_inscription_et_compte(client, fabrique, entetes):
                                                 "password": MOT_DE_PASSE}).status_code == 200
 
     user = User.query.filter_by(email="mariama@exemple.test").one()
-    en_tetes = entetes(user)
-    assert client.put("/api/auth/password", headers=en_tetes, json={
+    changement = client.put("/api/auth/password", headers=entetes(user), json={
         "ancien_mot_de_passe": MOT_DE_PASSE, "nouveau_mot_de_passe": "nouveau-mdp-123",
-    }).status_code == 200
+    })
+    assert changement.status_code == 200
+    # ChangementMotDePasse stocke les nouveaux jetons : les anciens sont révoqués.
+    en_tetes = {"Authorization": f"Bearer {changement.get_json()['access_token']}"}
     # PhoneVerification : `{}` ou `{phone}`, puis `{code}` (chaîne).
     assert client.post("/api/auth/send-otp", headers=en_tetes, json={}).status_code == 200
-    code = OTPCode.query.filter_by(user_id=user.id, is_used=False).one().code
+    code = codes_otp[-1]
     assert client.post("/api/auth/verify-otp", headers=en_tetes,
                        json={"code": code}).status_code == 200
     autre = fabrique.locataire(niveau=0, phone=None, phone_verified=False)
@@ -632,7 +634,10 @@ def test_front_mise_en_relation(client, fabrique, locataire, bailleur, annonce, 
 
 def test_front_administration(client, fabrique, admin, entetes):
     en_tetes = entetes(admin)
-    cible = fabrique.locataire(niveau=1, cni_uploaded=True)
+    # Pièces déposées : sans elles, la décision est refusée (R1, lot 1.4).
+    cible = fabrique.locataire(niveau=1, cni_uploaded=True, passeport=False)
+    fabrique.passeport(cible, cni_recto_url="/uploads/cni.png", docs_uploaded=True,
+                       income_doc_url="/uploads/revenus.pdf")
     annonce = fabrique.annonce(certification_status="pending")
 
     # adminAPI : `{approuve, motif}` (motif absent quand on approuve).

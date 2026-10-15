@@ -19,7 +19,7 @@ from app.models import (
     User,
 )
 from app.routes import role_required
-from app.schemas import valider_corps
+from app.schemas import erreur_champ, valider_corps
 from app.schemas.admin import Decision, StatutCompte
 from app.services import notifications as notify
 from app.services import stockage
@@ -99,6 +99,23 @@ def diagnostic(current_user):
         "base_de_donnees": {
             "moteur": current_app.config["SQLALCHEMY_DATABASE_URI"].split("://")[0],
         },
+        # Réglage de TRUSTED_PROXY_HOPS (limites de débit par IP). Depuis son
+        # propre poste, l'admin compare `remote_addr` à son IP publique :
+        # égales, le réglage est bon ; IP d'un proxy (Render, Cloudflare),
+        # il faut l'augmenter. `x_forwarded_for_entrees` donne le nombre
+        # d'entrées reçues, donc de proxys traversés (+ celles du client).
+        "reseau": {
+            "trusted_proxy_hops": current_app.config.get("TRUSTED_PROXY_HOPS"),
+            "remote_addr": request.remote_addr,
+            "x_forwarded_for_entrees": len([
+                e for e in request.headers.get("X-Forwarded-For", "").split(",") if e.strip()
+            ]),
+            # Présence seulement : ces en-têtes ne sont pas utilisés tant
+            # qu'on ignore si Render les écrase (sinon, falsifiables).
+            "true_client_ip_present": "True-Client-IP" in request.headers,
+            "cf_connecting_ip_present": "CF-Connecting-IP" in request.headers,
+            "limites_stockage": current_app.config.get("RATELIMIT_STORAGE_URI", "").split("://")[0],
+        },
     }), 200
 
 
@@ -176,6 +193,14 @@ def verify_cni(current_user, user_id, corps):
     user = User.query.get_or_404(user_id)
     approuve = corps.approuve
 
+    # R1 : une décision ne porte que sur une pièce effectivement déposée. Le
+    # passeport fait foi, pas le drapeau `cni_uploaded`, qui peut dériver.
+    # Vaut aussi pour un refus : il notifierait le rejet d'une pièce qui
+    # n'existe pas.
+    passeport = user.passport
+    if not (passeport and (passeport.cni_recto_url or passeport.passport_url)):
+        raise erreur_champ("approuve", "piece_absente", "Aucune pièce d'identité déposée")
+
     user.cni_verified = bool(approuve)
     if not approuve:
         # Le document est écarté : l'utilisateur doit en redéposer un.
@@ -237,6 +262,9 @@ def verify_revenus(current_user, user_id, corps):
     user = User.query.get_or_404(user_id)
     if not user.passport:
         return jsonify({"error": "Ce locataire n'a pas de passeport"}), 404
+    # R1 bis : pas de décision sans justificatif déposé.
+    if not user.passport.income_doc_url:
+        raise erreur_champ("approuve", "piece_absente", "Aucun justificatif de revenus déposé")
 
     approuve = corps.approuve
 
@@ -350,6 +378,11 @@ def basculer_statut(current_user, user_id, corps):
         return jsonify({"error": "Vous ne pouvez pas désactiver votre propre compte"}), 400
 
     user.is_active = (not user.is_active) if corps.is_active is None else corps.is_active
+    if not user.is_active:
+        # Les jetons déjà émis sont révoqués : sans cela, un compte désactivé
+        # pour fraude gardait l'accès aux routes qui ne relisent pas
+        # `is_active`. Une réactivation ne les ressuscite pas.
+        user.revoquer_jetons()
     db.session.commit()
 
     return jsonify({"message": "Compte activé" if user.is_active else "Compte désactivé",

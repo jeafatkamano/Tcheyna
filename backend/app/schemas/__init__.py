@@ -167,7 +167,8 @@ def _message(erreur):
 # Codes levés par les schémas (PydanticCustomError) dont le message est
 # rédigé pour être affiché tel quel.
 CODES_LIBRES = {"email_invalide", "code_invalide", "lieu_invalide", "montant_trop_eleve",
-                "devise_incoherente", "budget_incoherent"}
+                "devise_incoherente", "budget_incoherent", "mot_de_passe_incorrect",
+                "piece_absente"}
 
 
 def reponse_422(exc):

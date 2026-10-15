@@ -55,8 +55,20 @@ export const authAPI = {
 
   moi: () => api.get<User>("/auth/me"),
 
-  changerMotDePasse: (ancien_mot_de_passe: string, nouveau_mot_de_passe: string) =>
-    api.put<{ message: string }>("/auth/password", { ancien_mot_de_passe, nouveau_mot_de_passe }),
+  /**
+   * Le serveur révoque tous les jetons du compte et en renvoie de nouveaux
+   * pour l'appareil courant : ils sont stockés ici, sinon la requête suivante
+   * déconnecterait l'utilisateur. Tolère une réponse sans jetons (backend
+   * antérieur au lot 1.4), qui ne révoque rien.
+   */
+  changerMotDePasse: async (ancien_mot_de_passe: string, nouveau_mot_de_passe: string) => {
+    const reponse = await api.put<{ message: string; access_token?: string; refresh_token?: string }>(
+      "/auth/password",
+      { ancien_mot_de_passe, nouveau_mot_de_passe },
+    );
+    if (reponse.access_token) tokens.set(reponse.access_token, reponse.refresh_token);
+    return reponse;
+  },
 
   envoyerOTP: (phone?: string) =>
     api.post<{ message: string; phone: string; expire_dans: number; debug_code?: string }>(
