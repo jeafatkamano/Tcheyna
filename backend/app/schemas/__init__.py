@@ -107,7 +107,7 @@ def Choix(valeurs):
 
     def verifier(valeur):
         if valeur not in valeurs:
-            raise PydanticCustomError("choix_invalide", "Valeur invalide : {attendus}",
+            raise PydanticCustomError("choix_invalide", "Valeur invalide (valeurs possibles : {attendus})",
                                       {"attendus": " | ".join(valeurs)})
         return valeur
 
@@ -144,7 +144,7 @@ MESSAGES = {
     "datetime_type":           "{champ} : date et heure attendues (ex. 2026-09-15T14:30)",
     "datetime_parsing":        "{champ} : date et heure attendues (ex. 2026-09-15T14:30)",
     "datetime_from_date_parsing": "{champ} : date et heure attendues (ex. 2026-09-15T14:30)",
-    "choix_invalide":          "{champ} invalide : {attendus}",
+    "choix_invalide":          "{champ} invalide (valeurs possibles : {attendus})",
     "caractere_interdit":      "{champ} contient un caractère interdit",
 }
 

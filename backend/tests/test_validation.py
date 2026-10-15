@@ -105,7 +105,7 @@ def test_405_et_415_en_json(app, client):
     # doit être déclarée avant la première requête.)
     app.add_url_rule("/test-415", "test_415", lambda: request.get_json(), methods=["POST"])
 
-    assert client.patch("/api/listings/").get_json() == {"error": "Méthode non autorisée"}
+    assert client.patch("/api/listings/").get_json() == {"error": "Méthode non autorisée", "details": []}
     reponse = client.post("/test-415", data="x", content_type="text/plain")
     assert reponse.status_code == 415
     assert "error" in reponse.get_json()

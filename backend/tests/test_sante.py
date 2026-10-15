@@ -14,7 +14,7 @@ def test_health_repond_ok(client):
 def test_route_inconnue_renvoie_du_json(client):
     reponse = client.get("/api/nexiste-pas")
     assert reponse.status_code == 404
-    assert reponse.get_json() == {"error": "Ressource introuvable"}
+    assert reponse.get_json() == {"error": "Ressource introuvable", "details": []}
 
 
 def test_jeton_absent_refuse_en_json(client):
