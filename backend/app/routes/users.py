@@ -119,7 +119,8 @@ def televerser_avatar(current_user):
         url = stockage.televerser(request.files["file"], "avatars",
                                   f"profil-{current_user.id}", stockage.IMAGES)
     except stockage.ErreurStockage as exc:
-        return jsonify({"error": str(exc)}), 400
+        # 422 pour une image illisible ou trop grande, comme les photos.
+        return jsonify({"error": str(exc)}), exc.statut
 
     current_user.avatar_url = url
     db.session.commit()

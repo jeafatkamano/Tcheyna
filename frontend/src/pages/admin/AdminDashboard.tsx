@@ -456,7 +456,7 @@ function FicheCertification({
       style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }}
     >
       {listing.images[0] && (
-        <img src={listing.images[0]} alt="" className="w-full h-36 object-cover" />
+        <img src={urlFichier(listing.images[0])} alt="" className="w-full h-36 object-cover" />
       )}
 
       <div className="p-4">

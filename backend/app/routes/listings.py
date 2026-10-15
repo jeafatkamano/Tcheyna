@@ -439,6 +439,27 @@ def demander_certification(current_user, listing_id):
 
 # ─── Photos du bien ──────────────────────────────────────────
 
+def _annonce_verrouillee(listing_id):
+    """Relit l'annonce en posant un verrou d'écriture sur sa ligne.
+
+    `images_urls` est une liste stockée dans une seule colonne : toute
+    modification est un « lire, modifier, réécrire ». Sans verrou, deux
+    requêtes simultanées (deux onglets, un envoi rejoué) liraient la même
+    liste et la seconde écraserait la photo ajoutée par la première. Le
+    `SELECT … FOR UPDATE` sérialise ces réécritures sur PostgreSQL ; SQLite
+    l'ignore, mais n'a qu'un écrivain à la fois. `populate_existing` force la
+    relecture même si l'objet est déjà dans la session.
+    """
+    return db.session.execute(
+        db.select(Listing).filter_by(id=listing_id).with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one()
+
+
+def _photos(listing):
+    return listing.images_urls.split(",") if listing.images_urls else []
+
+
 @listings_bp.route("/<string:listing_id>/photos", methods=["POST"])
 @role_required("landlord", "agency")
 def televerser_photos(current_user, listing_id):
@@ -446,6 +467,9 @@ def televerser_photos(current_user, listing_id):
 
     Ces photos sont publiques : elles s'affichent dans les résultats de
     recherche, y compris pour un visiteur sans compte.
+
+    L'application envoie une photo par requête, l'une après l'autre ; la
+    route accepte encore plusieurs fichiers pour les anciens clients.
     """
     listing = Listing.query.get_or_404(listing_id)
     if listing.landlord_id != current_user.id:
@@ -455,35 +479,85 @@ def televerser_photos(current_user, listing_id):
     if not fichiers:
         return jsonify({"error": "Aucune photo fournie"}), 400
 
-    existantes = listing.images_urls.split(",") if listing.images_urls else []
-    if len(existantes) + len(fichiers) > MAX_IMAGES:
-        restant = max(MAX_IMAGES - len(existantes), 0)
+    def refus_limite(nb_existantes):
+        restant = max(MAX_IMAGES - nb_existantes, 0)
         return jsonify({
             "error": f"{MAX_IMAGES} photos maximum par annonce. "
                      f"Vous pouvez encore en ajouter {restant}."
         }), 400
 
-    ajoutees = []
+    def deja_presente(empreinte, urls):
+        return any(f"-{empreinte}." in url for url in urls)
+
+    existantes = _photos(listing)
+    # Le stockage (Supabase) peut être lent : ni verrou ni transaction ouverte
+    # pendant l'appel, qui retiendrait une connexion du pool. La transaction
+    # de lecture est close ici ; la suivante ne s'ouvre qu'à la relecture.
+    db.session.rollback()
+
+    # 1. Ré-encodage (EXIF/GPS retirés, 1280 px) et repérage des doublons :
+    #    une photo renvoyée après une réponse perdue (« Réessayer ») porte la
+    #    même empreinte que celle déjà enregistrée, elle n'est pas ajoutée.
+    preparees = []
+    empreintes = []  # de chaque fichier reçu, doublons compris, dans l'ordre
+    erreur = None
     for fichier in fichiers:
         try:
-            url = stockage.televerser(fichier, "photos", f"annonce-{listing.id}",
-                                      stockage.IMAGES)
+            image = stockage.preparer_image(fichier, "photos")
         except stockage.ErreurStockage as exc:
-            # Les photos déjà enregistrées sont conservées : l'utilisateur n'a
-            # pas à tout recommencer parce qu'un seul fichier pose problème.
-            if ajoutees:
-                listing.images_urls = ",".join(existantes + ajoutees)
-                db.session.commit()
-            return jsonify({"error": str(exc), "ajoutees": len(ajoutees)}), 400
-        ajoutees.append(url)
+            erreur = exc
+            break
+        empreintes.append(image.empreinte)
+        if deja_presente(image.empreinte, existantes) or any(
+                p.empreinte == image.empreinte for p in preparees):
+            continue
+        preparees.append(image)
 
-    listing.images_urls = ",".join(existantes + ajoutees)
-    db.session.commit()
+    if len(existantes) + len(preparees) > MAX_IMAGES:
+        return refus_limite(len(existantes))
 
+    # 2. Stockage. Les photos déjà enregistrées sont conservées si une suivante
+    #    échoue : l'utilisateur n'a pas à tout recommencer.
+    ajoutees = []
+    for image in preparees:
+        try:
+            ajoutees.append(stockage.enregistrer_image(
+                image, "photos", stockage.nom_image(f"annonce-{listing_id}", image)))
+        except stockage.ErreurStockage as exc:
+            erreur = exc
+            break
+
+    # 3. Relecture sous verrou : la liste a pu changer pendant le stockage
+    #    (autre onglet, même photo renvoyée en parallèle).
+    listing = _annonce_verrouillee(listing_id)
+    existantes = _photos(listing)
+    nouvelles = [u for u in ajoutees if u not in existantes]
+    if nouvelles:
+        if len(existantes) + len(nouvelles) > MAX_IMAGES:
+            db.session.rollback()
+            for url in nouvelles:
+                stockage.supprimer(url)
+            return refus_limite(len(existantes))
+        listing.images_urls = ",".join(existantes + nouvelles)
+        db.session.commit()
+    else:
+        db.session.rollback()
+
+    if erreur is not None:
+        return jsonify({"error": str(erreur), "ajoutees": len(nouvelles)}), erreur.statut
+
+    images = listing.to_dict()["images"]
+    # URL de chaque fichier envoyé, ajouté ou reconnu comme doublon : le client
+    # sait ainsi quelle vignette correspond à sa photo, sans supposer qu'elle
+    # est la dernière de la liste.
+    urls = [next((u for u in images if f"-{e}." in u), None) for e in empreintes]
     return jsonify({
-        "message": f"{len(ajoutees)} photo(s) ajoutée(s)",
-        "images": listing.to_dict()["images"],
-    }), 201
+        "message": f"{len(nouvelles)} photo(s) ajoutée(s)" if nouvelles
+        else "Photo déjà enregistrée",
+        "images": images,
+        "url": urls[-1] if urls else None,
+        "urls": urls,
+    }), 201 if nouvelles else 200
 
 
 @listings_bp.route("/<string:listing_id>/photos", methods=["DELETE"])
@@ -497,7 +571,8 @@ def supprimer_photo(current_user, listing_id, corps):
 
     url = corps.url
 
-    existantes = listing.images_urls.split(",") if listing.images_urls else []
+    listing = _annonce_verrouillee(listing_id)
+    existantes = _photos(listing)
     if url not in existantes:
         return jsonify({"error": "Cette photo n'appartient pas à l'annonce"}), 404
 
@@ -523,7 +598,8 @@ def reordonner_photos(current_user, listing_id, corps):
     # Seule une permutation des photos actuelles est acceptée : cette route
     # ne peut pas introduire d'URL.
     ordre = corps.images
-    existantes = listing.images_urls.split(",") if listing.images_urls else []
+    listing = _annonce_verrouillee(listing_id)
+    existantes = _photos(listing)
     if sorted(ordre) != sorted(existantes):
         return jsonify({"error": "La liste doit contenir exactement les photos "
                                  "actuelles de l'annonce"}), 400

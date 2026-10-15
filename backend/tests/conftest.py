@@ -544,13 +544,22 @@ def cinetpay(app, reseau):
 @pytest.fixture
 def fichier_image():
     """`fichier_image(nom)` → tuple (flux, nom) accepté par le client de test
-    dans un envoi multipart."""
+    dans un envoi multipart.
+
+    Une vraie petite image PNG (le serveur décode et ré-encode les photos),
+    de couleur dérivée du nom : deux noms différents donnent deux images
+    différentes, donc deux empreintes (cf. déduplication des photos).
+    """
+    import hashlib
     import io
 
-    # En-tête PNG minimal : le serveur ne contrôle que l'extension et le poids.
-    contenu = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+    from PIL import Image
 
     def fabriquer(nom="photo.png"):
-        return (io.BytesIO(contenu), nom)
+        couleur = tuple(hashlib.sha256(nom.encode()).digest()[:3])
+        flux = io.BytesIO()
+        Image.new("RGB", (8, 8), couleur).save(flux, "PNG")
+        flux.seek(0)
+        return (flux, nom)
 
     return fabriquer

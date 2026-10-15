@@ -7,7 +7,7 @@
 import { ArrowLeft, CheckCircle, Clock, RefreshCw, XCircle } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { paiementsAPI, type Payment } from "../api";
+import { paiementsAPI, urlFichier, type Payment } from "../api";
 import { Chargement, Erreur, MessageErreur } from "../components/Etats";
 import { useAction, useApi } from "../hooks/useApi";
 import { formatDateHeure, formatMontant } from "../lib/format";
@@ -124,7 +124,7 @@ export function RecuPage() {
             >
               <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0" style={{ background: "#E2E8F0" }}>
                 {paiement.listing.images[0] && (
-                  <img src={paiement.listing.images[0]} alt="" className="w-full h-full object-cover" />
+                  <img src={urlFichier(paiement.listing.images[0])} alt="" className="w-full h-full object-cover" />
                 )}
               </div>
               <div className="flex-1 min-w-0">

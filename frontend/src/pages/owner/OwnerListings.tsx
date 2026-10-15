@@ -2,7 +2,7 @@ import { Eye, Plus, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { listingsAPI, type Listing } from "../../api";
+import { listingsAPI, urlFichier, type Listing } from "../../api";
 import { Erreur, ListeVide, SqueletteCartes } from "../../components/Etats";
 import { StatutPastille } from "../../components/ListingCard";
 import { ModalePaiement } from "../../components/ModalePaiement";
@@ -93,7 +93,7 @@ export function OwnerListings() {
                     style={{ background: "#F0F4FA" }}
                   >
                     <img
-                      src={listing.images[0] || IMAGE_PAR_DEFAUT}
+                      src={urlFichier(listing.images[0]) || IMAGE_PAR_DEFAUT}
                       alt=""
                       className="w-full h-full object-cover"
                       loading="lazy"

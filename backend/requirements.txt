@@ -21,4 +21,7 @@ pydantic==2.13.5
 flask-limiter==4.1.1
 limits==5.8.0
 africastalking==1.2.7
+# Ré-encodage des photos publiques (EXIF/GPS retirés, 1280 px, WebP) et
+# contrôle du contenu réel. Roues manylinux pour Python 3.12 et 3.13.
+pillow==12.3.0
 gunicorn==23.0.0

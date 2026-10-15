@@ -3,7 +3,7 @@
  *
  * Les composants importent d'ici et jamais `fetch` directement.
  */
-import { api, queryString, tokens, BASE_URL } from "./client";
+import { api, envoyerFichier, queryString, tokens, BASE_URL, type OptionsEnvoi } from "./client";
 import type {
   AvisADonner,
   DocumentPiece,
@@ -27,7 +27,18 @@ import type {
 } from "./types";
 
 export * from "./types";
-export { ApiError, tokens, urlFichier } from "./client";
+export {
+  ApiError,
+  effacerMotifDeconnexion,
+  estAnnulation,
+  lireMotifDeconnexion,
+  MESSAGE_RESEAU,
+  MESSAGE_REVEIL,
+  MESSAGE_SERVEUR_ENDORMI,
+  reveilServeur,
+  tokens,
+  urlFichier,
+} from "./client";
 
 /* ─── AUTHENTIFICATION ─────────────────────────────────────── */
 
@@ -53,7 +64,8 @@ export const authAPI = {
   connecter: (email: string, password: string) =>
     api.post<ReponseAuth>("/auth/login", { email, password }),
 
-  moi: () => api.get<User>("/auth/me"),
+  // Une seule reprise au démarrage : pas deux minutes de chargeur.
+  moi: () => api.get<User>("/auth/me", { reprises: 1 }),
 
   /**
    * Le serveur révoque tous les jetons du compte et en renvoie de nouveaux
@@ -181,10 +193,20 @@ export const listingsAPI = {
 
   /* ─── Photos du bien (publiques) ─────────────────────── */
 
-  televerserPhotos: (id: string, fichiers: File[]) => {
+  /**
+   * Une photo par requête, avec progression. L'appelant les envoie l'une
+   * après l'autre : le serveur réécrit la liste complète à chaque ajout.
+   */
+  televerserPhoto: (id: string, fichier: File, options?: OptionsEnvoi) => {
     const form = new FormData();
-    fichiers.forEach((f) => form.append("files", f));
-    return api.post<{ message: string; images: string[] }>(`/listings/${id}/photos`, form);
+    // Le nom (avec extension) est obligatoire : le serveur en déduit le format.
+    form.append("file", fichier, fichier.name);
+    // `url` : celle de cette photo, ajoutée ou déjà présente (doublon).
+    return envoyerFichier<{ message: string; images: string[]; url: string | null }>(
+      `/listings/${id}/photos`,
+      form,
+      options,
+    );
   },
 
   supprimerPhoto: (id: string, url: string) =>
@@ -316,7 +338,8 @@ export const messagesAPI = {
   fil: (conversationId: string) =>
     api.get<Conversation>(`/messages/conversations/${conversationId}`),
 
-  filParMatch: (matchId: string) => api.get<Conversation>(`/messages/par-match/${matchId}`),
+  filParMatch: (matchId: string, signal?: AbortSignal) =>
+    api.get<Conversation>(`/messages/par-match/${matchId}`, { signal }),
 
   envoyer: (conversationId: string, contenu: string) =>
     api.post<{ message: string; data: Message }>(`/messages/conversations/${conversationId}`, {

@@ -5,7 +5,7 @@
 import { Bed, Heart, MapPin, Square, Zap } from "lucide-react";
 import { Link } from "react-router";
 
-import type { Listing } from "../api";
+import { urlFichier, type Listing } from "../api";
 import { formatMontantCourt, labelTransaction, labelTypeBien } from "../lib/format";
 import { BadgeCertifie, ScoreMatch } from "./BadgeVerification";
 
@@ -21,7 +21,9 @@ interface Props {
 }
 
 export function ListingCard({ listing, onToggleFavori, to }: Props) {
-  const photo = listing.images?.[0] || IMAGE_PAR_DEFAUT;
+  // urlFichier : en développement sans Supabase, les photos sont des chemins
+  // relatifs (/uploads/…) servis par l'API, pas par le serveur du frontend.
+  const photo = urlFichier(listing.images?.[0]) || IMAGE_PAR_DEFAUT;
   const destination = to ?? `/listing/${listing.id}`;
 
   return (

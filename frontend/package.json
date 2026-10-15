@@ -9,7 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run"
   },
   "dependencies": {
     "class-variance-authority": "0.7.1",
@@ -31,10 +32,12 @@
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-react-refresh": "0.5.7",
     "globals": "17.13.0",
+    "happy-dom": "20.14.5",
     "tailwindcss": "^4.1.12",
     "tw-animate-css": "1.3.8",
     "typescript": "^5.7.2",
     "typescript-eslint": "8.71.2",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "vitest": "3.2.7"
   }
 }

@@ -13,7 +13,14 @@ import { CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { listingsAPI, matchesAPI, paiementsAPI, type Match, type MatchStatus } from "../../api";
+import {
+  listingsAPI,
+  matchesAPI,
+  paiementsAPI,
+  urlFichier,
+  type Match,
+  type MatchStatus,
+} from "../../api";
 import { Avatar } from "../../components/Avatar";
 import { BadgeVerification, ScoreCircle, ScoreMatch } from "../../components/BadgeVerification";
 import { Erreur, ListeVide, MessageErreur, SqueletteCartes } from "../../components/Etats";
@@ -178,7 +185,7 @@ export function OwnerMatches() {
                     <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-gray-100">
                       <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0" style={{ background: "#F0F4FA" }}>
                         {match.listing?.images[0] && (
-                          <img src={match.listing.images[0]} alt="" className="w-full h-full object-cover" />
+                          <img src={urlFichier(match.listing.images[0])} alt="" className="w-full h-full object-cover" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
