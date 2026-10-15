@@ -2,7 +2,7 @@
 from flask import Blueprint, jsonify, request
 from werkzeug.security import check_password_hash
 
-from app import db
+from app import db, limiter
 from app.models import Listing, Review, User
 from app.routes import current_user_required, utilisateur_optionnel
 from app.schemas import erreur_champ, valider_corps
@@ -103,7 +103,13 @@ def desactiver_compte(current_user):
 
 # ─── POST /api/users/me/suppression ──────────────────────────
 
+# Le mot de passe est exigé : sans plafond, un jeton volé permettrait de le
+# deviner hors du plafond de /auth/login.
+LIMITE_SUPPRESSION = "5 per hour"
+
+
 @users_bp.route("/me/suppression", methods=["POST"])
+@limiter.limit(LIMITE_SUPPRESSION)
 @current_user_required
 @valider_corps(SuppressionCompte)
 def supprimer_compte(current_user, corps):

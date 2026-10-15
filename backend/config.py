@@ -111,10 +111,9 @@ class Config:
     # restée SANS décision est supprimée par `flask donnees purger-pieces`.
     # Aucune valeur par défaut : tant que la durée n'est pas décidée, la purge
     # refuse de tourner plutôt que d'appliquer un délai inventé.
-    DUREE_CONSERVATION_PIECES_JOURS = (
-        int(os.getenv("DUREE_CONSERVATION_PIECES_JOURS"))
-        if os.getenv("DUREE_CONSERVATION_PIECES_JOURS", "").strip() else None
-    )
+    # Lue telle quelle : une valeur invalide ne doit pas empêcher l'application
+    # de démarrer, c'est la purge qui la refuse (`purger_pieces_sans_decision`).
+    DUREE_CONSERVATION_PIECES_JOURS = os.getenv("DUREE_CONSERVATION_PIECES_JOURS", "").strip() or None
 
     # ─── Africa's Talking (OTP SMS) ─────────────────────────
     AT_API_KEY = os.getenv("AT_API_KEY", "")

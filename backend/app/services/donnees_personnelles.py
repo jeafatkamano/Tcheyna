@@ -119,11 +119,18 @@ def purger_pieces_sans_decision(maintenant=None):
     Refuse de tourner tant que la durée n'est pas configurée. Retourne le
     nombre de pièces (fichiers) supprimées.
     """
-    jours = current_app.config.get("DUREE_CONSERVATION_PIECES_JOURS")
-    if not jours:
+    brut = current_app.config.get("DUREE_CONSERVATION_PIECES_JOURS")
+    try:
+        jours = int(brut) if brut is not None else 0
+    except (TypeError, ValueError):
+        jours = 0
+    # Zéro ou négatif placerait la limite dans le futur : toutes les pièces en
+    # attente seraient supprimées. Seul un entier strictement positif passe.
+    if jours <= 0:
         raise PurgeNonConfiguree(
-            "DUREE_CONSERVATION_PIECES_JOURS n'est pas définie (décision D5) : purge désactivée.")
-    limite = (maintenant or datetime.utcnow()) - timedelta(days=int(jours))
+            "DUREE_CONSERVATION_PIECES_JOURS doit être un nombre de jours strictement positif "
+            "(décision D5) : purge désactivée.")
+    limite = (maintenant or datetime.utcnow()) - timedelta(days=jours)
     motif = f"Pièce non examinée dans les {jours} jours suivant son dépôt"
 
     lignes = []

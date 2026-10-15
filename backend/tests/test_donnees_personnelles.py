@@ -222,6 +222,18 @@ def test_purge_refusee_sans_duree_configuree(app, fabrique, supabase):
     assert supabase.suppressions == []
 
 
+@pytest.mark.parametrize("valeur", ["0", "-1", "abc", 0, -30])
+def test_purge_refusee_si_duree_non_strictement_positive(app, fabrique, supabase, valeur):
+    # -1 placerait la limite dans le futur et viderait toute la file d'attente.
+    _candidat(fabrique, cni_recto_url="supabase://documents/recto.png",
+              identite_deposee_le=datetime.utcnow())
+    app.config["DUREE_CONSERVATION_PIECES_JOURS"] = valeur
+
+    with pytest.raises(dp.PurgeNonConfiguree):
+        dp.purger_pieces_sans_decision()
+    assert supabase.suppressions == []
+
+
 def test_purge_parametree_supprime_les_seules_pieces_echues(app, fabrique, supabase):
     app.config["DUREE_CONSERVATION_PIECES_JOURS"] = 30
     il_y_a = lambda jours: datetime.utcnow() - timedelta(days=jours)  # noqa: E731
@@ -356,3 +368,15 @@ def test_un_admin_ne_supprime_pas_son_compte(client, admin, entetes):
 
     assert reponse.status_code == 403
     assert admin.supprime_le is None
+
+
+def test_suppression_de_compte_plafonnee(client, locataire, entetes):
+    # Le mot de passe ne se devine pas par cette route avec un jeton volé.
+    for _ in range(5):
+        client.post("/api/users/me/suppression", headers=entetes(locataire),
+                    json={"mot_de_passe": "mauvais-mot-de-passe"})
+
+    reponse = client.post("/api/users/me/suppression", headers=entetes(locataire),
+                          json={"mot_de_passe": "mauvais-mot-de-passe"})
+
+    assert reponse.status_code == 429
