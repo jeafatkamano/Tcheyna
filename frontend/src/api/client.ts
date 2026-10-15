@@ -268,11 +268,12 @@ function messageStatut(statut: number): string {
 }
 
 /**
- * Routes où un 401 juge les identifiants saisis (« Identifiants incorrects »,
- * « Mot de passe actuel incorrect »), pas la session : ni rafraîchissement,
- * ni déconnexion, le message du serveur est affiché tel quel.
+ * Routes où un 401 juge les identifiants saisis (« Identifiants incorrects »),
+ * pas la session : ni rafraîchissement, ni déconnexion, le message du serveur
+ * est affiché tel quel. /auth/password n'en fait pas partie : un ancien mot de
+ * passe faux y répond 422, donc son 401 signale bien un jeton expiré.
  */
-const ROUTES_IDENTIFIANTS = ["/auth/login", "/auth/register", "/auth/password"];
+const ROUTES_IDENTIFIANTS = ["/auth/login", "/auth/register"];
 
 function jugeIdentifiants(endpoint: string) {
   const chemin = endpoint.split("?")[0].replace(/\/+$/, "");

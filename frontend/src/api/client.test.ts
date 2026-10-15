@@ -252,6 +252,20 @@ describe("session", () => {
     tokens.set("acces-expire", "refresh-valide");
   });
 
+  it("un 401 sur /auth/password rafraîchit le jeton puis rejoue", async () => {
+    tokens.set("acces", "refresh");
+    fetchSimule
+      .mockResolvedValueOnce(json({ error: "Session expirée" }, 401))
+      .mockResolvedValueOnce(json({ access_token: "acces-neuf" }))
+      .mockResolvedValueOnce(json({ message: "Mot de passe modifié" }));
+
+    const r = await jusquauBout(api.put("/auth/password", { ancien: "a", nouveau: "b" }));
+
+    expect(r).toEqual({ ok: true, valeur: { message: "Mot de passe modifié" } });
+    expect(fetchSimule).toHaveBeenCalledTimes(3);
+    expect(tokens.access()).toBe("acces-neuf");
+  });
+
   it("rafraîchit le jeton sur 401 puis rejoue la requête", async () => {
     fetchSimule
       .mockResolvedValueOnce(json({ error: "Session expirée" }, 401))
@@ -344,7 +358,7 @@ describe("identifiants et motif de déconnexion", () => {
     return lieu;
   }
 
-  it.each(["/auth/login", "/auth/register", "/auth/password"])(
+  it.each(["/auth/login", "/auth/register"])(
     "un 401 sur %s affiche le message du serveur, sans rafraîchir ni déconnecter",
     async (route) => {
       tokens.set("acces", "refresh");
