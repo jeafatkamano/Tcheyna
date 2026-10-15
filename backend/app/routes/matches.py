@@ -12,6 +12,8 @@ from flask import Blueprint, jsonify, request
 from app import db
 from app.models import Conversation, Listing, Match, User, abonnements_passeport
 from app.routes import current_user_required, role_required
+from app.schemas import valider_corps
+from app.schemas.matches import Candidature, DecisionCandidature, Visite
 from app.services import notifications as notify
 from app.services.matching import score_compatibilite
 
@@ -27,11 +29,9 @@ NIVEAU_MIN_ANNONCE_CERTIFIEE = 2
 
 @matches_bp.route("/", methods=["POST"])
 @role_required("tenant")
-def create_match(current_user):
-    data = request.get_json() or {}
-    listing_id = data.get("listing_id")
-    if not listing_id:
-        return jsonify({"error": "listing_id requis"}), 400
+@valider_corps(Candidature)
+def create_match(current_user, corps):
+    listing_id = corps.listing_id
 
     niveau = current_user.trust_level or 0
     if niveau < NIVEAU_MIN_CANDIDATURE:
@@ -62,7 +62,7 @@ def create_match(current_user):
     match = Match(
         tenant_id=current_user.id,
         listing_id=listing_id,
-        message=(data.get("message") or "").strip() or None,
+        message=corps.message or None,
         score_compatibilite=score,
     )
     db.session.add(match)
@@ -225,7 +225,8 @@ def get_match(current_user, match_id):
 
 @matches_bp.route("/<string:match_id>/statut", methods=["PUT"])
 @role_required("landlord", "agency")
-def update_match_status(current_user, match_id):
+@valider_corps(DecisionCandidature)
+def update_match_status(current_user, match_id, corps):
     """Le propriétaire accepte ou refuse une candidature.
 
     Une acceptation ouvre la conversation privée entre les deux parties.
@@ -234,9 +235,7 @@ def update_match_status(current_user, match_id):
     if not match.listing or match.listing.landlord_id != current_user.id:
         return jsonify({"error": "Non autorisé"}), 403
 
-    statut = (request.get_json() or {}).get("statut")
-    if statut not in ("accepted", "rejected"):
-        return jsonify({"error": "Statut invalide : accepted | rejected"}), 400
+    statut = corps.statut
 
     if match.status not in ("pending", "accepted"):
         return jsonify({"error": f"Candidature déjà « {match.status} »"}), 409
@@ -267,7 +266,8 @@ def update_match_status(current_user, match_id):
 
 @matches_bp.route("/<string:match_id>/visite", methods=["PUT"])
 @current_user_required
-def planifier_visite(current_user, match_id):
+@valider_corps(Visite)
+def planifier_visite(current_user, match_id, corps):
     """Fixe la date de visite. Les deux parties peuvent la proposer."""
     match = Match.query.get_or_404(match_id)
 
@@ -279,14 +279,7 @@ def planifier_visite(current_user, match_id):
     if match.status != "accepted":
         return jsonify({"error": "La candidature doit être acceptée avant de planifier une visite"}), 400
 
-    date_str = (request.get_json() or {}).get("visite_date")
-    if not date_str:
-        return jsonify({"error": "visite_date requis (format ISO 8601)"}), 400
-
-    try:
-        match.visite_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-    except ValueError:
-        return jsonify({"error": "Date invalide (format attendu : 2026-09-15T14:30)"}), 400
+    match.visite_date = corps.visite_date
 
     autre_id = (match.listing.landlord_id if current_user.id == match.tenant_id
                 else match.tenant_id)

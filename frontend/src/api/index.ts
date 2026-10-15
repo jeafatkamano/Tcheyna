@@ -108,6 +108,11 @@ export interface PageAnnonces {
   per_page: number;
 }
 
+/**
+ * Corps accepté par POST/PUT /listings. Ni `devise` (déduite du pays par le
+ * serveur), ni `status`/`is_visible` (retrait : `retirer`), ni `images`
+ * (routes `/photos`) : le serveur refuse tout champ en trop (422).
+ */
 export interface DonneesAnnonce {
   title_fr: string;
   description_fr: string;
@@ -120,7 +125,6 @@ export interface DonneesAnnonce {
   prix: number;
   charges?: number;
   caution?: number;
-  devise: string;
   nb_pieces?: number;
   superficie?: number;
   etage?: number;
@@ -132,7 +136,6 @@ export interface DonneesAnnonce {
   is_secured?: boolean;
   has_parking?: boolean;
   has_ac?: boolean;
-  images?: string[];
 }
 
 export const listingsAPI = {
@@ -156,7 +159,7 @@ export const listingsAPI = {
   creer: (data: DonneesAnnonce) =>
     api.post<{ message: string; listing: Listing }>("/listings/", data),
 
-  modifier: (id: string, data: Partial<DonneesAnnonce> & { status?: string; is_visible?: boolean }) =>
+  modifier: (id: string, data: Partial<DonneesAnnonce>) =>
     api.put<{ message: string; listing: Listing }>(`/listings/${id}`, data),
 
   retirer: (id: string) => api.delete<{ message: string }>(`/listings/${id}`),
@@ -396,7 +399,7 @@ export const usersAPI = {
       { optionnel: true },
     ),
 
-  modifier: (data: Partial<Pick<User, "full_name" | "pays" | "ville" | "quartier" | "bio" | "avatar_url" | "preferred_lang">>) =>
+  modifier: (data: Partial<Pick<User, "full_name" | "pays" | "ville" | "quartier" | "bio" | "preferred_lang">>) =>
     api.put<{ message: string; user: User }>("/users/me", data),
 
   desactiver: () => api.delete<{ message: string }>("/users/me"),

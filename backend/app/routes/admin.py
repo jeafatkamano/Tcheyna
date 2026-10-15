@@ -19,6 +19,8 @@ from app.models import (
     User,
 )
 from app.routes import role_required
+from app.schemas import valider_corps
+from app.schemas.admin import Decision, StatutCompte
 from app.services import notifications as notify
 from app.services import stockage
 
@@ -168,11 +170,11 @@ def cni_pending(current_user):
 
 @admin_bp.route("/verify-cni/<string:user_id>", methods=["PUT"])
 @admin_required
-def verify_cni(current_user, user_id):
+@valider_corps(Decision)
+def verify_cni(current_user, user_id, corps):
     """Valide ou refuse la pièce d'identité d'un utilisateur."""
     user = User.query.get_or_404(user_id)
-    data = request.get_json() or {}
-    approuve = data.get("approuve", True)
+    approuve = corps.approuve
 
     user.cni_verified = bool(approuve)
     if not approuve:
@@ -195,7 +197,7 @@ def verify_cni(current_user, user_id):
     elif not approuve:
         notify.notifier(
             user.id, "niveau_confiance", "Pièce d'identité refusée",
-            data.get("motif") or "Le document fourni n'est pas exploitable. "
+            corps.motif or "Le document fourni n'est pas exploitable. "
                                  "Merci d'en téléverser un nouveau, bien lisible.",
             "/tenant/profile",
         )
@@ -230,13 +232,13 @@ def revenus_pending(current_user):
 
 @admin_bp.route("/verify-revenus/<string:user_id>", methods=["PUT"])
 @admin_required
-def verify_revenus(current_user, user_id):
+@valider_corps(Decision)
+def verify_revenus(current_user, user_id, corps):
     user = User.query.get_or_404(user_id)
     if not user.passport:
         return jsonify({"error": "Ce locataire n'a pas de passeport"}), 404
 
-    data = request.get_json() or {}
-    approuve = data.get("approuve", True)
+    approuve = corps.approuve
 
     user.passport.income_verified = bool(approuve)
     user.income_verified = bool(approuve)
@@ -251,7 +253,7 @@ def verify_revenus(current_user, user_id):
     elif not approuve:
         notify.notifier(
             user.id, "niveau_confiance", "Justificatif de revenus refusé",
-            data.get("motif") or "Le justificatif fourni n'a pas pu être validé.",
+            corps.motif or "Le justificatif fourni n'a pas pu être validé.",
             "/tenant/profile",
         )
 
@@ -282,12 +284,12 @@ def certifications_pending(current_user):
 
 @admin_bp.route("/certifier/<string:listing_id>", methods=["PUT"])
 @admin_required
-def certifier_annonce(current_user, listing_id):
+@valider_corps(Decision)
+def certifier_annonce(current_user, listing_id, corps):
     """Accorde ou refuse le badge « Annonce Certifiée »."""
     listing = Listing.query.get_or_404(listing_id)
-    data = request.get_json() or {}
-    approuve = data.get("approuve", True)
-    motif = (data.get("motif") or "").strip() or None
+    approuve = corps.approuve
+    motif = corps.motif or None
 
     if not approuve and not motif:
         return jsonify({"error": "Un motif est requis pour refuser une certification"}), 400
@@ -340,13 +342,14 @@ def list_users(current_user):
 
 @admin_bp.route("/users/<string:user_id>/statut", methods=["PUT"])
 @admin_required
-def basculer_statut(current_user, user_id):
+@valider_corps(StatutCompte)
+def basculer_statut(current_user, user_id, corps):
     """Active ou désactive un compte (fraude avérée, demande de l'utilisateur…)."""
     user = User.query.get_or_404(user_id)
     if user.id == current_user.id:
         return jsonify({"error": "Vous ne pouvez pas désactiver votre propre compte"}), 400
 
-    user.is_active = bool((request.get_json() or {}).get("is_active", not user.is_active))
+    user.is_active = (not user.is_active) if corps.is_active is None else corps.is_active
     db.session.commit()
 
     return jsonify({"message": "Compte activé" if user.is_active else "Compte désactivé",

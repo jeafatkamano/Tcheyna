@@ -4,6 +4,8 @@ from flask import Blueprint, jsonify, request
 from app import db
 from app.models import Listing, Review, User
 from app.routes import current_user_required
+from app.schemas import valider_corps
+from app.schemas.users import MajProfil
 from app.services import stockage
 
 users_bp = Blueprint("users", __name__)
@@ -39,21 +41,12 @@ def get_user(user_id):
 
 @users_bp.route("/me", methods=["PUT"])
 @current_user_required
-def update_profile(current_user):
-    data = request.get_json() or {}
-
-    # avatar_url est volontairement absent : la photo de profil se change
-    # par téléversement (POST /api/users/me/avatar), pas en soumettant une URL
-    # arbitraire, qui permettrait de pointer vers n'importe quelle image.
-    for champ in ("full_name", "pays", "ville", "quartier",
-                  "preferred_lang", "bio"):
-        if champ in data:
-            valeur = data[champ]
-            setattr(current_user, champ,
-                    valeur.strip() if isinstance(valeur, str) else valeur)
-
-    if not current_user.full_name:
-        return jsonify({"error": "Le nom complet est requis"}), 400
+@valider_corps(MajProfil)
+def update_profile(current_user, corps):
+    # Seuls les champs envoyés sont modifiés (voir MajProfil, qui exclut
+    # avatar_url).
+    for champ, valeur in corps.model_dump(exclude_unset=True).items():
+        setattr(current_user, champ, valeur)
 
     db.session.commit()
     return jsonify({"message": "Profil mis à jour",

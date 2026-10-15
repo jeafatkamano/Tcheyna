@@ -221,7 +221,9 @@ class Listing(db.Model):
     # location : `prix` est un loyer mensuel. vente : `prix` est le prix de cession.
     type_transaction = db.Column(db.String(20), default="location", nullable=False, index=True)
     type_bien   = db.Column(db.String(30), nullable=False, index=True)
-    prix        = db.Column(db.Integer, nullable=False, index=True)
+    # BIGINT : un prix de vente dépasse vite 2^31 GNF (≈ 250 000 $), plafond
+    # d'un INTEGER sur PostgreSQL. Révision 3b8e2c41f7a9.
+    prix        = db.Column(db.BigInteger, nullable=False, index=True)
     charges     = db.Column(db.Integer, default=0)                      # location seulement
     caution     = db.Column(db.Integer, nullable=True)                  # dépôt de garantie, location seulement
     devise      = db.Column(db.String(10), nullable=False)              # GNF | XOF | GHS | NGN

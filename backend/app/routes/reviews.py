@@ -5,13 +5,15 @@ Un avis n'est possible qu'après une location effectivement conclue via la
 plateforme : c'est ce qui rend l'historique de réputation crédible, et donc
 difficile à répliquer pour un concurrent.
 """
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from app import db
 from app.models import TRUST_LEVELS, Match, Review, User
 from app.routes import current_user_required
+from app.schemas import valider_corps
+from app.schemas.reviews import Avis
 
 reviews_bp = Blueprint("reviews", __name__)
 
@@ -77,21 +79,10 @@ def avis_a_donner(current_user):
 
 @reviews_bp.route("/", methods=["POST"])
 @current_user_required
-def create_review(current_user):
-    data = request.get_json() or {}
-
-    for champ in ("match_id", "note"):
-        if data.get(champ) in (None, ""):
-            return jsonify({"error": f"Champ requis : {champ}"}), 400
-
-    try:
-        note = int(data["note"])
-    except (TypeError, ValueError):
-        return jsonify({"error": "La note doit être un nombre"}), 400
-    if not 1 <= note <= 5:
-        return jsonify({"error": "La note doit être comprise entre 1 et 5"}), 400
-
-    match = Match.query.get_or_404(data["match_id"])
+@valider_corps(Avis)
+def create_review(current_user, corps):
+    note = corps.note
+    match = Match.query.get_or_404(corps.match_id)
     if match.status != "completed":
         return jsonify({"error": "Vous ne pouvez noter qu'après une location conclue"}), 400
 
@@ -111,7 +102,7 @@ def create_review(current_user):
         target_id=target_id,
         match_id=match.id,
         note=note,
-        commentaire=(data.get("commentaire") or "").strip() or None,
+        commentaire=corps.commentaire or None,
         type_avis=type_avis,
         is_positive=note >= 4,
     )

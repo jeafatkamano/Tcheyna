@@ -85,8 +85,8 @@ def test_r3_visiteur_anonyme_ne_voit_pas_l_adresse(client, annonce):
 
 
 # ─── R4 · Pays et devise libres ──────────────────────────────
+# Corrigée au lot 1.2 (schémas de app/schemas) : le test reste en garde-fou.
 
-@faille("R4", "1.2", "pays hors MARCHES_OUVERTS et devise libre acceptés à la création")
 def test_r4_annonce_hors_marche_ouvert_refusee(client, bailleur, entetes):
     reponse = client.post("/api/listings/", headers=entetes(bailleur), json={
         "title_fr": "Villa martienne", "description_fr": "Vue sur Olympus Mons.",
@@ -99,8 +99,8 @@ def test_r4_annonce_hors_marche_ouvert_refusee(client, bailleur, entetes):
 
 
 # ─── R5 · Mass-assignment de status / is_visible ─────────────
+# Corrigée au lot 1.2 (schémas de app/schemas) : le test reste en garde-fou.
 
-@faille("R5", "1.2", "PUT /listings accepte status et is_visible tels quels")
 @pytest.mark.parametrize("corps", [{"status": "n_importe_quoi"}, {"is_visible": False}],
                          ids=["status", "is_visible"])
 def test_r5_put_listing_n_ecrit_ni_statut_ni_visibilite(client, annonce, bailleur, entetes, corps):
@@ -114,8 +114,8 @@ def test_r5_put_listing_n_ecrit_ni_statut_ni_visibilite(client, annonce, bailleu
 
 
 # ─── R6 · Types non validés → 500 ────────────────────────────
+# Corrigée au lot 1.2 (schémas de app/schemas) : le test reste en garde-fou.
 
-@faille("R6", "1.2", "prix non numérique enregistré puis 500 à chaque lecture")
 def test_r6_prix_non_numerique_refuse_proprement(app, client, annonce, bailleur, entetes):
     # Comme en production : une exception devient un 500 JSON au lieu de
     # remonter dans le test.
@@ -128,7 +128,6 @@ def test_r6_prix_non_numerique_refuse_proprement(app, client, annonce, bailleur,
     assert client.get(f"/api/listings/{annonce.id}").status_code == 200
 
 
-@faille("R6", "1.2", "budget non numérique → int() lève une ValueError → 500")
 def test_r6_budget_non_numerique_refuse_proprement(app, client, locataire, entetes):
     app.config["PROPAGATE_EXCEPTIONS"] = False
 
@@ -186,8 +185,8 @@ def test_r8_recherche_en_nombre_de_requetes_borne(client, fabrique, locataire, e
 
 
 # ─── R9 · URL d'image externe acceptée ───────────────────────
+# Corrigée au lot 1.2 (schémas de app/schemas) : le test reste en garde-fou.
 
-@faille("R9", "1.2", "images acceptées en JSON, URL externe affichée comme photo")
 def test_r9_image_externe_refusee(client, annonce, bailleur, entetes):
     avant = annonce.images_urls
 

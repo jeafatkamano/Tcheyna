@@ -7,16 +7,16 @@ mutuellement choisies.
 """
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify
 
 from app import db
 from app.models import Conversation, Message
 from app.routes import current_user_required
+from app.schemas import valider_corps
+from app.schemas.messages import NouveauMessage
 from app.services import notifications as notify
 
 messages_bp = Blueprint("messages", __name__)
-
-LONGUEUR_MAX = 2000
 
 
 def _conversation_autorisee(conversation, user):
@@ -90,16 +90,13 @@ def conversation_par_match(current_user, match_id):
 
 @messages_bp.route("/conversations/<string:conversation_id>", methods=["POST"])
 @current_user_required
-def envoyer_message(current_user, conversation_id):
+@valider_corps(NouveauMessage)
+def envoyer_message(current_user, conversation_id, corps):
     conversation = Conversation.query.get_or_404(conversation_id)
     if not _conversation_autorisee(conversation, current_user):
         return jsonify({"error": "Non autorisé"}), 403
 
-    contenu = ((request.get_json() or {}).get("contenu") or "").strip()
-    if not contenu:
-        return jsonify({"error": "Message vide"}), 400
-    if len(contenu) > LONGUEUR_MAX:
-        return jsonify({"error": f"Message trop long ({LONGUEUR_MAX} caractères maximum)"}), 400
+    contenu = corps.contenu
 
     message = Message(
         conversation_id=conversation.id,

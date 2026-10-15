@@ -20,15 +20,25 @@ def test_modifier_son_profil_exige_un_jeton(client):
     assert client.put("/api/users/me", json={"full_name": "X"}).status_code == 401
 
 
-def test_modifier_son_profil_ignore_avatar_url(client, locataire, entetes):
+def test_modifier_son_profil(client, locataire, entetes):
     reponse = client.put("/api/users/me", headers=entetes(locataire),
-                         json={"full_name": "  Mariama Diallo ",
-                               "avatar_url": "https://evil.example/x.gif"})
+                         json={"full_name": "  Mariama Diallo "})
 
     assert reponse.status_code == 200
-    user = reponse.get_json()["user"]
-    assert user["full_name"] == "Mariama Diallo"
-    assert user["avatar_url"] is None
+    assert reponse.get_json()["user"]["full_name"] == "Mariama Diallo"
+
+
+def test_modifier_son_profil_refuse_avatar_url(client, locataire, entetes):
+    # La photo se change par téléversement, jamais en soumettant une URL :
+    # le champ est refusé explicitement, et rien n'est modifié.
+    reponse = client.put("/api/users/me", headers=entetes(locataire),
+                         json={"full_name": "Mariama Diallo",
+                               "avatar_url": "https://evil.example/x.gif"})
+
+    assert reponse.status_code == 422
+    assert reponse.get_json()["details"][0]["champ"] == "avatar_url"
+    assert locataire.avatar_url is None
+    assert locataire.full_name != "Mariama Diallo"
 
 
 def test_avatar_televerse_dans_le_compartiment_public(client, locataire, entetes,

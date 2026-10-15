@@ -98,6 +98,10 @@ Ensuite, chaque déploiement qui embarque une nouvelle révision doit appliquer
 `flask db upgrade` sur la base de production avant de servir le nouveau code
 (depuis un poste, ou en tête de la commande de démarrage Render).
 
+Révision 3b8e2c41f7a9 (lot 1.2, `listings.prix` en BIGINT) : elle s'applique
+par `flask db upgrade` APRÈS le `stamp d5a017c5d0f3` de l'étape 3, jamais
+avant (sans tampon, `upgrade` tenterait de recréer toutes les tables).
+
 
 2. Nouvelle base (développement, CI, nouvel environnement)
 ---------------------------------------------------------
