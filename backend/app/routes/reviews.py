@@ -47,7 +47,7 @@ def avis_a_donner(current_user):
     if current_user.role == "tenant":
         matches = Match.query.filter_by(tenant_id=current_user.id, status="completed").all()
     else:
-        listing_ids = [l.id for l in current_user.listings]
+        listing_ids = [annonce.id for annonce in current_user.listings]
         matches = (Match.query.filter(Match.listing_id.in_(listing_ids),
                                       Match.status == "completed").all()
                    if listing_ids else [])

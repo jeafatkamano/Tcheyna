@@ -16,7 +16,7 @@ const SYMBOLES: Record<string, string> = {
 export function formatMontant(montant?: number | null, devise = "GNF"): string {
   if (montant === null || montant === undefined) return "—";
   const symbole = SYMBOLES[devise] ?? devise;
-  return `${montant.toLocaleString("fr-FR").replace(/ |\s/g, " ")} ${symbole}`;
+  return `${montant.toLocaleString("fr-FR").replace(/\u202f|\s/g, "\u00a0")}\u00a0${symbole}`;
 }
 
 /** Forme compacte pour les cartes et les listes : « 2,8 M GNF ». */
@@ -26,10 +26,10 @@ export function formatMontantCourt(montant?: number | null, devise = "GNF"): str
   if (montant >= 1_000_000) {
     const millions = montant / 1_000_000;
     const texte = millions >= 10 ? Math.round(millions).toString() : millions.toFixed(1).replace(".0", "").replace(".", ",");
-    return `${texte} M ${symbole}`;
+    return `${texte}\u00a0M\u00a0${symbole}`;
   }
   if (montant >= 10_000) {
-    return `${Math.round(montant / 1000)} k ${symbole}`;
+    return `${Math.round(montant / 1000)}\u00a0k\u00a0${symbole}`;
   }
   return formatMontant(montant, devise);
 }

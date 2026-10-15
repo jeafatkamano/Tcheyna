@@ -1,5 +1,8 @@
 flask==3.1.0
 flask-sqlalchemy==3.1.1
+# SQLAlchemy 2.1 associe `postgresql://` au pilote psycopg 3, absent ici :
+# sans cette borne, une installation à neuf fait planter l'API au démarrage.
+sqlalchemy==2.0.54
 flask-jwt-extended==4.7.1
 flask-cors==5.0.0
 flask-migrate==4.1.0

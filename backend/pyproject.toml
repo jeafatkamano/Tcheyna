@@ -1,0 +1,50 @@
+# Configuration des outils qualité du backend (pytest, ruff).
+# Le backend n'est pas un paquet installable : ce fichier ne sert qu'aux outils.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# `app` et `config` s'importent depuis backend/, quel que soit le dossier
+# d'où pytest est lancé.
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+# Un test marqué xfail qui se met à passer fait échouer la suite : la faille
+# qu'il décrit vient d'être corrigée, il faut retirer le marqueur dans la PR
+# du lot correspondant au lieu de laisser un test qui ne protège plus rien.
+xfail_strict = true
+filterwarnings = [
+    "error",
+    # `datetime.utcnow()` est utilisé partout dans le code applicatif ; son
+    # remplacement est un chantier à part (plan, logique transverse n° 4).
+    "ignore:datetime.datetime.utcnow\\(\\) is deprecated:DeprecationWarning",
+    # `Query.get()` est l'API historique de SQLAlchemy, utilisée dans toutes
+    # les routes : à migrer vers `db.session.get()` avec le reste de la dette.
+    "ignore:The Query.get\\(\\) method is considered legacy:sqlalchemy.exc.LegacyAPIWarning",
+    # migrations/env.py (gabarit Flask-Migrate) essaie d'abord `get_engine()`,
+    # puis se rabat sur `db.engine` : l'avertissement est attendu et sans effet.
+    "ignore:'get_engine' is deprecated:DeprecationWarning",
+]
+
+[tool.ruff]
+target-version = "py312"  # version de production (render.yaml)
+# Le code existant aligne volontairement ses colonnes et ses dictionnaires ;
+# sa plus longue ligne fait 113 caractères.
+line-length = 120
+extend-exclude = [".venv", "uploads"]
+
+[tool.ruff.lint]
+# E/W pycodestyle, F pyflakes, I tri des imports, B bugbear, UP syntaxe
+# moderne, BLE `except Exception` (rend valides les `noqa: BLE001` déjà
+# présents), SIM simplifications, RUF100 `noqa` devenus inutiles.
+select = ["E", "W", "F", "I", "B", "UP", "BLE", "SIM", "RUF100"]
+
+[tool.ruff.lint.per-file-ignores]
+# `calculate_score` aligne une condition et ses points par ligne : la grille
+# se lit d'un coup d'œil, ce que la forme sur deux lignes ferait perdre.
+"app/models.py" = ["E701"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "config", "run"]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true

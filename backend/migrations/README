@@ -1,1 +1,103 @@
-Single-database configuration for Flask.
+Migrations Alembic (Flask-Migrate) — base de données Tcheyna
+=============================================================
+
+Jusqu'au lot 1.1, le schéma n'était créé que par `db.create_all()`
+(`flask init-db`, `seed.py`, `create_admin.py`). `create_all` crée les tables
+manquantes mais ne modifie jamais une table existante : le premier ajout de
+colonne en production aurait dû se faire en SQL à la main. Désormais, le
+schéma évolue uniquement par des révisions de ce dossier.
+
+Révision initiale : d5a017c5d0f3 (« schéma initial »), générée contre
+PostgreSQL 16 depuis les modèles de app/models.py. Elle reproduit exactement
+ce que `create_all` a créé en production, noms de contraintes compris
+(vérifié en comparant `pg_dump --schema-only` des deux bases).
+
+
+1. Base de production existante : `stamp`, une seule fois, jamais `upgrade`
+--------------------------------------------------------------------------
+
+La base de production a été créée par `create_all` : ses tables existent déjà.
+Lancer `flask db upgrade` tenterait de les recréer et échouerait
+(« relation "users" already exists »). Il faut seulement inscrire dans la base
+qu'elle est au niveau de la révision initiale.
+
+À faire une seule fois, depuis un poste qui a accès à la base (l'offre gratuite
+de Render ne donne pas de shell) :
+
+    cd backend
+    export FLASK_APP=run.py FLASK_ENV=production
+    export DATABASE_URL='postgresql://…'   # chaîne Supabase de prod
+
+    # 0. Sauvegarde du schéma et des données (Supabase : Database > Backups,
+    #    ou pg_dump). `stamp` n'écrit qu'une ligne, mais on ne touche pas à la
+    #    prod sans sauvegarde.
+
+    # 1. Vérifier l'absence de dérive AVANT de tamponner : comparer le schéma
+    #    de prod à celui que produit la migration sur une base vide.
+    pg_dump --schema-only --no-owner 'postgresql://…prod…' | sort > prod.sql
+    DATABASE_URL='postgresql://…base locale vide…' flask db upgrade
+    pg_dump --schema-only --no-owner 'postgresql://…base locale…' | sort > migre.sql
+    diff prod.sql migre.sql
+    #    Seules doivent différer la table alembic_version, les commentaires
+    #    et les lignes \restrict (jeton aléatoire de pg_dump 16+).
+    #    Une table, colonne, contrainte ou un index en plus ou en moins en
+    #    prod = dérive : NE PAS tamponner, écrire d'abord une révision qui
+    #    aligne les modèles sur la réalité.
+
+    # 2. Tamponner la base au niveau de la révision initiale.
+    flask db stamp d5a017c5d0f3
+
+    # 3. Contre-vérification : autogenerate ne doit plus rien détecter.
+    flask db check        # attendu : « No new upgrade operations detected. »
+
+Si l'étape 3 signale une opération, la base n'était pas conforme : retirer le
+tampon (`flask db stamp base`, qui ne touche qu'à la table alembic_version),
+puis traiter l'écart comme à l'étape 1.
+
+Ensuite, chaque déploiement qui embarque une nouvelle révision doit appliquer
+`flask db upgrade` sur la base de production avant de servir le nouveau code
+(depuis un poste, ou en tête de la commande de démarrage Render).
+
+
+2. Nouvelle base (développement, CI, nouvel environnement)
+---------------------------------------------------------
+
+    flask db upgrade
+
+`flask init-db` (et le `create_all` de seed.py et create_admin.py) devient
+réservé au développement : il crée les tables sans tamponner la base, qui
+n'est alors plus migrable sans `flask db stamp head`. Ne jamais l'exécuter sur
+la production.
+
+
+3. Modifier le schéma
+---------------------
+
+    # 1. Modifier app/models.py.
+    # 2. Générer la révision, de préférence contre PostgreSQL (types fidèles
+    #    à la production) ; SQLite convient pour un ajout de colonne simple.
+    flask db migrate -m "ajoute users.token_version"
+    # 3. RELIRE le fichier généré : autogenerate ne voit ni les renommages
+    #    (il propose suppression + création, donc perte de données), ni les
+    #    changements de valeur par défaut côté serveur, ni les CHECK.
+    #    Une colonne NOT NULL ajoutée à une table remplie demande un
+    #    server_default ou une révision en plusieurs étapes.
+    # 4. Vérifier :
+    flask db upgrade && flask db downgrade -1 && flask db upgrade
+    pytest tests/test_migrations.py
+
+Une seule révision à la fois sur la branche principale (plan, « une seule
+migration à la fois ») : deux révisions parallèles créeraient deux têtes, que
+`flask db upgrade` refuse d'appliquer.
+
+La CI vérifie à chaque PR que les révisions s'appliquent sur PostgreSQL 16 et
+qu'aucun modèle n'a changé sans sa révision (`flask db check`).
+
+
+Remarque sur le pilote PostgreSQL
+---------------------------------
+
+requirements.txt borne SQLAlchemy à 2.0 : la 2.1 associe le schéma
+`postgresql://` au pilote psycopg 3, alors que seul psycopg2 est installé.
+Ne pas lever cette borne sans installer psycopg 3 (ou écrire
+`postgresql+psycopg2://` dans DATABASE_URL).
