@@ -10,9 +10,11 @@ parties — la traçabilité promise dans le business plan.
 """
 import uuid
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 import requests
 from flask import Blueprint, current_app, jsonify, request
+from sqlalchemy import select
 
 from app import db
 from app.models import (
@@ -43,6 +45,12 @@ TARIFS_GNF = {
     "mise_en_avant":        200_000,
 }
 DUREE_MISE_EN_AVANT = timedelta(days=30)
+
+# Issues possibles d'une vérification auprès de CinetPay. « Inconnu » couvre
+# tout ce qui n'est ni un succès ni un refus explicite (panne réseau, réponse
+# illisible, transaction encore en cours, montant non conforme) : le paiement
+# reste alors en attente, car un client a peut-être déjà été débité.
+ACCEPTE, REFUSE, INCONNU = "accepte", "refuse", "inconnu"
 
 
 def _reference():
@@ -146,6 +154,11 @@ def initier_paiement(current_user, corps):
         return jsonify({"error": "Cette mise en relation ne vous concerne pas"}), 403
     if listing and listing.landlord_id != current_user.id:
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+    # La commission revient au bailleur (CGU, PRD) : l'autre partie du match
+    # ne peut pas la régler à sa place. Certification et mise en avant sont
+    # déjà réservées au propriétaire de l'annonce, l'abonnement au locataire.
+    if type_paiement == "commission" and match and current_user.id != match.listing.landlord_id:
+        return jsonify({"error": "La commission est réglée par le propriétaire"}), 403
 
     montant, description, erreur = _montant_attendu(type_paiement, current_user, match, listing)
     if erreur:
@@ -158,6 +171,11 @@ def initier_paiement(current_user, corps):
     devise = (match.listing.devise if match and match.listing
               else listing.devise if listing
               else DEVISE_TARIFS)
+
+    # Les tarifs fixes n'existent qu'en GNF : appliqués à une annonce dans une
+    # autre devise, ils factureraient 250 000 XOF au lieu de 250 000 GNF.
+    if type_paiement in TARIFS_GNF and devise != DEVISE_TARIFS:
+        return jsonify({"error": f"Ce service n'est proposé qu'en {DEVISE_TARIFS} pour le moment"}), 400
 
     transaction_id = uuid.uuid4().hex[:20].upper()
 
@@ -248,20 +266,24 @@ def cinetpay_callback(corps):
         current_app.logger.warning("Callback pour une transaction inconnue : %s", transaction_id)
         return jsonify({"message": "Transaction inconnue"}), 200
 
-    if paiement.statut == "success":
+    if paiement.statut != "pending":
         return jsonify({"message": "Déjà traité"}), 200
 
-    reussi = _verifier_aupres_de_cinetpay(transaction_id)
-    _appliquer_resultat(paiement, reussi)
-    db.session.commit()
+    issue, donnees = _verifier_aupres_de_cinetpay(transaction_id)
+    _appliquer_verification(paiement.id, issue, donnees)
 
     return jsonify({"message": "OK"}), 200
 
 
 def _verifier_aupres_de_cinetpay(transaction_id):
-    """Interroge CinetPay pour connaître le statut réel de la transaction."""
+    """Interroge CinetPay pour connaître le statut réel de la transaction.
+
+    Renvoie `(issue, donnees)` : `issue` vaut ACCEPTE, REFUSE ou INCONNU,
+    `donnees` est le bloc `data` de la réponse (montant, devise…), à contrôler
+    contre le paiement avant tout succès.
+    """
     if not current_app.config.get("CINETPAY_API_KEY"):
-        return False
+        return INCONNU, {}
     try:
         reponse = requests.post(CINETPAY_CHECK_URL, json={
             "apikey":         current_app.config["CINETPAY_API_KEY"],
@@ -269,19 +291,80 @@ def _verifier_aupres_de_cinetpay(transaction_id):
             "transaction_id": transaction_id,
         }, timeout=15)
         resultat = reponse.json()
-        return (str(resultat.get("code")) == "00"
-                and resultat.get("data", {}).get("status") == "ACCEPTED")
     except (requests.RequestException, ValueError) as exc:
-        current_app.logger.error("Vérification CinetPay impossible : %s", exc)
-        return False
+        current_app.logger.error("Vérification CinetPay impossible (%s) : %s", transaction_id, exc)
+        return INCONNU, {}
+
+    donnees = resultat.get("data") if isinstance(resultat, dict) else None
+    if not isinstance(donnees, dict):
+        current_app.logger.error("Réponse CinetPay inexploitable (%s) : %r", transaction_id, resultat)
+        return INCONNU, {}
+
+    statut = donnees.get("status")
+    if str(resultat.get("code")) == "00" and statut == "ACCEPTED":
+        return ACCEPTE, donnees
+    # Seul un refus explicite clôt le paiement. Tout autre statut (attente du
+    # client, code inattendu) laisse la porte ouverte à un succès ultérieur.
+    if statut == "REFUSED":
+        return REFUSE, donnees
+    current_app.logger.info("Transaction CinetPay %s non conclue : %s", transaction_id, resultat)
+    return INCONNU, donnees
 
 
-def _appliquer_resultat(paiement, reussi):
-    """Met à jour le paiement et déclenche l'effet métier associé."""
-    if not reussi:
-        paiement.statut = "failed"
-        return
+def _montant_conforme(paiement, donnees):
+    """Le montant et la devise encaissés sont-ils ceux du paiement ?
 
+    Un statut ACCEPTED ne suffit pas : il faut que CinetPay ait encaissé ce
+    que Tcheyna a facturé, pas un montant modifié en cours de route.
+    """
+    try:
+        montant = Decimal(str(donnees.get("amount")))
+    except InvalidOperation:
+        montant = None
+    if montant is not None and not montant.is_finite():
+        montant = None  # « NaN » ou « Infinity » renvoyés tels quels
+    devise = str(donnees.get("currency") or "").strip().upper()
+    if montant == paiement.montant and devise == (paiement.devise or "").upper():
+        return True
+    current_app.logger.error(
+        "Paiement %s accepté par CinetPay avec un écart : attendu %s %s, reçu %r %r",
+        paiement.id, paiement.montant, paiement.devise,
+        donnees.get("amount"), donnees.get("currency"),
+    )
+    return False
+
+
+def _requete_verrouillee(payment_id):
+    """Relecture du paiement sous verrou de ligne (`SELECT … FOR UPDATE`).
+
+    `populate_existing` force la relecture même si l'objet est déjà dans la
+    session : sans elle, on lirait le statut d'avant l'attente du verrou.
+    """
+    return (select(Payment).where(Payment.id == payment_id)
+            .with_for_update().execution_options(populate_existing=True))
+
+
+def _appliquer_verification(payment_id, issue, donnees):
+    """Applique une vérification CinetPay, une seule fois par paiement.
+
+    Le callback et « vérifier » peuvent arriver en même temps : chacun relit
+    le paiement sous verrou et n'agit que s'il est encore en attente. Le
+    second attend que le premier ait validé, puis ne trouve plus rien à faire,
+    sans quoi la mise en avant serait prolongée deux fois et la notification
+    envoyée en double. L'appel réseau a lieu avant, hors du verrou.
+    """
+    paiement = db.session.execute(_requete_verrouillee(payment_id)).scalar_one()
+    if paiement.statut == "pending":
+        if issue == REFUSE:
+            paiement.statut = "failed"
+        elif issue == ACCEPTE and _montant_conforme(paiement, donnees):
+            _confirmer(paiement)
+    db.session.commit()
+    return paiement
+
+
+def _confirmer(paiement):
+    """Passe le paiement en succès et déclenche l'effet métier associé."""
     paiement.statut = "success"
     paiement.paid_at = datetime.utcnow()
 
@@ -362,12 +445,11 @@ def verifier_paiement(current_user, payment_id):
     if paiement.statut != "pending":
         return jsonify({"message": "Paiement déjà traité", "paiement": paiement.to_dict()}), 200
 
-    reussi = _verifier_aupres_de_cinetpay(paiement.cinetpay_transaction_id)
-    if reussi:
-        _appliquer_resultat(paiement, True)
-        db.session.commit()
+    issue, donnees = _verifier_aupres_de_cinetpay(paiement.cinetpay_transaction_id)
+    paiement = _appliquer_verification(paiement.id, issue, donnees)
 
+    messages = {"success": "Paiement confirmé", "failed": "Paiement refusé"}
     return jsonify({
-        "message": "Paiement confirmé" if reussi else "Paiement toujours en attente",
+        "message": messages.get(paiement.statut, "Paiement toujours en attente"),
         "paiement": paiement.to_dict(),
     }), 200

@@ -481,8 +481,9 @@ def test_callback_en_formulaire_avec_champs_supplementaires(client, fabrique, lo
     })
 
     assert reponse.status_code == 200
-    # Sans clé CinetPay, la vérification échoue : jamais de succès sur la foi du corps.
-    assert Payment.query.get(paiement.id).statut == "failed"
+    # Sans clé CinetPay, l'issue est inconnue : jamais de succès sur la foi du
+    # corps, ni d'échec tant que CinetPay n'a pas refusé explicitement.
+    assert Payment.query.get(paiement.id).statut == "pending"
 
 
 def test_callback_sans_identifiant_ou_trop_long(client):
@@ -725,7 +726,7 @@ def test_webhook_json_avec_champs_en_trop(client, fabrique, locataire):
     })
 
     assert reponse.status_code == 200
-    assert Payment.query.get(paiement.id).statut == "failed"
+    assert Payment.query.get(paiement.id).statut == "pending"
 
 
 def test_mot_de_passe_trop_long_a_l_inscription(client):

@@ -495,7 +495,8 @@ def supabase(app, reseau):
 
 class FauxCinetPay:
     """Passerelle CinetPay simulée. Par défaut : initiation acceptée,
-    transaction « ACCEPTED » à la vérification."""
+    transaction « ACCEPTED » à la vérification, pour 250 000 GNF (le montant
+    d'une certification, celui des paiements de la fabrique)."""
 
     def __init__(self, reseau):
         from app.routes.payments import CINETPAY_CHECK_URL, CINETPAY_INIT_URL
@@ -508,7 +509,7 @@ class FauxCinetPay:
             "data": {"payment_token": "jeton-test",
                      "payment_url": "https://checkout.cinetpay.test/paiement"},
         })
-        self.statut("ACCEPTED")
+        self.statut("ACCEPTED", montant=250_000, devise="GNF")
 
     def statut(self, statut, code="00", montant=None, devise=None):
         """Réponse de `payment/check` pour toute transaction."""
