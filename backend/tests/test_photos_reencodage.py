@@ -88,6 +88,18 @@ def test_bombe_de_decompression_refusee_en_422(client, annonce, bailleur, entete
     assert "50 mégapixels" in reponse.get_json()["error"]
 
 
+def test_png_au_dela_de_16_mpx_refuse_en_422(client, annonce, bailleur, entetes):
+    # PNG sans décodage réduit : 5000 × 4000 = 20 Mpx, sous les 50 Mpx du JPEG.
+    flux = io.BytesIO()
+    Image.new("1", (5_000, 4_000)).save(flux, "PNG")
+    flux.seek(0)
+
+    reponse = _envoyer(client, annonce, bailleur, entetes, flux, "grand.png")
+
+    assert reponse.status_code == 422
+    assert "16 mégapixels" in reponse.get_json()["error"]
+
+
 def test_meme_photo_renvoyee_n_est_ajoutee_qu_une_fois(app, client, annonce, bailleur,
                                                          entetes):
     # « Réessayer » après une réponse perdue : le serveur avait déjà la photo.

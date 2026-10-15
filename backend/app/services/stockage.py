@@ -48,6 +48,9 @@ QUALITE_WEBP = 80
 # Au-delà, l'image n'est pas décodée : une « bombe de décompression » de
 # quelques Ko peut exiger des Go de mémoire. 50 Mpx couvrent tout téléphone.
 PIXELS_MAX = 50_000_000
+# PNG et WebP n'ont pas de décodage réduit (`draft`) : 16 Mpx en RGBA pèsent
+# déjà 64 Mo, ce qui laisse deux envois simultanés sous les 512 Mo.
+PIXELS_MAX_SANS_DRAFT = 16_000_000
 Image.MAX_IMAGE_PIXELS = PIXELS_MAX
 Image.init()  # enregistre tous les formats avant le filtre `formats=`
 # Les JPEG multi-images des iPhone (MPO) passent par l'ouvreur JPEG.
@@ -218,6 +221,10 @@ def preparer_image(fichier, dossier):
             with Image.open(io.BytesIO(recu), formats=FORMATS_LUS) as source:
                 if source.width * source.height > PIXELS_MAX:
                     raise ImageIllisible("Image trop grande (50 mégapixels maximum).")
+                if (source.format not in ("JPEG", "MPO")
+                        and source.width * source.height > PIXELS_MAX_SANS_DRAFT):
+                    raise ImageIllisible("Image trop grande (16 mégapixels maximum "
+                                         "en PNG ou WEBP). Envoyez-la en JPG.")
                 if source.format in ("JPEG", "MPO"):
                     source.draft("RGB", (2 * COTE_MAX, 2 * COTE_MAX))
                 source.load()
