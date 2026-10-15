@@ -4,10 +4,11 @@ Revision ID: d5a017c5d0f3
 Revises:
 Create Date: 2026-10-15 00:13:01.338679
 
-Générée par autogenerate contre PostgreSQL 16 (le moteur de production), puis
-relue. Les contraintes sans nom (clés primaires, étrangères, `unique=True`)
-reçoivent de PostgreSQL les mêmes noms par défaut que lors du `create_all`
-de la production : `flask db stamp` y est donc sûr (voir migrations/README).
+Générée par autogenerate contre un PostgreSQL 16 local, puis relue. Comparée
+(`pg_dump --schema-only`) à un `create_all` sur ce même PostgreSQL 16 local :
+identique, noms de contraintes compris. Elle n'a pas été comparée à la base
+de production, qui a probablement dérivé des modèles : suivre la procédure
+de migrations/README avant tout `flask db stamp`.
 
 Ne pas modifier : toute évolution du schéma passe par une nouvelle révision.
 """

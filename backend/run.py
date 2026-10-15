@@ -40,7 +40,12 @@ def make_shell_context():
 
 @app.cli.command("init-db")
 def init_db():
-    """Crée les tables (à défaut de migrations Alembic) : flask init-db."""
+    """Crée les tables par create_all : flask init-db.
+
+    Réservé au développement local et au jeu de démonstration (seed.py).
+    Une base partagée ou de production se crée et évolue par
+    `flask db upgrade` (voir migrations/README).
+    """
     with app.app_context():
         db.create_all()
     print("✅ Tables créées")

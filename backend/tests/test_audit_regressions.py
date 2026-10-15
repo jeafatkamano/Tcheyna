@@ -41,6 +41,23 @@ def test_r1_verify_cni_sans_decision_ni_piece_est_refuse(client, fabrique, admin
     assert reponse.status_code in (400, 422)
 
 
+@faille("R1", "1.4", "verify-revenus : approuve vaut aussi True par défaut (admin.py:239)")
+def test_r1_bis_verify_revenus_sans_decision_ni_justificatif_est_refuse(client, fabrique, admin,
+                                                                       entetes):
+    # Locataire identifié (niveau 2) qui n'a déposé aucun justificatif de revenus.
+    sans_justificatif = fabrique.locataire(niveau=2)
+    assert sans_justificatif.passport.income_doc_url is None
+
+    reponse = client.put(f"/api/admin/verify-revenus/{sans_justificatif.id}",
+                         headers=entetes(admin), json={})
+
+    user = User.query.get(sans_justificatif.id)
+    assert user.income_verified is False, "revenus validés sans justificatif ni décision"
+    assert user.passport.income_verified is False
+    assert user.trust_level == 2
+    assert reponse.status_code in (400, 422)
+
+
 # ─── R2 · Passeport lisible par n'importe quel bailleur ──────
 
 @faille("R2", "1.6", "GET /passport/<id> ouvert à tout bailleur, sans candidature")
@@ -84,11 +101,16 @@ def test_r4_annonce_hors_marche_ouvert_refusee(client, bailleur, entetes):
 # ─── R5 · Mass-assignment de status / is_visible ─────────────
 
 @faille("R5", "1.2", "PUT /listings accepte status et is_visible tels quels")
-def test_r5_put_listing_n_ecrit_pas_un_statut_arbitraire(client, annonce, bailleur, entetes):
-    client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur),
-               json={"status": "n_importe_quoi"})
+@pytest.mark.parametrize("corps", [{"status": "n_importe_quoi"}, {"is_visible": False}],
+                         ids=["status", "is_visible"])
+def test_r5_put_listing_n_ecrit_ni_statut_ni_visibilite(client, annonce, bailleur, entetes, corps):
+    # Retirer ou rouvrir une annonce passe par des actions dédiées (cycle de
+    # vie), pas par une modification libre des champs.
+    client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur), json=corps)
 
-    assert Listing.query.get(annonce.id).status == "active", "statut arbitraire enregistré"
+    relue = Listing.query.get(annonce.id)
+    assert relue.status == "active", "statut arbitraire enregistré"
+    assert relue.is_visible is True, "visibilité modifiée hors du cycle de vie"
 
 
 # ─── R6 · Types non validés → 500 ────────────────────────────

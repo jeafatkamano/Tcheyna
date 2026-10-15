@@ -23,6 +23,7 @@ from datetime import datetime
 
 import pytest
 import requests
+from flask import request_tearing_down
 from flask_jwt_extended import create_access_token
 from werkzeug.security import generate_password_hash
 
@@ -106,16 +107,22 @@ def reseau(monkeypatch):
 
     monkeypatch.setattr(requests.Session, "request", request)
 
-    connect_origine = socket.socket.connect
+    # Filet sous `requests` : un client HTTP qui le contournerait (urllib,
+    # SDK tiers) bute sur la résolution DNS ou sur l'ouverture de socket.
+    # Les sockets Unix (ex. PostgreSQL local) restent permis.
+    def bloquer_resolution(hote, *_args, **_kwargs):
+        raise ReseauBloque(f"Résolution DNS interdite pendant un test : {hote!r}")
 
-    def connect_local_seulement(sock, adresse):
-        # Les sockets Unix (ex. PostgreSQL local) restent permis ; tout le reste
-        # est une sortie réseau qu'un test n'a pas à faire.
-        if sock.family == socket.AF_UNIX:
-            return connect_origine(sock, adresse)
-        raise ReseauBloque(f"Connexion réseau interdite pendant un test : {adresse!r}")
+    def bloquer_si_reseau(origine):
+        def connecter(sock, adresse):
+            if sock.family == socket.AF_UNIX:
+                return origine(sock, adresse)
+            raise ReseauBloque(f"Connexion réseau interdite pendant un test : {adresse!r}")
+        return connecter
 
-    monkeypatch.setattr(socket.socket, "connect", connect_local_seulement)
+    monkeypatch.setattr(socket, "getaddrinfo", bloquer_resolution)
+    monkeypatch.setattr(socket.socket, "connect", bloquer_si_reseau(socket.socket.connect))
+    monkeypatch.setattr(socket.socket, "connect_ex", bloquer_si_reseau(socket.socket.connect_ex))
     return faux
 
 
@@ -161,9 +168,23 @@ def app(tmp_path):
         CINETPAY_RETURN_URL = ""
 
     application = create_app(ConfigTest)
+
+    # Le client de test réutilise le contexte d'application du test, donc la
+    # même session SQLAlchemy : sans précaution, un test verrait les écritures
+    # qu'une route a faites sans les valider (commit oublié), et croirait à tort
+    # qu'elles sont en base. En production, la session meurt avec la requête ;
+    # ici, on annule ce qui n'est pas validé et on expire tous les objets, que
+    # le test relit donc depuis la base. (`remove` détacherait les objets des
+    # fixtures, inutilisables ensuite.)
+    def fin_de_requete(_sender, **_kwargs):
+        db.session.rollback()
+
+    request_tearing_down.connect(fin_de_requete, application)
+
     with application.app_context():
         db.create_all()
         yield application
+        request_tearing_down.disconnect(fin_de_requete, application)
         db.session.remove()
         db.drop_all()
         # La base en mémoire tient dans une connexion unique (StaticPool) :
