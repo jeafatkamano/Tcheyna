@@ -2,64 +2,171 @@
  * useApi.ts — Chargement de données avec états de chargement et d'erreur.
  *
  * Évite de réécrire le triplet `data / chargement / erreur` dans chaque page.
+ *
+ * Pensé pour un réseau lent ou instable :
+ *   • `chargement` ne vaut vrai qu'au premier chargement (aucune donnée) : un
+ *     rechargement garde les données affichées et passe par `actualisation`,
+ *     sans démonter l'écran (clavier, défilement et saisie sont préservés) ;
+ *   • une erreur de rechargement va dans `erreurActualisation` (bandeau
+ *     discret) au lieu de remplacer les données par un écran d'erreur ;
+ *   • `intervalle` active un sondage, suspendu quand l'onglet est caché et
+ *     relancé à son retour ; chaque sondage attend la fin du précédent ;
+ *   • la requête reçoit un `AbortSignal`, annulé au démontage ou quand les
+ *     dépendances changent : une réponse obsolète n'est jamais affichée.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ApiError } from "../api";
+import { ApiError, estAnnulation } from "../api";
 
 interface EtatRequete<T> {
   data: T | null;
+  /** Premier chargement en cours : aucune donnée à montrer. */
   chargement: boolean;
+  /** Rechargement en arrière-plan, données conservées. */
+  actualisation: boolean;
+  /** Échec sans donnée à montrer. */
   erreur: string | null;
+  /** Échec d'un rechargement : les données affichées datent du précédent. */
+  erreurActualisation: string | null;
   recharger: () => Promise<void>;
   /** Mise à jour optimiste locale, sans requête. */
   muter: (maj: (precedent: T) => T) => void;
 }
 
+interface OptionsApi {
+  actif?: boolean;
+  /** Sondage périodique (ms), suspendu quand l'onglet est caché. */
+  intervalle?: number;
+}
+
+interface Etat<T> {
+  data: T | null;
+  erreur: string | null;
+  erreurActualisation: string | null;
+  enCours: boolean;
+}
+
+const ETAT_INITIAL: Etat<never> = {
+  data: null,
+  erreur: null,
+  erreurActualisation: null,
+  enCours: false,
+};
+
+function memesDependances(a: readonly unknown[], b: readonly unknown[]) {
+  return a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
+}
+
+function message(err: unknown) {
+  return err instanceof ApiError ? err.message : "Impossible de charger les données";
+}
+
 export function useApi<T>(
-  requete: () => Promise<T>,
+  requete: (signal: AbortSignal) => Promise<T>,
   deps: unknown[] = [],
-  options: { actif?: boolean } = {},
+  options: OptionsApi = {},
 ): EtatRequete<T> {
-  const { actif = true } = options;
-  const [data, setData] = useState<T | null>(null);
-  const [chargement, setChargement] = useState(actif);
-  const [erreur, setErreur] = useState<string | null>(null);
+  const { actif = true, intervalle } = options;
+  const [etat, setEtat] = useState<Etat<T>>(ETAT_INITIAL);
 
-  // Garde la dernière requête pour ignorer les réponses obsolètes.
+  // Nouvelles dépendances (autre annonce, autre filtre) : les anciennes
+  // données ne correspondent plus, on repart d'un état vierge. Ajustement
+  // pendant le rendu, comme le recommande React, plutôt que dans un effet.
+  const [depsVues, setDepsVues] = useState(deps);
+  if (!memesDependances(depsVues, deps)) {
+    setDepsVues(deps);
+    setEtat(ETAT_INITIAL);
+  }
+
+  // Dernière requête, lue au moment d'exécuter (jamais pendant le rendu).
   const requeteRef = useRef(requete);
-  requeteRef.current = requete;
-  const compteur = useRef(0);
+  useEffect(() => {
+    requeteRef.current = requete;
+  });
+  const controleurRef = useRef<AbortController | null>(null);
 
-  const executer = useCallback(async () => {
-    const appel = ++compteur.current;
-    setChargement(true);
-    setErreur(null);
+  /** Lance la requête ; toute requête précédente encore en vol est annulée. */
+  const charger = useCallback(async () => {
+    controleurRef.current?.abort();
+    const controleur = new AbortController();
+    controleurRef.current = controleur;
     try {
-      const resultat = await requeteRef.current();
-      if (appel === compteur.current) setData(resultat);
+      const data = await requeteRef.current(controleur.signal);
+      if (controleur.signal.aborted) return;
+      setEtat({ data, erreur: null, erreurActualisation: null, enCours: false });
     } catch (err) {
-      if (appel !== compteur.current) return;
-      setErreur(err instanceof ApiError ? err.message : "Impossible de charger les données");
-    } finally {
-      if (appel === compteur.current) setChargement(false);
+      if (controleur.signal.aborted || estAnnulation(err)) return;
+      setEtat((e) =>
+        e.data === null
+          ? { ...e, erreur: message(err), enCours: false }
+          : { ...e, erreurActualisation: message(err), enCours: false },
+      );
     }
   }, []);
 
+  /** Rechargement à la demande : garde les données, sinon réaffiche le chargement. */
+  const recharger = useCallback(async () => {
+    setEtat((e) => ({ ...e, enCours: true, erreur: null }));
+    await charger();
+  }, [charger]);
+
+  // Premier chargement, puis à chaque changement de dépendances.
   useEffect(() => {
-    if (!actif) {
-      setChargement(false);
-      return;
+    if (!actif) return;
+    void charger();
+    return () => controleurRef.current?.abort();
+  }, [actif, depsVues, charger]);
+
+  // Sondage : minuterie en chaîne (pas setInterval), pour ne jamais empiler
+  // les requêtes quand l'une dure plus que l'intervalle en 3G.
+  useEffect(() => {
+    if (!actif || !intervalle) return;
+    let minuterie: ReturnType<typeof setTimeout> | undefined;
+    let arrete = false;
+
+    const planifier = () => {
+      clearTimeout(minuterie);
+      minuterie = setTimeout(sonder, intervalle);
+    };
+    async function sonder() {
+      minuterie = undefined;
+      if (document.visibilityState === "hidden") return; // repris au retour
+      setEtat((e) => ({ ...e, enCours: true }));
+      await charger();
+      if (!arrete) planifier();
     }
-    void executer();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actif, ...deps]);
+    const surVisibilite = () => {
+      if (document.visibilityState === "hidden") {
+        clearTimeout(minuterie);
+        minuterie = undefined;
+      } else {
+        // Retour sur l'onglet : données probablement périmées.
+        void sonder();
+      }
+    };
+
+    planifier();
+    document.addEventListener("visibilitychange", surVisibilite);
+    return () => {
+      arrete = true;
+      clearTimeout(minuterie);
+      document.removeEventListener("visibilitychange", surVisibilite);
+    };
+  }, [actif, intervalle, depsVues, charger]);
 
   const muter = useCallback((maj: (precedent: T) => T) => {
-    setData((precedent) => (precedent === null ? precedent : maj(precedent)));
+    setEtat((e) => (e.data === null ? e : { ...e, data: maj(e.data) }));
   }, []);
 
-  return { data, chargement, erreur, recharger: executer, muter };
+  return {
+    data: etat.data,
+    chargement: actif && etat.data === null && etat.erreur === null,
+    actualisation: etat.enCours && etat.data !== null,
+    erreur: etat.erreur,
+    erreurActualisation: etat.erreurActualisation,
+    recharger,
+    muter,
+  };
 }
 
 /**

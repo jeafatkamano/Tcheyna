@@ -1,8 +1,8 @@
 # ci.yml — Intégration continue Tcheyna.
 #
 # Chaque PR doit garder verts : les tests et le lint du backend, l'application
-# des migrations sur PostgreSQL 16, puis le lint, le typage et le build du
-# frontend. PostgreSQL 16 est la version sur laquelle la révision initiale a été
+# des migrations sur PostgreSQL 16, puis le lint, le typage, les tests et le
+# build du frontend. PostgreSQL 16 est la version sur laquelle la révision initiale a été
 # vérifiée, pas une version constatée en production : vérifier celle de
 # Supabase (`select version();`) et aligner l'image ci-dessous si elle diffère. Aucun secret : Supabase, CinetPay et
 # Africa's Talking sont simulés dans les tests, qui bloquent tout appel réseau.
@@ -107,6 +107,11 @@ jobs:
 
       - name: Typage
         run: npm run typecheck
+
+      - name: Tests (vitest)
+        # happy-dom, sans navigateur ni réseau : fetch et XHR sont simulés.
+        # Le nom du job reste inchangé : il peut être un contrôle requis.
+        run: npm test
 
       - name: Build
         run: npm run build

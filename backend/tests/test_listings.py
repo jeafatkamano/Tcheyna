@@ -127,3 +127,116 @@ def test_mes_annonces_du_bailleur(client, annonce, bailleur, entetes):
     reponse = client.get("/api/listings/mes-annonces", headers=entetes(bailleur))
     assert reponse.status_code == 200
     assert reponse.get_json()["total"] == 1
+
+
+# ─── Photos : envoi une par une, sans perte (lot 1.7) ────────
+
+def _envoyer_photo(client, annonce, bailleur, entetes, fichier):
+    return client.post(f"/api/listings/{annonce.id}/photos", headers=entetes(bailleur),
+                       data={"file": fichier}, content_type="multipart/form-data")
+
+
+def test_photo_webp_compressee_par_le_navigateur_acceptee(client, annonce, bailleur, entetes):
+    import io
+
+    webp = b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"\x00" * 32
+    reponse = _envoyer_photo(client, annonce, bailleur, entetes, (io.BytesIO(webp), "photo-1.webp"))
+
+    assert reponse.status_code == 201
+    assert reponse.get_json()["images"][-1].endswith(".webp")
+
+
+def test_photo_sans_extension_refusee_avec_message(client, annonce, bailleur, entetes,
+                                                    fichier_image):
+    # Un Blob envoyé sans nom de fichier arrive comme « blob ».
+    reponse = _envoyer_photo(client, annonce, bailleur, entetes, fichier_image("blob"))
+
+    assert reponse.status_code == 400
+    assert "Format non accepté" in reponse.get_json()["error"]
+
+
+def test_envois_successifs_s_ajoutent_dans_l_ordre(client, annonce, bailleur, entetes,
+                                                    fichier_image):
+    avant = annonce.images_urls.split(",") if annonce.images_urls else []
+    for nom in ("a.png", "b.png", "c.png"):
+        assert _envoyer_photo(client, annonce, bailleur, entetes,
+                              fichier_image(nom)).status_code == 201
+
+    apres = Listing.query.get(annonce.id).images_urls.split(",")
+    assert apres[:len(avant)] == avant and len(apres) == len(avant) + 3
+
+
+def _ecriture_concurrente(monkeypatch, annonce_id, url_intruse):
+    """Simule une autre requête qui ajoute une photo pendant que celle-ci est
+    en cours de stockage (cas de deux envois simultanés)."""
+    from app import db
+    from app.services import stockage
+
+    vrai_televerser = stockage.televerser
+
+    def televerser_lent(*args, **kwargs):
+        url = vrai_televerser(*args, **kwargs)
+        actuelle = db.session.execute(
+            db.select(Listing.images_urls).filter_by(id=annonce_id)).scalar()
+        db.session.execute(
+            db.update(Listing).filter_by(id=annonce_id)
+            .values(images_urls=",".join(filter(None, [actuelle, url_intruse]))))
+        db.session.commit()
+        return url
+
+    monkeypatch.setattr(stockage, "televerser", televerser_lent)
+
+
+def test_ajout_concurrent_ne_perd_aucune_photo(client, annonce, bailleur, entetes,
+                                               fichier_image, monkeypatch):
+    # Avant le lot 1.7, la liste lue avant le stockage était réécrite telle
+    # quelle : la photo ajoutée entre-temps disparaissait.
+    _ecriture_concurrente(monkeypatch, annonce.id, "/uploads/autre-onglet.png")
+
+    reponse = _envoyer_photo(client, annonce, bailleur, entetes, fichier_image("a.png"))
+
+    assert reponse.status_code == 201
+    images = Listing.query.get(annonce.id).images_urls.split(",")
+    assert "/uploads/autre-onglet.png" in images
+    assert images[-1].endswith(".png") and images[-1] != "/uploads/autre-onglet.png"
+
+
+def test_limite_de_photos_reverifiee_apres_stockage(app, client, fabrique, bailleur, entetes,
+                                                     fichier_image, monkeypatch):
+    from app.schemas.listings import MAX_IMAGES
+
+    pleine_moins_un = ",".join(f"/uploads/p{i}.png" for i in range(MAX_IMAGES - 1))
+    annonce = fabrique.annonce(bailleur, images_urls=pleine_moins_un)
+    # Une autre requête prend la dernière place pendant le stockage.
+    _ecriture_concurrente(monkeypatch, annonce.id, "/uploads/derniere-place.png")
+
+    reponse = _envoyer_photo(client, annonce, bailleur, entetes, fichier_image("a.png"))
+
+    assert reponse.status_code == 400
+    images = Listing.query.get(annonce.id).images_urls.split(",")
+    assert len(images) == MAX_IMAGES
+    # Le fichier stocké pour rien est supprimé.
+    assert os.listdir(app.config["UPLOAD_FOLDER"]) == []
+
+
+def test_reecriture_des_photos_sous_verrou_d_ecriture(client, annonce, bailleur, entetes,
+                                                      fichier_image):
+    # SQLite ignore FOR UPDATE : on vérifie que la requête le demande bien,
+    # PostgreSQL (production, CI migrations) l'appliquera.
+    from sqlalchemy import event
+
+    from app import db
+
+    verrous = []
+
+    def observer(etat):
+        if etat.is_select and etat.statement._for_update_arg is not None:
+            verrous.append(etat.statement)
+
+    event.listen(db.session, "do_orm_execute", observer)
+    try:
+        _envoyer_photo(client, annonce, bailleur, entetes, fichier_image("a.png"))
+    finally:
+        event.remove(db.session, "do_orm_execute", observer)
+
+    assert len(verrous) == 1

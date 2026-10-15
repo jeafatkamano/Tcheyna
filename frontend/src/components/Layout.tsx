@@ -60,7 +60,11 @@ export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, chargement, deconnecter } = useAuth();
-  const [menuOuvert, setMenuOuvert] = useState(false);
+  // Le menu est ouvert « sur » une page : changer de page le referme sans
+  // effet (l'état est dérivé du chemin au lieu d'être remis à zéro après coup).
+  const [menuOuvertSur, setMenuOuvertSur] = useState<string | null>(null);
+  const menuOuvert = menuOuvertSur === location.pathname;
+  const setMenuOuvert = (ouvert: boolean) => setMenuOuvertSur(ouvert ? location.pathname : null);
   const [messagesNonLus, setMessagesNonLus] = useState(0);
   const [notifsNonLues, setNotifsNonLues] = useState(0);
 
@@ -81,10 +85,6 @@ export function Layout() {
       vivant = false;
     };
   }, [user, location.pathname]);
-
-  useEffect(() => {
-    setMenuOuvert(false);
-  }, [location.pathname]);
 
   if (chargement) {
     return (

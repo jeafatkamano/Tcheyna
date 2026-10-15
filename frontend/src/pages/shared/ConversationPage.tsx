@@ -4,7 +4,7 @@
  * La conversation est ouverte par le backend au moment où le propriétaire
  * accepte la candidature : cette page ne fait que l'afficher.
  */
-import { ArrowLeft, Send } from "lucide-react";
+import { ArrowLeft, Loader2, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
@@ -25,20 +25,17 @@ export function ConversationPage() {
   const [saisie, setSaisie] = useState("");
   const finDuFil = useRef<HTMLDivElement>(null);
 
-  const conversation = useApi(() => messagesAPI.filParMatch(matchId!), [matchId], {
-    actif: Boolean(matchId),
-  });
+  // Sondage léger : suffisant pour un fil de discussion, sans websocket. Il
+  // se suspend quand l'onglet est caché (économie de data mobile) et ne
+  // démonte jamais la saisie : le clavier reste ouvert.
+  const conversation = useApi(
+    (signal) => messagesAPI.filParMatch(matchId!, signal),
+    [matchId],
+    { actif: Boolean(matchId), intervalle: INTERVALLE_RAFRAICHISSEMENT },
+  );
   const envoi = useAction(messagesAPI.envoyer);
 
   const messages = conversation.data?.messages ?? [];
-
-  // Sondage léger : suffisant pour un fil de discussion, sans websocket.
-  useEffect(() => {
-    if (!conversation.data) return;
-    const timer = setInterval(() => void conversation.recharger(), INTERVALLE_RAFRAICHISSEMENT);
-    return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversation.data?.id]);
 
   useEffect(() => {
     finDuFil.current?.scrollIntoView({ behavior: "smooth" });
@@ -114,6 +111,14 @@ export function ConversationPage() {
             </Link>
           )}
         </div>
+
+        {conversation.actualisation && (
+          <Loader2
+            size={14}
+            className="animate-spin flex-shrink-0 text-white/40"
+            aria-label="Actualisation"
+          />
+        )}
       </div>
 
       {/* Bandeau de mise en relation */}
@@ -126,6 +131,16 @@ export function ConversationPage() {
           Mise en relation validée — organisez la visite en toute confiance.
         </p>
       </div>
+
+      {conversation.erreurActualisation && (
+        <p
+          className="px-4 py-1.5 text-xs flex-shrink-0"
+          style={{ background: "#FEF3C7", color: "#92400E" }}
+          role="status"
+        >
+          {conversation.erreurActualisation} Les nouveaux messages arriveront au retour du réseau.
+        </p>
+      )}
 
       {/* Fil */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">

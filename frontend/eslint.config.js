@@ -30,15 +30,9 @@ export default tseslint.config(
     linterOptions: { reportUnusedDisableDirectives: "error" },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      // Règles « React Compiler » de eslint-plugin-react-hooks 7. Le projet
-      // n'utilise pas le compilateur, et les respecter demande de réécrire
-      // useApi, AuthContext et Layout (ref « dernière valeur » assignée au
-      // rendu, setState de réinitialisation dans un effet) : chantier à mener
-      // avec la refonte réseau du lot 1.7, pas dans le socle qualité. Les
-      // règles historiques (rules-of-hooks, exhaustive-deps) restent actives.
-      "react-hooks/refs": "off",
-      "react-hooks/set-state-in-effect": "off",
-      "react-hooks/preserve-manual-memoization": "off",
+      // Les règles « React Compiler » du plugin (refs, set-state-in-effect,
+      // preserve-manual-memoization…) sont actives depuis le lot 1.7, qui a
+      // réécrit useApi, AuthContext et Layout pour les respecter.
       // Avertissement seulement : un fichier qui exporte aussi un hook ou une
       // constante (useAuth, routes…) recharge la page entière en développement
       // au lieu du seul composant. Sans effet sur le build de production.
@@ -47,7 +41,7 @@ export default tseslint.config(
   },
   {
     // Fichiers de configuration exécutés par Node, pas par le navigateur.
-    files: ["vite.config.ts", "eslint.config.js"],
+    files: ["vite.config.ts", "vitest.config.ts", "eslint.config.js"],
     languageOptions: { globals: globals.node },
   },
 );

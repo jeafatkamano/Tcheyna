@@ -1,88 +1,62 @@
 /**
  * TeleversementPhotos.tsx — Ajout des photos d'un bien.
  *
- * Deux situations, un seul composant :
- *   • annonce existante — chaque photo part immédiatement au serveur ;
- *   • annonce en cours de création — les photos sont retenues localement,
- *     puis envoyées par le formulaire dès que l'annonce a un identifiant.
+ * Chaque photo choisie est compressée dans le téléphone (≤ 300 Ko, cf.
+ * lib/image.ts), puis envoyée seule, l'une après l'autre, avec sa barre de
+ * progression. Une photo en échec garde son fichier compressé et propose
+ * « Réessayer » : rien n'est à choisir de nouveau.
  *
- * Sans ce second mode, il faudrait publier une annonce sans photo, puis y
- * revenir pour les ajouter.
+ * Deux situations, un seul composant :
+ *   • annonce existante — les photos partent dès qu'elles sont prêtes ;
+ *   • annonce en cours de création — elles attendent, compressées, que le
+ *     formulaire ait enregistré l'annonce (`file.demarrer(id)`).
+ *
+ * La file elle-même appartient au formulaire (useFilePhotos), qui peut ainsi
+ * attendre la fin des envois avant de changer de page.
  */
-import { ImagePlus, Loader2, Star, Trash2, Upload } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { AlertCircle, ImagePlus, Loader2, RotateCcw, Star, Trash2 } from "lucide-react";
+import { useState } from "react";
 
 import { listingsAPI, urlFichier } from "../api";
+import type { FilePhotosReact } from "../hooks/useFilePhotos";
+import type { PhotoFile } from "../lib/filePhotos";
 import { MessageErreur } from "./Etats";
 
 const MAX_PHOTOS = 10;
-const FORMATS = ".jpg,.jpeg,.png,.webp";
-
-export interface PhotoEnAttente {
-  fichier: File;
-  apercu: string;
-}
+// `image/*` laisse la galerie proposer toutes les photos ; un format que le
+// navigateur ne sait pas lire (HEIC hors galerie iOS) est signalé par photo.
+const FORMATS = "image/*";
 
 interface Props {
-  /** Absent tant que l'annonce n'existe pas : on bascule alors en mode différé. */
+  /** Absent tant que l'annonce n'existe pas : les photos attendent alors. */
   listingId?: string;
   /** Photos déjà enregistrées côté serveur. */
   images: string[];
   onImagesChange: (images: string[]) => void;
-  /** Photos retenues localement, en mode différé. */
-  enAttente?: PhotoEnAttente[];
-  onEnAttenteChange?: (photos: PhotoEnAttente[]) => void;
+  /** File d'envoi, portée par le formulaire. */
+  photos: FilePhotosReact;
 }
 
-export function TeleversementPhotos({
-  listingId,
-  images,
-  onImagesChange,
-  enAttente = [],
-  onEnAttenteChange,
-}: Props) {
-  const [envoiEnCours, setEnvoiEnCours] = useState(false);
+export function TeleversementPhotos({ listingId, images, onImagesChange, photos }: Props) {
   const [erreur, setErreur] = useState<string | null>(null);
   const [surviole, setSurviole] = useState(false);
-  const champFichier = useRef<HTMLInputElement>(null);
+  const { file, etat, resume } = photos;
 
-  const differe = !listingId;
-  const total = images.length + enAttente.length;
+  const total = images.length + etat.photos.length;
   const restant = MAX_PHOTOS - total;
 
-  // Les aperçus locaux occupent de la mémoire tant qu'ils ne sont pas révoqués.
-  useEffect(() => {
-    return () => enAttente.forEach((p) => URL.revokeObjectURL(p.apercu));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function ajouter(fichiers: FileList | null) {
+  function ajouter(fichiers: FileList | null) {
     if (!fichiers?.length) return;
     setErreur(null);
 
     const retenus = Array.from(fichiers).slice(0, Math.max(restant, 0));
-    if (!retenus.length) {
+    if (retenus.length < fichiers.length) {
       setErreur(`${MAX_PHOTOS} photos maximum par annonce.`);
-      return;
     }
+    if (!retenus.length) return;
 
-    if (differe) {
-      onEnAttenteChange?.([
-        ...enAttente,
-        ...retenus.map((fichier) => ({ fichier, apercu: URL.createObjectURL(fichier) })),
-      ]);
-      return;
-    }
-
-    setEnvoiEnCours(true);
-    try {
-      const reponse = await listingsAPI.televerserPhotos(listingId!, retenus);
-      onImagesChange(reponse.images);
-    } catch (err) {
-      setErreur(err instanceof Error ? err.message : "Envoi impossible");
-    } finally {
-      setEnvoiEnCours(false);
-    }
+    void file.ajouter(retenus);
+    if (listingId) void file.demarrer(listingId);
   }
 
   async function retirer(url: string) {
@@ -96,11 +70,6 @@ export function TeleversementPhotos({
     }
   }
 
-  function retirerEnAttente(index: number) {
-    URL.revokeObjectURL(enAttente[index].apercu);
-    onEnAttenteChange?.(enAttente.filter((_, i) => i !== index));
-  }
-
   async function mettreEnPremier(url: string) {
     if (!listingId) return;
     const reordonnees = [url, ...images.filter((u) => u !== url)];
@@ -111,6 +80,16 @@ export function TeleversementPhotos({
       onImagesChange(images); // l'ordre serveur fait foi
     }
   }
+
+  function reessayerTout() {
+    etat.photos.filter((p) => p.etat === "erreur").forEach((p) => void file.reessayer(p.id));
+  }
+
+  // Messages d'échec distincts, lisibles sous la grille (la vignette est trop petite).
+  const messagesEchec = [
+    ...new Set(etat.photos.filter((p) => p.etat === "erreur").map((p) => p.erreur ?? "")),
+  ].filter(Boolean);
+  const nbEnFile = etat.photos.filter((p) => p.etat !== "erreur").length;
 
   return (
     <div className="space-y-3">
@@ -168,29 +147,14 @@ export function TeleversementPhotos({
             </figure>
           ))}
 
-          {enAttente.map((photo, i) => (
-            <figure
-              key={photo.apercu}
-              className="relative aspect-square rounded-xl overflow-hidden"
-              style={{ outline: "2px dashed #F97316", outlineOffset: "-2px" }}
-            >
-              <img src={photo.apercu} alt="" className="w-full h-full object-cover opacity-80" />
-              <figcaption
-                className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded font-semibold"
-                style={{ background: "#F97316", color: "white", fontSize: "9px" }}
-              >
-                À l'enregistrement
-              </figcaption>
-              <button
-                type="button"
-                onClick={() => retirerEnAttente(i)}
-                className="absolute top-1 right-1 p-1 rounded-lg"
-                style={{ background: "rgba(220,38,38,0.85)", color: "white" }}
-                aria-label="Retirer cette photo"
-              >
-                <Trash2 size={12} />
-              </button>
-            </figure>
+          {etat.photos.map((photo) => (
+            <VignetteEnFile
+              key={photo.id}
+              photo={photo}
+              differe={!listingId}
+              onReessayer={() => void file.reessayer(photo.id)}
+              onRetirer={() => file.retirer(photo.id)}
+            />
           ))}
         </div>
       )}
@@ -206,7 +170,7 @@ export function TeleversementPhotos({
           onDrop={(e) => {
             e.preventDefault();
             setSurviole(false);
-            void ajouter(e.dataTransfer.files);
+            ajouter(e.dataTransfer.files);
           }}
           className="flex flex-col items-center justify-center gap-2 py-7 rounded-2xl cursor-pointer transition-colors"
           style={{
@@ -215,46 +179,69 @@ export function TeleversementPhotos({
           }}
         >
           <input
-            ref={champFichier}
             type="file"
             accept={FORMATS}
             multiple
             className="sr-only"
-            disabled={envoiEnCours}
             onChange={(e) => {
-              void ajouter(e.target.files);
+              ajouter(e.target.files);
               e.target.value = "";
             }}
           />
-          {envoiEnCours ? (
-            <>
-              <Loader2 size={22} className="animate-spin" style={{ color: "#F97316" }} />
-              <span className="text-sm font-medium" style={{ color: "#F97316" }}>
-                Envoi en cours…
-              </span>
-            </>
-          ) : (
-            <>
-              <ImagePlus size={22} style={{ color: "#94A3B8" }} />
-              <span className="text-sm font-semibold" style={{ color: "#1E3A5F" }}>
-                Ajouter des photos
-              </span>
-              <span className="text-xs text-gray-400">
-                Glissez vos fichiers ici, ou touchez pour les choisir
-              </span>
-              <span className="text-xs text-gray-400">
-                JPG, PNG ou WEBP · 8 Mo maximum par photo
-              </span>
-            </>
-          )}
+          <ImagePlus size={22} style={{ color: "#94A3B8" }} />
+          <span className="text-sm font-semibold" style={{ color: "#1E3A5F" }}>
+            Ajouter des photos
+          </span>
+          <span className="text-xs text-gray-400">
+            Glissez vos fichiers ici, ou touchez pour les choisir
+          </span>
+          <span className="text-xs text-gray-400 text-center px-4">
+            JPG, PNG ou WEBP · allégées automatiquement avant l'envoi
+          </span>
         </label>
       )}
 
-      {differe && enAttente.length > 0 && (
+      {/* Récapitulatif */}
+      {!listingId && nbEnFile > 0 && (
         <p className="text-xs px-3 py-2 rounded-xl" style={{ background: "#FFF7ED", color: "#9A3412" }}>
-          Ces {enAttente.length} photo{enAttente.length > 1 ? "s" : ""} seront envoyées à
+          {nbEnFile} photo{nbEnFile > 1 ? "s" : ""} prête{nbEnFile > 1 ? "s" : ""} : envoi à
           l'enregistrement de l'annonce.
         </p>
+      )}
+      {listingId && resume.restantes > 0 && (
+        <p
+          className="text-xs px-3 py-2 rounded-xl flex items-center gap-2"
+          style={{ background: "#EFF6FF", color: "#1D4ED8" }}
+          role="status"
+        >
+          <Loader2 size={13} className="animate-spin flex-shrink-0" />
+          Envoi des photos : {resume.envoyees} envoyée{resume.envoyees > 1 ? "s" : ""},{" "}
+          {resume.restantes} restante{resume.restantes > 1 ? "s" : ""}. Restez sur cette page.
+        </p>
+      )}
+      {resume.enEchec > 0 && (
+        <div className="px-3 py-2.5 rounded-xl space-y-2" style={{ background: "#FEF2F2" }} role="alert">
+          <p className="text-xs font-semibold" style={{ color: "#B91C1C" }}>
+            {resume.enEchec} photo{resume.enEchec > 1 ? "s n'ont" : " n'a"} pas pu être
+            envoyée{resume.enEchec > 1 ? "s" : ""}.
+          </p>
+          {messagesEchec.map((m) => (
+            <p key={m} className="text-xs" style={{ color: "#B91C1C" }}>
+              {m}
+            </p>
+          ))}
+          {listingId && etat.photos.some((p) => p.etat === "erreur" && p.reessayable) && (
+            <button
+              type="button"
+              onClick={reessayerTout}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+              style={{ background: "#DC2626" }}
+            >
+              <RotateCcw size={13} />
+              Tout réessayer
+            </button>
+          )}
+        </div>
       )}
 
       <MessageErreur message={erreur} />
@@ -262,46 +249,87 @@ export function TeleversementPhotos({
   );
 }
 
-/** Envoie les photos retenues localement, une fois l'annonce créée. */
-export async function envoyerPhotosEnAttente(
-  listingId: string,
-  photos: PhotoEnAttente[],
-): Promise<string[]> {
-  if (!photos.length) return [];
-  const reponse = await listingsAPI.televerserPhotos(
-    listingId,
-    photos.map((p) => p.fichier),
-  );
-  photos.forEach((p) => URL.revokeObjectURL(p.apercu));
-  return reponse.images;
-}
-
-/** Bouton compact, pour les emplacements où la grille serait de trop. */
-export function BoutonAjoutPhoto({
-  onFichiers,
-  enCours,
+function VignetteEnFile({
+  photo,
+  differe,
+  onReessayer,
+  onRetirer,
 }: {
-  onFichiers: (fichiers: FileList | null) => void;
-  enCours?: boolean;
+  photo: PhotoFile;
+  differe: boolean;
+  onReessayer: () => void;
+  onRetirer: () => void;
 }) {
+  const enErreur = photo.etat === "erreur";
+  const occupee = photo.etat === "envoi" || photo.etat === "compression";
+  const libelle = {
+    compression: "Préparation…",
+    attente: differe ? "À l'enregistrement" : "En attente",
+    envoi: `Envoi ${Math.round(photo.progression * 100)} %`,
+    erreur: "Échec",
+  }[photo.etat];
+
   return (
-    <label
-      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer"
-      style={{ background: "#F0F4FA", color: "#1E3A5F" }}
+    <figure
+      className="relative aspect-square rounded-xl overflow-hidden"
+      style={{
+        outline: `2px dashed ${enErreur ? "#DC2626" : "#F97316"}`,
+        outlineOffset: "-2px",
+        background: "#F1F5F9",
+      }}
     >
-      <input
-        type="file"
-        accept={FORMATS}
-        multiple
-        className="sr-only"
-        disabled={enCours}
-        onChange={(e) => {
-          onFichiers(e.target.files);
-          e.target.value = "";
-        }}
-      />
-      {enCours ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-      {enCours ? "Envoi…" : "Ajouter des photos"}
-    </label>
+      {photo.apercu ? (
+        <img src={photo.apercu} alt="" className="w-full h-full object-cover opacity-70" />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center">
+          {enErreur ? (
+            <AlertCircle size={20} style={{ color: "#DC2626" }} />
+          ) : (
+            <Loader2 size={20} className="animate-spin" style={{ color: "#94A3B8" }} />
+          )}
+        </div>
+      )}
+
+      <figcaption
+        className="absolute bottom-1 left-1 right-1 px-1.5 py-0.5 rounded font-semibold"
+        style={{ background: enErreur ? "#DC2626" : "#F97316", color: "white", fontSize: "9px" }}
+      >
+        {libelle}
+        {photo.etat === "envoi" && (
+          <span className="block h-1 mt-0.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.35)" }}>
+            <span
+              className="block h-full bg-white transition-[width]"
+              style={{ width: `${Math.round(photo.progression * 100)}%` }}
+            />
+          </span>
+        )}
+      </figcaption>
+
+      <div className="absolute top-1 right-1 flex gap-1">
+        {enErreur && photo.reessayable && !differe && (
+          <button
+            type="button"
+            onClick={onReessayer}
+            className="p-1 rounded-lg"
+            style={{ background: "rgba(0,0,0,0.6)", color: "white" }}
+            title="Réessayer l'envoi"
+            aria-label={`Réessayer l'envoi de ${photo.nom}`}
+          >
+            <RotateCcw size={12} />
+          </button>
+        )}
+        {!occupee && (
+          <button
+            type="button"
+            onClick={onRetirer}
+            className="p-1 rounded-lg"
+            style={{ background: "rgba(220,38,38,0.85)", color: "white" }}
+            aria-label={`Retirer ${photo.nom}`}
+          >
+            <Trash2 size={12} />
+          </button>
+        )}
+      </div>
+    </figure>
   );
 }

@@ -4,7 +4,7 @@
  * En édition, la page porte aussi le parcours de certification : dépôt du
  * document de propriété, demande, et suivi de la décision.
  */
-import { ArrowLeft, Check, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ShieldCheck, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
@@ -12,12 +12,10 @@ import { listingsAPI, type DonneesAnnonce, type Listing, type TypeTransaction } 
 import { Chargement, Erreur, MessageErreur, MessageSucces } from "../../components/Etats";
 import { ModalePaiement } from "../../components/ModalePaiement";
 import { TeleversementDocuments } from "../../components/TeleversementDocuments";
-import {
-  envoyerPhotosEnAttente,
-  TeleversementPhotos,
-  type PhotoEnAttente,
-} from "../../components/TeleversementPhotos";
+import { TeleversementPhotos } from "../../components/TeleversementPhotos";
 import { useAction, useApi } from "../../hooks/useApi";
+import { useFilePhotos } from "../../hooks/useFilePhotos";
+import { resumer } from "../../lib/filePhotos";
 import { useGeo } from "../../hooks/useGeo";
 import { formatMontant, sansPieces } from "../../lib/format";
 
@@ -122,8 +120,13 @@ function Formulaire({
   const [succes, setSucces] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>(existante?.images ?? []);
   // En création, l'annonce n'a pas encore d'identifiant : les photos sont
-  // retenues ici puis envoyées juste après l'enregistrement.
-  const [photosEnAttente, setPhotosEnAttente] = useState<PhotoEnAttente[]>([]);
+  // compressées et retenues dans cette file, puis envoyées juste après
+  // l'enregistrement. Le formulaire reste affiché tant qu'elles partent.
+  const photos = useFilePhotos(setImages);
+  // Annonce créée depuis cette page : on y reste le temps d'envoyer les
+  // photos, et une nouvelle soumission devient une modification.
+  const [creee, setCreee] = useState<Listing | null>(null);
+  const courante = existante ?? creee;
 
   const [form, setForm] = useState<Formulaire>(
     existante
@@ -153,13 +156,12 @@ function Formulaire({
       : VIDE,
   );
 
-  const [erreurPhotos, setErreurPhotos] = useState<string | null>(null);
   const creation = useAction(listingsAPI.creer);
   const modification = useAction(listingsAPI.modifier);
   const retrait = useAction(listingsAPI.retirer);
   const demandeCertification = useAction(listingsAPI.demanderCertification);
 
-  const enCours = creation.enCours || modification.enCours;
+  const enCours = creation.enCours || modification.enCours || (Boolean(creee) && photos.resume.occupee);
   const erreur = creation.erreur ?? modification.erreur ?? retrait.erreur;
 
   function confirmer(message: string) {
@@ -197,28 +199,33 @@ function Formulaire({
 
   async function soumettre(e: React.FormEvent) {
     e.preventDefault();
-    const reponse = existante
-      ? await modification.executer(existante.id, donnees())
+    const reponse = courante
+      ? await modification.executer(courante.id, donnees())
       : await creation.executer(donnees());
     if (!reponse) return;
 
-    // Les photos choisies avant la création partent maintenant que
-    // l'annonce possède un identifiant.
-    if (photosEnAttente.length) {
-      try {
-        const envoyees = await envoyerPhotosEnAttente(reponse.listing.id, photosEnAttente);
-        setImages(envoyees);
-        setPhotosEnAttente([]);
-      } catch (err) {
-        // L'annonce est enregistrée : on le dit, et on signale ce qui manque.
-        confirmer("Annonce publiée, mais les photos n'ont pas pu être envoyées");
-        onSauvegarde(reponse.listing);
-        setErreurPhotos(err instanceof Error ? err.message : "Envoi des photos impossible");
+    if (existante) {
+      confirmer("Annonce mise à jour");
+      onSauvegarde(reponse.listing);
+      return;
+    }
+
+    // Création : les photos choisies avant partent maintenant que l'annonce
+    // possède un identifiant. On ne change de page qu'une fois toutes
+    // envoyées ; sinon l'utilisateur reste ici, voit les échecs et peut
+    // réessayer (changer d'URL démonterait le formulaire et sa file).
+    setCreee(reponse.listing);
+    if (photos.etat.photos.length) {
+      setSucces("Annonce publiée. Envoi des photos en cours…");
+      await photos.file.demarrer(reponse.listing.id);
+      const bilan = resumer(photos.file.getSnapshot());
+      if (bilan.enEchec > 0 || bilan.restantes > 0) {
+        setSucces("Annonce publiée. Certaines photos restent à envoyer.");
         return;
       }
     }
 
-    confirmer(existante ? "Annonce mise à jour" : "Annonce publiée");
+    confirmer("Annonce publiée");
     onSauvegarde(reponse.listing);
   }
 
@@ -242,7 +249,7 @@ function Formulaire({
             <ArrowLeft size={20} />
           </Link>
           <h1 className="text-white font-bold" style={{ fontSize: "19px" }}>
-            {existante ? "Modifier l'annonce" : "Publier une annonce"}
+            {courante ? "Modifier l'annonce" : "Publier une annonce"}
           </h1>
         </div>
       </div>
@@ -636,13 +643,11 @@ function Formulaire({
               Photos du bien
             </h2>
             <TeleversementPhotos
-              listingId={existante?.id}
+              listingId={courante?.id}
               images={images}
               onImagesChange={setImages}
-              enAttente={photosEnAttente}
-              onEnAttenteChange={setPhotosEnAttente}
+              photos={photos}
             />
-            <MessageErreur message={erreurPhotos} />
           </section>
 
           <MessageErreur message={erreur} />
@@ -653,8 +658,21 @@ function Formulaire({
             className="w-full py-4 rounded-2xl font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-60"
             style={{ background: "#F97316", fontSize: "16px" }}
           >
-            {enCours ? "Enregistrement…" : existante ? "Enregistrer les modifications" : "Publier l'annonce"}
+            {enCours ? "Enregistrement…" : courante ? "Enregistrer les modifications" : "Publier l'annonce"}
           </button>
+
+          {/* Création terminée mais photos en échec : on laisse le choix. */}
+          {creee && !photos.resume.occupee && (
+            <button
+              type="button"
+              onClick={() => onSauvegarde(creee)}
+              className="w-full py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2"
+              style={{ background: "#F0F4FA", color: "#1E3A5F" }}
+            >
+              {photos.resume.enEchec > 0 ? "Continuer sans ces photos" : "Voir mon annonce"}
+              <ArrowRight size={17} />
+            </button>
+          )}
 
           {existante && (
             <button

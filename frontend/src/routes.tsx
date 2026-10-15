@@ -8,7 +8,7 @@ import { createBrowserRouter, Navigate, useLocation } from "react-router";
 import type { ReactNode } from "react";
 
 import type { Role } from "./api";
-import { Chargement } from "./components/Etats";
+import { Chargement, Erreur } from "./components/Etats";
 import { Layout } from "./components/Layout";
 import { useAuth } from "./context/AuthContext";
 
@@ -44,13 +44,22 @@ import { TenantProfile } from "./pages/tenant/TenantProfile";
 // ─── Gardes ──────────────────────────────────────────────────
 
 function RequireAuth({ roles, children }: { roles?: Role[]; children: ReactNode }) {
-  const { user, chargement } = useAuth();
+  const { user, chargement, erreurSession, reessayerSession } = useAuth();
   const location = useLocation();
 
   if (chargement) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
         <Chargement />
+      </div>
+    );
+  }
+
+  if (!user && erreurSession) {
+    // Réseau absent ou serveur endormi : la session n'est pas perdue.
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
+        <Erreur message={erreurSession} onReessayer={reessayerSession} />
       </div>
     );
   }
