@@ -311,7 +311,7 @@ def certifications_pending(current_user):
                 .order_by(Listing.certification_requested_at.asc()).all())
     return jsonify([
         {
-            **a.to_dict(),
+            **a.to_dict(avec_adresse=True),
             # Liens temporaires : les pièces de propriété ne sont pas publiques.
             # `None` quand la signature échoue, comme pour les passeports.
             "documents": [stockage.url_signee(u) for u in a.documents],
@@ -350,7 +350,7 @@ def certifier_annonce(current_user, listing_id, corps):
 
     return jsonify({
         "message": "Annonce certifiée" if approuve else "Certification refusée",
-        "listing": listing.to_dict(),
+        "listing": listing.to_dict(avec_adresse=True),
     }), 200
 
 

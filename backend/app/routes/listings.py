@@ -8,7 +8,6 @@ certifiée remonte dans les résultats et affiche un badge visible.
 from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request
-from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 from pydantic_core import PydanticCustomError
 
 from app import db
@@ -17,9 +16,8 @@ from app.models import (
     Favorite,
     Listing,
     Payment,
-    User,
 )
-from app.routes import current_user_required, role_required
+from app.routes import current_user_required, role_required, utilisateur_optionnel
 from app.routes.geo import CURRENCIES
 from app.schemas import erreur_champ, valider_corps
 from app.schemas.listings import (
@@ -32,6 +30,7 @@ from app.schemas.listings import (
     verifier_lieu,
 )
 from app.services import stockage
+from app.services.acces import peut_voir_annonce, visibilite_adresse
 from app.services.matching import score_compatibilite, trier_par_compatibilite
 
 listings_bp = Blueprint("listings", __name__)
@@ -62,16 +61,6 @@ def _verifier_loyer(type_transaction, prix):
         raise erreur_champ("prix", "montant_trop_eleve",
                            "Loyer mensuel trop élevé ({maximum} maximum)", prix,
                            maximum=LOYER_MAX)
-
-
-def _utilisateur_optionnel():
-    """Identifie l'appelant si un jeton valide est fourni, sans l'exiger."""
-    try:
-        verify_jwt_in_request(optional=True)
-        user_id = get_jwt_identity()
-        return User.query.get(user_id) if user_id else None
-    except Exception:  # noqa: BLE001 — un jeton invalide ne doit pas casser la recherche publique
-        return None
 
 
 # ─── GET /api/listings ────────────────────────────────────────
@@ -141,17 +130,18 @@ def get_listings():
     paginated = query.paginate(page=page, per_page=per_page, error_out=False)
 
     # Un locataire connecté voit le score de compatibilité et ses favoris
-    user = _utilisateur_optionnel()
+    user = utilisateur_optionnel()
     favoris = set()
     passport = None
     if user:
         favoris = {f.listing_id for f in user.favorites}
         if user.role == "tenant":
             passport = user.passport
+    adresse_visible = visibilite_adresse(user)
 
     listings = []
     for annonce in paginated.items:
-        data = annonce.to_dict(lang=lang)
+        data = annonce.to_dict(lang=lang, avec_adresse=adresse_visible(annonce))
         data["is_favorite"] = annonce.id in favoris
         if user and user.role == "tenant":
             data["score_compatibilite"], _ = score_compatibilite(passport, annonce, user)
@@ -191,12 +181,13 @@ def recommandations(current_user):
     candidats = query.limit(150).all()
     favoris = {f.listing_id for f in current_user.favorites}
     deja_candidate = {m.listing_id for m in current_user.matches}
+    adresse_visible = visibilite_adresse(current_user)
 
     resultats = []
     for annonce, score, details in trier_par_compatibilite(passport, candidats, current_user):
         if annonce.id in deja_candidate:
             continue
-        data = annonce.to_dict(lang=lang)
+        data = annonce.to_dict(lang=lang, avec_adresse=adresse_visible(annonce))
         data["score_compatibilite"] = score
         data["details_compatibilite"] = details
         data["is_favorite"] = annonce.id in favoris
@@ -222,7 +213,8 @@ def mes_annonces(current_user):
                 .order_by(Listing.created_at.desc()).all())
 
     return jsonify({
-        "listings": [a.to_dict(lang=lang, include_landlord=False) for a in annonces],
+        "listings": [a.to_dict(lang=lang, include_landlord=False, avec_adresse=True)
+                     for a in annonces],
         "total": len(annonces),
         "stats": {
             "actives":    sum(1 for a in annonces if a.status == "active"),
@@ -240,14 +232,20 @@ def get_listing(listing_id):
     lang = request.args.get("lang", "fr")
     listing = Listing.query.get_or_404(listing_id)
 
-    user = _utilisateur_optionnel()
+    user = utilisateur_optionnel()
 
-    # Le propriétaire ne gonfle pas son propre compteur de vues
-    if not user or user.id != listing.landlord_id:
+    # Une annonce retirée n'existe plus que pour son propriétaire, l'admin et
+    # ses candidats : pour les autres, elle est introuvable.
+    if not peut_voir_annonce(user, listing):
+        return jsonify({"error": "Ressource introuvable", "details": []}), 404
+
+    # Le propriétaire ne gonfle pas son propre compteur de vues ; une annonce
+    # retirée n'en reçoit plus.
+    if listing.is_visible and (not user or user.id != listing.landlord_id):
         listing.views_count = (listing.views_count or 0) + 1
         db.session.commit()
 
-    data = listing.to_dict(lang=lang)
+    data = listing.to_dict(lang=lang, avec_adresse=visibilite_adresse(user)(listing))
 
     if user:
         data["is_favorite"] = bool(
@@ -296,7 +294,7 @@ def create_listing(current_user, corps):
 
     message = ("Annonce de vente publiée avec succès" if not location
                else "Annonce publiée avec succès")
-    return jsonify({"message": message, "listing": listing.to_dict()}), 201
+    return jsonify({"message": message, "listing": listing.to_dict(avec_adresse=True)}), 201
 
 
 # ─── PUT /api/listings/<id> ──────────────────────────────────
@@ -369,7 +367,8 @@ def update_listing(current_user, listing_id, corps):
         )
 
     db.session.commit()
-    return jsonify({"message": "Annonce mise à jour", "listing": listing.to_dict()}), 200
+    return jsonify({"message": "Annonce mise à jour",
+                    "listing": listing.to_dict(avec_adresse=True)}), 200
 
 
 # ─── DELETE /api/listings/<id> ───────────────────────────────
@@ -434,7 +433,7 @@ def demander_certification(current_user, listing_id):
     return jsonify({
         "message": "Demande de certification envoyée. Un vérificateur Tcheyna "
                    "examinera votre dossier sous 48 h.",
-        "listing": listing.to_dict(),
+        "listing": listing.to_dict(avec_adresse=True),
     }), 200
 
 
@@ -598,7 +597,9 @@ def lister_documents(current_user, listing_id):
         {
             "reference": url,
             "libelle": f"Document {i}",
-            "url": stockage.url_signee(url) or url,
+            # `None` si aucun lien temporaire n'est possible (stockage disque
+            # en développement) : l'interface affiche « lien indisponible ».
+            "url": stockage.url_signee(url),
         }
         for i, url in enumerate(listing.documents, start=1)
     ]

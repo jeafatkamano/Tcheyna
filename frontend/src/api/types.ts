@@ -67,7 +67,10 @@ export interface Listing {
   pays: string;
   ville: string;
   quartier?: string;
-  adresse?: string;
+  /** Adresse exacte : `null` pour qui n'y a pas droit (voir `adresse_masquee`). */
+  adresse?: string | null;
+  /** Vrai quand une adresse existe mais n'est communiquée qu'après acceptation. */
+  adresse_masquee?: boolean;
   type_transaction: TypeTransaction;
   est_vente: boolean;
   type_bien: string;
@@ -252,8 +255,8 @@ export interface DocumentPiece {
   /** Référence interne, utilisée pour supprimer la pièce. */
   reference: string;
   libelle: string;
-  /** Lien temporaire de consultation. */
-  url: string;
+  /** Lien temporaire de consultation ; `null` quand aucun lien n'est possible. */
+  url: string | null;
 }
 
 export interface Pays {
@@ -270,9 +273,13 @@ export interface Referentiel {
   marches_ouverts: string[];
 }
 
+/**
+ * Suggestion de candidat : version réduite (lot 1.6). Le locataire n'a pas
+ * candidaté, le bailleur ne voit ni son dossier ni son nom complet.
+ */
 export interface CandidatSuggere {
-  tenant: User;
-  passeport?: TenantPassport | null;
+  /** `full_name` est réduit au prénom et à l'initiale du nom. */
+  tenant: Pick<User, "id" | "role" | "full_name" | "trust_level">;
   score_compatibilite: number;
   details_compatibilite: DetailCompatibilite[];
   /** Abonnement Passeport en cours : le dossier est mis en avant. */

@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from app import db
 from app.models import Favorite, Listing
 from app.routes import current_user_required
+from app.services.acces import visibilite_adresse
 
 favorites_bp = Blueprint("favorites", __name__)
 
@@ -18,11 +19,13 @@ def liste_favoris(current_user):
     favoris = (current_user.favorites
                .order_by(Favorite.created_at.desc()).all())
 
+    adresse_visible = visibilite_adresse(current_user)
     listings = []
     for favori in favoris:
         if not favori.listing or not favori.listing.is_visible:
             continue
-        data = favori.listing.to_dict(lang=lang)
+        data = favori.listing.to_dict(lang=lang,
+                                      avec_adresse=adresse_visible(favori.listing))
         data["is_favorite"] = True
         data["ajoute_le"] = favori.created_at.isoformat()
         listings.append(data)

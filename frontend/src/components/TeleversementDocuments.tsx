@@ -71,16 +71,20 @@ export function TeleversementDocuments({ listingId, verrouille, onChangement }: 
           <span className="flex-1 min-w-0 text-sm font-medium truncate" style={{ color: "#1E293B" }}>
             {doc.libelle}
           </span>
-          <a
-            href={doc.url}
-            target="_blank"
-            rel="noreferrer"
-            className="p-1.5 rounded-lg flex-shrink-0"
-            style={{ background: "#EFF6FF", color: "#1D4ED8" }}
-            aria-label={`Ouvrir ${doc.libelle}`}
-          >
-            <ExternalLink size={14} />
-          </a>
+          {doc.url ? (
+            <a
+              href={doc.url}
+              target="_blank"
+              rel="noreferrer"
+              className="p-1.5 rounded-lg flex-shrink-0"
+              style={{ background: "#EFF6FF", color: "#1D4ED8" }}
+              aria-label={`Ouvrir ${doc.libelle}`}
+            >
+              <ExternalLink size={14} />
+            </a>
+          ) : (
+            <span className="text-xs text-gray-400 flex-shrink-0">lien indisponible</span>
+          )}
           {!verrouille && (
             <button
               type="button"

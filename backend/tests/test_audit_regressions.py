@@ -59,8 +59,9 @@ def test_r1_bis_verify_revenus_sans_decision_ni_justificatif_est_refuse(client, 
 
 
 # ─── R2 · Passeport lisible par n'importe quel bailleur ──────
+# Corrigée au lot 1.6 (services/acces.py, peut_voir_passeport) : le test reste
+# en garde-fou ; la matrice complète est dans test_acces.py.
 
-@faille("R2", "1.6", "GET /passport/<id> ouvert à tout bailleur, sans candidature")
 def test_r2_bailleur_sans_lien_ne_lit_pas_le_passeport(client, fabrique, locataire, entetes):
     inconnu = fabrique.bailleur()
     # Aucune candidature de ce locataire sur une annonce de ce bailleur.
@@ -72,8 +73,9 @@ def test_r2_bailleur_sans_lien_ne_lit_pas_le_passeport(client, fabrique, locatai
 
 
 # ─── R3 · Adresse exacte exposée aux anonymes ────────────────
+# Corrigée au lot 1.6 (adresse masquée par défaut dans Listing.to_dict) : le
+# test reste en garde-fou ; la matrice complète est dans test_acces.py.
 
-@faille("R3", "1.6", "Listing.to_dict renvoie l'adresse exacte à tout le monde")
 def test_r3_visiteur_anonyme_ne_voit_pas_l_adresse(client, annonce):
     assert annonce.adresse  # l'annonce a bien une adresse à protéger
 

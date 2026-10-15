@@ -15,6 +15,7 @@ from app.routes import current_user_required, role_required
 from app.schemas import valider_corps
 from app.schemas.matches import Candidature, DecisionCandidature, Visite
 from app.services import notifications as notify
+from app.services.acces import locataires_ouverts, passeport_pour, profil_suggestion
 from app.services.matching import score_compatibilite
 
 matches_bp = Blueprint("matches", __name__)
@@ -75,7 +76,8 @@ def create_match(current_user, corps):
     )
     db.session.commit()
 
-    return jsonify({"message": "Candidature envoyée", "match": match.to_dict()}), 201
+    return jsonify({"message": "Candidature envoyée",
+                    "match": match.to_dict(viewer=current_user)}), 201
 
 
 # ─── GET /api/matches/mes-candidatures ───────────────────────
@@ -92,7 +94,7 @@ def mes_candidatures(current_user):
     matches = query.order_by(Match.created_at.desc()).all()
 
     return jsonify({
-        "matches": [m.to_dict(lang=lang) for m in matches],
+        "matches": [m.to_dict(lang=lang, viewer=current_user) for m in matches],
         "stats": {
             "total":     len(matches),
             "en_attente": sum(1 for m in matches if m.status == "pending"),
@@ -123,12 +125,15 @@ def mes_demandes(current_user):
 
     matches = query.order_by(Match.created_at.desc()).all()
 
+    # Le propriétaire voit le dossier du candidat, sans ses données
+    # bancaires, tant que la règle d'accès l'y autorise (candidature refusée
+    # ou retirée : plus de dossier). Règle précalculée en une requête.
+    niveau_passeport = locataires_ouverts(current_user)
     resultats = []
     for match in matches:
-        data = match.to_dict(lang=lang)
-        # Le propriétaire voit le dossier du candidat, sans ses données bancaires
-        data["passeport"] = (match.tenant.passport.to_dict(public=True)
-                             if match.tenant and match.tenant.passport else None)
+        data = match.to_dict(lang=lang, viewer=current_user)
+        data["passeport"] = passeport_pour(current_user, match.tenant,
+                                           niveau=niveau_passeport(match.tenant))
         resultats.append(data)
 
     resultats.sort(
@@ -185,13 +190,9 @@ def candidats_suggeres(current_user):
         score, details = score_compatibilite(locataire.passport, listing, locataire)
         if score < 50:  # en dessous, la suggestion ferait perdre du temps
             continue
-        suggestions.append({
-            "tenant": locataire.to_dict(),
-            "passeport": locataire.passport.to_dict(public=True) if locataire.passport else None,
-            "score_compatibilite": score,
-            "details_compatibilite": details,
-            "abonne_passeport": locataire.id in abonnes,
-        })
+        # Version réduite : ce locataire n'a pas candidaté (services.acces).
+        suggestions.append(profil_suggestion(locataire, score, details,
+                                             locataire.id in abonnes))
 
     # Parmi les dossiers déjà jugés compatibles, les abonnés Passeport passent
     # devant : c'est la mise en avant qu'ils ont payée. L'interface l'indique
@@ -212,12 +213,15 @@ def get_match(current_user, match_id):
     est_locataire = match.tenant_id == current_user.id
     est_bailleur = match.listing and match.listing.landlord_id == current_user.id
     if not (est_locataire or est_bailleur or current_user.role == "admin"):
-        return jsonify({"error": "Non autorisé"}), 403
+        # Même réponse qu'une candidature inexistante : pas d'oracle.
+        return jsonify({"error": "Ressource introuvable", "details": []}), 404
 
-    data = match.to_dict(lang=request.args.get("lang", "fr"))
-    if match.tenant and match.tenant.passport:
-        # Le locataire voit son passeport complet, le bailleur la version publique
-        data["passeport"] = match.tenant.passport.to_dict(public=not est_locataire)
+    data = match.to_dict(lang=request.args.get("lang", "fr"), viewer=current_user)
+    # Le locataire et l'admin voient le passeport complet, le bailleur la
+    # version publique tant que la règle d'accès l'y autorise.
+    passeport = passeport_pour(current_user, match.tenant)
+    if passeport is not None:
+        data["passeport"] = passeport
     return jsonify(data), 200
 
 
@@ -258,7 +262,7 @@ def update_match_status(current_user, match_id, corps):
     return jsonify({
         "message": "Candidature acceptée — la messagerie est ouverte"
                    if statut == "accepted" else "Candidature refusée",
-        "match": match.to_dict(),
+        "match": match.to_dict(viewer=current_user),
     }), 200
 
 
@@ -291,7 +295,7 @@ def planifier_visite(current_user, match_id, corps):
     )
     db.session.commit()
 
-    return jsonify({"message": "Visite planifiée", "match": match.to_dict()}), 200
+    return jsonify({"message": "Visite planifiée", "match": match.to_dict(viewer=current_user)}), 200
 
 
 # ─── PUT /api/matches/<id>/conclure ──────────────────────────
@@ -330,7 +334,7 @@ def conclure_location(current_user, match_id):
 
     return jsonify({
         "message": "Location conclue",
-        "match": match.to_dict(),
+        "match": match.to_dict(viewer=current_user),
         "commission": match.commission,
         "devise": match.listing.devise,
     }), 200

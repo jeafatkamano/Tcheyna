@@ -325,7 +325,15 @@ class Listing(db.Model):
             return self.prix or 0
         return (self.prix or 0) + (self.charges or 0) + (self.caution or 0)
 
-    def to_dict(self, lang="fr", include_landlord=True):
+    def to_dict(self, lang="fr", include_landlord=True, avec_adresse=False):
+        """Sérialise l'annonce.
+
+        L'adresse exacte est MASQUÉE par défaut : seul un appelant qui a
+        vérifié le droit du lecteur (`services.acces.peut_voir_adresse` ou
+        `visibilite_adresse`) passe `avec_adresse=True`. Un appelant oublié
+        ne fuit donc pas l'adresse. Quartier et ville restent publics.
+        """
+        masquee = bool(self.adresse) and not avec_adresse
         data = {
             "id":          self.id,
             "title":       self.title_fr if lang == "fr" else (self.title_en or self.title_fr),
@@ -333,7 +341,8 @@ class Listing(db.Model):
             "pays":        self.pays,
             "ville":       self.ville,
             "quartier":    self.quartier,
-            "adresse":     self.adresse,
+            "adresse":     self.adresse if avec_adresse else None,
+            "adresse_masquee": masquee,
             "type_transaction": self.type_transaction or "location",
             "est_vente":   self.est_vente,
             "type_bien":   self.type_bien,
@@ -420,11 +429,19 @@ class Match(db.Model):
             return 0
         return int((self.listing.prix or 0) * COMMISSION_RATE)
 
-    def to_dict(self, lang="fr"):
+    def to_dict(self, lang="fr", viewer=None):
+        """`viewer` : l'utilisateur à qui la réponse est destinée. Il décide de
+        l'adresse du bien (propriétaire, admin, ou candidature qui l'ouvre).
+        Sans viewer, l'adresse est masquée : masquer par défaut."""
+        from app.services.acces import peut_voir_adresse
+
+        avec_adresse = (viewer is not None
+                        and peut_voir_adresse(viewer, self.listing, candidature=self))
         return {
             "id":         self.id,
             "tenant":     self.tenant.to_dict() if self.tenant else None,
-            "listing":    self.listing.to_dict(lang=lang) if self.listing else None,
+            "listing":    (self.listing.to_dict(lang=lang, avec_adresse=avec_adresse)
+                           if self.listing else None),
             "status":     self.status,
             "message":    self.message,
             "score_compatibilite": self.score_compatibilite,
@@ -572,11 +589,19 @@ class Conversation(db.Model):
                                     Message.read_at.is_(None)).count()
 
     def to_dict(self, user_id=None, lang="fr"):
+        from app.services.acces import adresse_ouverte_par_candidature
+
         dernier = self.messages.order_by(Message.created_at.desc()).first()
+        # L'adresse suit le statut COURANT de la candidature : une conversation
+        # qui survit à un refus ou à un retrait ne la montre plus au locataire.
+        avec_adresse = bool(user_id) and (
+            user_id == self.landlord_id or adresse_ouverte_par_candidature(self.match)
+        )
         data = {
             "id":         self.id,
             "match_id":   self.match_id,
-            "listing":    self.match.listing.to_dict(lang=lang, include_landlord=False)
+            "listing":    self.match.listing.to_dict(lang=lang, include_landlord=False,
+                                                     avec_adresse=avec_adresse)
                           if self.match and self.match.listing else None,
             "dernier_message": dernier.to_dict() if dernier else None,
             "last_message_at": self.last_message_at.isoformat() if self.last_message_at else None,
