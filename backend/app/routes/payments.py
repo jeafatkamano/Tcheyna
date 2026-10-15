@@ -16,7 +16,7 @@ import requests
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import select
 
-from app import db
+from app import db, limiter
 from app.models import (
     COMMISSION_RATE,
     PAYMENT_TYPES,
@@ -251,7 +251,15 @@ def initier_paiement(current_user, corps):
 
 # ─── POST /api/payments/callback ─────────────────────────────
 
+# Chaque appel déclenche une vérification sortante (jusqu'à 15 s) sur un
+# serveur à deux workers : sans plafond, un rejeu massif le bloquerait.
+# Large pour ne pas gêner les relances légitimes de CinetPay.
+LIMITE_CALLBACK = "60 per minute"
+LIMITE_VERIFICATION = "10 per minute"
+
+
 @payments_bp.route("/callback", methods=["POST"])
+@limiter.limit(LIMITE_CALLBACK)
 @valider_corps(CallbackCinetPay, source="json_ou_form")
 def cinetpay_callback(corps):
     """Webhook CinetPay.
@@ -269,8 +277,11 @@ def cinetpay_callback(corps):
     if paiement.statut != "pending":
         return jsonify({"message": "Déjà traité"}), 200
 
+    paiement_id = paiement.id
+    # Ne pas garder une transaction ouverte pendant l'appel sortant.
+    db.session.rollback()
     issue, donnees = _verifier_aupres_de_cinetpay(transaction_id)
-    _appliquer_verification(paiement.id, issue, donnees)
+    _appliquer_verification(paiement_id, issue, donnees)
 
     return jsonify({"message": "OK"}), 200
 
@@ -435,6 +446,7 @@ def recu(current_user, payment_id):
 # ─── POST /api/payments/<id>/verifier ────────────────────────
 
 @payments_bp.route("/<string:payment_id>/verifier", methods=["POST"])
+@limiter.limit(LIMITE_VERIFICATION)
 @current_user_required
 def verifier_paiement(current_user, payment_id):
     """Re-vérifie un paiement resté en attente (retour utilisateur sur le site)."""
@@ -445,8 +457,10 @@ def verifier_paiement(current_user, payment_id):
     if paiement.statut != "pending":
         return jsonify({"message": "Paiement déjà traité", "paiement": paiement.to_dict()}), 200
 
-    issue, donnees = _verifier_aupres_de_cinetpay(paiement.cinetpay_transaction_id)
-    paiement = _appliquer_verification(paiement.id, issue, donnees)
+    paiement_id, transaction_id = paiement.id, paiement.cinetpay_transaction_id
+    db.session.rollback()
+    issue, donnees = _verifier_aupres_de_cinetpay(transaction_id)
+    paiement = _appliquer_verification(paiement_id, issue, donnees)
 
     messages = {"success": "Paiement confirmé", "failed": "Paiement refusé"}
     return jsonify({

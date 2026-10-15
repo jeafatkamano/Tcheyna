@@ -321,3 +321,14 @@ def test_tarif_refuse_hors_gnf(client, fabrique, bailleur, entetes, cinetpay, ty
     assert reponse.status_code == 400
     assert Payment.query.count() == 0
     assert cinetpay.reseau.appels_vers(cinetpay.url_init) == []
+
+
+def test_callback_plafonne_par_ip(client, cinetpay):
+    # Chaque callback déclenche un appel sortant : un rejeu massif est coupé.
+    plafond = int(payments.LIMITE_CALLBACK.split()[0])
+    for _ in range(plafond):
+        client.post("/api/payments/callback", json={"cpm_trans_id": "INCONNUE"})
+
+    reponse = client.post("/api/payments/callback", json={"cpm_trans_id": "INCONNUE"})
+
+    assert reponse.status_code == 429
