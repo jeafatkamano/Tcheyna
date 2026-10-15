@@ -8,7 +8,6 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
-from pydantic import ValidationError
 
 from config import Config
 
@@ -45,7 +44,7 @@ def create_app(config_class=Config):
     from app.routes.payments import payments_bp
     from app.routes.reviews import reviews_bp
     from app.routes.users import users_bp
-    from app.schemas import reponse_422
+    from app.schemas import ErreurValidation, reponse_422
 
     app.register_blueprint(auth_bp,          url_prefix="/api/auth")
     app.register_blueprint(users_bp,         url_prefix="/api/users")
@@ -92,10 +91,10 @@ def create_app(config_class=Config):
 
     # Contrôle levé par une route après validation du corps (état en base) :
     # même réponse 422 qu'un schéma.
-    @app.errorhandler(ValidationError)
+    @app.errorhandler(ErreurValidation)
     def validation_error(exc):
         db.session.rollback()
-        return reponse_422(exc)
+        return reponse_422(exc.validation)
 
     @app.errorhandler(413)
     def too_large(_):

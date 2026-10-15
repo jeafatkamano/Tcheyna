@@ -18,7 +18,9 @@ class MajPasseport(BaseCorps):
     devise: Choix(DEVISES_OUVERTES) = None
     employeur: Texte(100) | None = None
     situation_pro: Choix(SITUATIONS_PRO) | None = None
-    a_un_garant: bool = None
+    # `null` accepté : les passeports créés avant ce lot ont souvent
+    # `a_un_garant` à NULL, et TenantProfile le renvoie tel quel.
+    a_un_garant: bool | None = None
     garant_nom: Texte(100) | None = None
     garant_revenu: Entier32 | None = None
 

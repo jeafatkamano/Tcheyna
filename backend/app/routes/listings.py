@@ -316,25 +316,34 @@ def update_listing(current_user, listing_id, corps):
 
     valeurs = corps.model_dump(exclude_unset=True)
     devise_envoyee = valeurs.pop("devise", None)
+    def change(champ):
+        # Le front renvoie toujours le corps complet (pays, ville, prix…) :
+        # seule une valeur qui diffère de la base compte. Sinon une annonce
+        # antérieure aux contrôles (ville hors référentiel, gros loyer)
+        # deviendrait impossible à modifier, et chaque sauvegarde annulerait
+        # la certification. La valeur en base est comparée nettoyée, comme
+        # l'entrée (espaces de bord retirés par le schéma).
+        if champ not in valeurs:
+            return False
+        actuelle = getattr(listing, champ)
+        return valeurs[champ] != (actuelle.strip() if isinstance(actuelle, str) else actuelle)
+
     # Les contrôles croisés portent sur l'état final : un champ absent garde
     # sa valeur en base.
     final = {c: valeurs.get(c, getattr(listing, c))
              for c in ("pays", "ville", "type_transaction", "prix")}
-    if "pays" in valeurs or "ville" in valeurs:
+    if change("pays") or change("ville"):
         try:
             verifier_lieu(final["pays"], final["ville"])
         except PydanticCustomError as exc:
             raise erreur_champ("ville", exc.type, exc.message(), final["ville"]) from None
-    if "prix" in valeurs or "type_transaction" in valeurs:
+    if change("prix") or change("type_transaction"):
         _verifier_loyer(final["type_transaction"], final["prix"])
     # Une annonce hors marché ouvert (créée avant ce contrôle) garde sa devise.
     devise = _devise(final["pays"]) or listing.devise
     _verifier_devise(devise_envoyee, devise)
 
-    # Le front renvoie toujours ville, type de bien… : seule une valeur qui
-    # change réellement compte, sinon chaque sauvegarde décertifierait.
-    modifie_le_bien = any(c in valeurs and valeurs[c] != getattr(listing, c)
-                          for c in CHAMPS_CERTIFIES)
+    modifie_le_bien = any(change(c) for c in CHAMPS_CERTIFIES)
 
     if valeurs.get("charges", 0) is None:
         valeurs["charges"] = 0

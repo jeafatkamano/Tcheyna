@@ -103,6 +103,8 @@ def create_or_update_passport(current_user, corps):
             passport.income_verified = False
         passport.revenu_mensuel = revenu
 
+    if "a_un_garant" in valeurs:
+        valeurs["a_un_garant"] = bool(valeurs["a_un_garant"])  # null = pas de garant
     for champ, valeur in valeurs.items():
         setattr(passport, champ, valeur)
 

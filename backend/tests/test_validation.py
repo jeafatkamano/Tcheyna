@@ -11,6 +11,7 @@ Trois familles :
 import pytest
 from flask import request
 
+from app import db
 from app.models import Listing, Match, OTPCode, Payment, Review, TenantPassport, User
 from app.schemas.listings import LOYER_MAX, PRIX_MAX
 from tests.conftest import MOT_DE_PASSE
@@ -644,3 +645,88 @@ def test_front_administration(client, fabrique, admin, entetes):
                       ).status_code == 200
     assert client.put(f"/api/admin/users/{cible.id}/statut", headers=en_tetes,
                       json={"is_active": False}).status_code == 200
+
+
+# ─── Corrections de relecture ────────────────────────────────
+
+def test_annonce_ancienne_modifiable_avec_le_corps_complet(client, fabrique, bailleur, entetes):
+    # Créées avant les contrôles : ville hors référentiel, loyer > LOYER_MAX.
+    # Le front renvoie ces valeurs inchangées : la sauvegarde doit passer.
+    annonce = fabrique.annonce(bailleur, ville="Ratoma", prix=LOYER_MAX + 1)
+    reponse = client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur), json={
+        **ANNONCE_FRONT, "ville": "Ratoma", "prix": LOYER_MAX + 1, "title_fr": "Retouché",
+    })
+
+    assert reponse.status_code == 200, reponse.get_json()
+    assert Listing.query.get(annonce.id).title_fr == "Retouché"
+    # Changer réellement la ville la confronte au référentiel.
+    assert erreur(client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur),
+                             json={"ville": "Atlantis"})) == {"ville": "lieu_invalide"}
+
+
+def test_adresse_avec_espaces_en_base_ne_decertifie_pas(client, fabrique, bailleur, entetes):
+    annonce = fabrique.annonce(bailleur, certification_status="certified",
+                               adresse="  Rue KA-012  ")
+    client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur),
+               json={"adresse": "  Rue KA-012  ", "quartier": "Kipé"})
+
+    assert Listing.query.get(annonce.id).certification_status == "certified"
+
+
+def test_passeport_garant_null_renvoye_par_le_front(client, fabrique, entetes):
+    locataire = fabrique.locataire()
+    # Passeport antérieur au lot : `a_un_garant` à NULL.
+    TenantPassport.query.filter_by(tenant_id=locataire.id).update({"a_un_garant": None})
+    db.session.commit()
+    reponse = client.post("/api/passport/", headers=entetes(locataire),
+                          json={"situation_pro": "salarié", "devise": "GNF", "a_un_garant": None})
+
+    assert reponse.status_code == 200
+    assert TenantPassport.query.filter_by(tenant_id=locataire.id).one().a_un_garant is False
+
+
+def test_erreur_pydantic_interne_reste_un_500(app, client):
+    # Seul un refus de validation du corps devient 422 ; une ValidationError
+    # levée ailleurs est un bug à voir, pas une faute du client.
+    from app.schemas.listings import CreationAnnonce
+
+    app.config["PROPAGATE_EXCEPTIONS"] = False
+    app.add_url_rule("/test-500", "test_500", lambda: CreationAnnonce.model_validate({}))
+
+    assert client.get("/test-500").status_code == 500
+
+
+def test_creation_et_maj_d_annonce_ont_les_memes_champs():
+    from app.schemas.listings import CreationAnnonce, MajAnnonce
+
+    # Différences voulues entre les deux schémas : aucune à ce jour. Un champ
+    # ajouté à l'un sans l'autre serait soit inmodifiable, soit refusé à la
+    # création.
+    differences_voulues = set()
+    assert set(CreationAnnonce.model_fields) ^ set(MajAnnonce.model_fields) == differences_voulues
+
+
+def test_corps_absent_sans_content_type(client, bailleur, entetes):
+    reponse = client.post("/api/listings/", headers=entetes(bailleur))
+
+    assert "prix" in erreur(reponse)
+
+
+def test_webhook_json_avec_champs_en_trop(client, fabrique, locataire):
+    paiement = fabrique.paiement(locataire)
+    reponse = client.post("/api/payments/callback", json={
+        "cpm_trans_id": paiement.cinetpay_transaction_id, "cpm_site_id": "000000",
+        "cpm_amount": "250000", "signature": "abc",
+    })
+
+    assert reponse.status_code == 200
+    assert Payment.query.get(paiement.id).statut == "failed"
+
+
+def test_mot_de_passe_trop_long_a_l_inscription(client):
+    reponse = client.post("/api/auth/register", json={
+        "email": "long@exemple.test", "password": "x" * 129, "full_name": "A", "role": "tenant",
+    })
+
+    assert erreur(reponse) == {"password": "string_too_long"}
+    assert User.query.count() == 0

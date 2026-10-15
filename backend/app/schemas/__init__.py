@@ -179,14 +179,27 @@ def reponse_422(exc):
     return jsonify({"error": details[0]["message"], "details": details}), 422
 
 
-def erreur_champ(champ, code, message, valeur=None, **contexte):
-    """Erreur de validation constatée par une route (contrôle qui dépend de
+class ErreurValidation(Exception):
+    """Refus de validation constaté par une route (contrôle qui dépend de
     l'état en base, comme la ville d'une annonce dont seul le pays change).
-    Levée, elle produit la même réponse 422 qu'un schéma."""
-    return ValidationError.from_exception_data("corps", [InitErrorDetails(
+
+    Exception dédiée, et non `ValidationError` : une erreur Pydantic levée
+    ailleurs (sérialisation, bug interne) doit rester un 500, pas devenir un
+    422 qui la masquerait.
+    """
+
+    def __init__(self, validation):
+        super().__init__(str(validation))
+        self.validation = validation
+
+
+def erreur_champ(champ, code, message, valeur=None, **contexte):
+    """Construit l'`ErreurValidation` d'un champ ; levée, elle produit la
+    même réponse 422 qu'un schéma."""
+    return ErreurValidation(ValidationError.from_exception_data("corps", [InitErrorDetails(
         type=PydanticCustomError(code, message, contexte or None),
         loc=(champ,), input=valeur,
-    )])
+    )]))
 
 
 # ─── Décorateur ──────────────────────────────────────────────
