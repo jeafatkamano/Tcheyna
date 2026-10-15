@@ -4,6 +4,8 @@ routes/passport.py — Passeport Locataire.
 Regroupe le dossier du locataire (documents, revenus, garant) et ses critères de
 recherche, qui alimentent directement le moteur de matching.
 """
+from datetime import datetime
+
 from flask import Blueprint, jsonify, request
 
 from app import db
@@ -11,6 +13,7 @@ from app.models import TRUST_LEVELS, TenantPassport, abonnements_passeport
 from app.routes import current_user_required, role_required
 from app.schemas import erreur_champ, valider_corps
 from app.schemas.passport import Criteres, MajPasseport
+from app.services import donnees_personnelles as dp
 from app.services import stockage
 from app.services.acces import passeport_pour
 
@@ -171,21 +174,26 @@ def upload_document(current_user, doc_type):
         return jsonify({"error": str(exc)}), 400
 
     setattr(passport, DOC_TYPES[doc_type], url)
-    if ancien and ancien != url:
-        stockage.supprimer(ancien)
+    # Suppression planifiée : une panne du stockage ne laisse pas l'ancienne
+    # pièce orpheline (voir services/donnees_personnelles.py).
+    a_supprimer = dp.planifier_suppression([ancien] if ancien != url else [], "remplacement_piece")
 
     # Un nouveau document annule la validation précédente : l'admin doit revoir.
+    # La date de dépôt fait courir la durée de conservation sans décision (D5).
     if doc_type in ("cni_recto", "cni_verso", "passport"):
         passport.docs_uploaded = bool(passport.cni_recto_url or passport.passport_url)
         current_user.cni_uploaded = passport.docs_uploaded
         current_user.cni_verified = False
+        passport.identite_deposee_le = datetime.utcnow()
     elif doc_type == "income":
         passport.income_verified = False
         current_user.income_verified = False
+        passport.revenus_deposes_le = datetime.utcnow()
 
     passport.calculate_score()
     current_user.update_trust_level()
     db.session.commit()
+    dp.executer_suppressions(a_supprimer)
 
     return jsonify({
         "message": "Document téléversé. Il sera vérifié sous 48 h.",
@@ -206,20 +214,23 @@ def supprimer_document(current_user, doc_type):
     passport = _obtenir_ou_creer(current_user)
     ancien = getattr(passport, DOC_TYPES[doc_type])
     setattr(passport, DOC_TYPES[doc_type], None)
-    if ancien:
-        stockage.supprimer(ancien)
+    a_supprimer = dp.planifier_suppression([ancien], "retrait_piece")
 
     if doc_type in ("cni_recto", "cni_verso", "passport"):
         passport.docs_uploaded = bool(passport.cni_recto_url or passport.passport_url)
         current_user.cni_uploaded = passport.docs_uploaded
         current_user.cni_verified = False
+        if not (passport.cni_recto_url or passport.cni_verso_url or passport.passport_url):
+            passport.identite_deposee_le = None
     elif doc_type == "income":
         passport.income_verified = False
         current_user.income_verified = False
+        passport.revenus_deposes_le = None
 
     passport.calculate_score()
     current_user.update_trust_level()
     db.session.commit()
+    dp.executer_suppressions(a_supprimer)
 
     return jsonify({"message": "Document supprimé", "score": passport.score}), 200
 

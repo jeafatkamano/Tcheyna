@@ -1,6 +1,6 @@
 """schemas/users.py — Édition du profil."""
 from app.routes.geo import LOCATIONS
-from app.schemas import BaseCorps, Choix, Texte
+from app.schemas import BaseCorps, Choix, MotDePasseSaisi, Texte
 
 
 class MajProfil(BaseCorps):
@@ -16,3 +16,8 @@ class MajProfil(BaseCorps):
     quartier: Texte(100) | None = None
     preferred_lang: Choix(("fr", "en")) = None
     bio: Texte(1000) | None = None
+
+
+class SuppressionCompte(BaseCorps):
+    # Action irréversible : un jeton volé ne doit pas suffire à effacer le compte.
+    mot_de_passe: MotDePasseSaisi

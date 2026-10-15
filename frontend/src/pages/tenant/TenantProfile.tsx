@@ -36,6 +36,9 @@ const DOCUMENTS: { type: TypeDocument; label: string; aide: string }[] = [
   { type: "income", label: "Justificatif de revenus", aide: "Bulletin de paie ou attestation" },
 ];
 
+/** Pièces d'identité : une seule validation (`cni_verified`) les couvre toutes. */
+const PIECES_IDENTITE: TypeDocument[] = ["cni_recto", "cni_verso", "passport"];
+
 const SITUATIONS = ["salarié", "indépendant", "commerçant", "fonctionnaire", "étudiant", "autre"];
 
 type Onglet = "dossier" | "criteres" | "compte";
@@ -454,7 +457,15 @@ function OngletDossier({
         </div>
 
         {DOCUMENTS.map((doc) => {
-          const present = passeport.documents?.[doc.type] ?? false;
+          // Une pièce est supprimée dès la décision : une fois validée, elle
+          // n'est plus « présente » mais la vérification reste acquise. Proposer
+          // « Ajouter » inviterait à un nouveau dépôt, qui annulerait la validation.
+          const verifiee =
+            !(passeport.documents?.[doc.type] ?? false) &&
+            (doc.type === "income"
+              ? passeport.income_verified
+              : PIECES_IDENTITE.includes(doc.type) && Boolean(user?.cni_verified));
+          const present = (passeport.documents?.[doc.type] ?? false) || verifiee;
           return (
             <div
               key={doc.type}
@@ -474,11 +485,15 @@ function OngletDossier({
                   {doc.label}
                 </p>
                 <p className="text-xs text-gray-400 truncate">
-                  {present ? "Envoyé — vérification sous 48 h" : doc.aide}
+                  {verifiee
+                    ? "Vérifié — document supprimé après examen"
+                    : present
+                      ? "Envoyé — vérification sous 48 h"
+                      : doc.aide}
                 </p>
               </div>
 
-              {present ? (
+              {verifiee ? null : present ? (
                 <button
                   onClick={async () => {
                     const ok = await suppression.executer(doc.type);

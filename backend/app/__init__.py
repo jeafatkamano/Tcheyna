@@ -116,6 +116,9 @@ def create_app(config_class=Config):
     app.register_blueprint(geo_bp,           url_prefix="/api/geo")
     app.register_blueprint(admin_bp,         url_prefix="/api/admin")
 
+    from app.commandes import donnees_cli
+    app.cli.add_command(donnees_cli)
+
     # ─── Fichiers téléversés sur disque (développement) ──────
     # Le stockage disque n'existe qu'en développement et en test (voir
     # services/stockage.py) : en production, les fichiers sont sur Supabase et
