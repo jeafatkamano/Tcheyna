@@ -577,3 +577,61 @@ def test_initiation_plafonnee_par_compte(client, fabrique, bailleur, entetes, ci
     autre = fabrique.bailleur()
     assert client.post("/api/payments/initier", headers=entetes(autre),
                        json={}).status_code == 422
+
+
+def test_ancienne_mise_en_avant_confirmee_pendant_l_initiation(client, fabrique, annonce,
+                                                               bailleur, entetes, cinetpay):
+    # Ancienne de plus de 30 min, acceptée entre-temps : on ne débite pas une
+    # seconde fois sans que le client l'ait vu.
+    ancienne = fabrique.paiement(bailleur, type_paiement="mise_en_avant", listing_id=annonce.id,
+                                 montant=200_000,
+                                 created_at=datetime.utcnow() - timedelta(hours=2))
+    cinetpay.statut("ACCEPTED", montant=200_000, devise="GNF")
+
+    reponse = client.post("/api/payments/initier", headers=entetes(bailleur),
+                          json={"type_paiement": "mise_en_avant", "listing_id": annonce.id})
+
+    assert reponse.status_code == 409
+    assert reponse.get_json()["paiement"]["id"] == ancienne.id
+    assert Payment.query.get(ancienne.id).statut == "success"
+    assert Payment.query.count() == 1
+
+
+def test_reprise_bornee_en_nombre_et_en_age(client, fabrique, annonce, bailleur, entetes,
+                                            cinetpay):
+    vieux = datetime.utcnow() - timedelta(hours=2)
+    for _ in range(payments.REPRISE_MAX_VERIFICATIONS + 2):
+        fabrique.paiement(bailleur, listing_id=annonce.id, created_at=vieux)
+    fabrique.paiement(bailleur, listing_id=annonce.id,
+                      created_at=datetime.utcnow() - timedelta(days=3))
+    cinetpay.statut("PENDING")
+
+    reponse = client.post("/api/payments/initier", headers=entetes(bailleur),
+                          json={"type_paiement": "certification", "listing_id": annonce.id})
+
+    assert reponse.status_code == 200
+    assert len(cinetpay.verifications) == payments.REPRISE_MAX_VERIFICATIONS
+
+
+def test_commission_hors_match_conclu_sans_appel_sortant(client, fabrique, locataire, annonce,
+                                                         bailleur, entetes, cinetpay):
+    candidature = fabrique.match(locataire, annonce, status="rejected")
+    fabrique.paiement(bailleur, type_paiement="commission", match_id=candidature.id,
+                      listing_id=annonce.id)
+
+    client.post("/api/payments/initier", headers=entetes(bailleur),
+                json={"type_paiement": "commission", "match_id": candidature.id})
+
+    assert cinetpay.verifications == []
+
+
+def test_verifier_annonce_le_remboursement(client, fabrique, match, locataire, entetes,
+                                           cinetpay):
+    ancienne = fabrique.paiement(locataire, type_paiement="caution", match_id=match.id,
+                                 listing_id=match.listing_id, montant=4_000_000)
+    cinetpay.statut("ACCEPTED", montant=4_000_000, devise="GNF")
+
+    corps = _verifier(client, entetes, locataire, ancienne).get_json()
+
+    assert "rembours" in corps["message"]
+

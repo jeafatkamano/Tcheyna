@@ -78,6 +78,13 @@ MATCH_CONCLU = ("accepted", "completed")
 # plus tard, il passe « à rembourser » au lieu de faire payer deux fois.
 DELAI_REPRISE_PAIEMENT = timedelta(minutes=30)
 
+# Reprise bornée : au plus ce nombre de paiements en attente revérifiés, et
+# seulement ceux de moins d'un jour. Chaque vérification peut prendre 15 s
+# sur un serveur à deux workers ; les plus anciens relèvent d'une
+# réconciliation à part.
+REPRISE_MAX_VERIFICATIONS = 3
+REPRISE_FENETRE = timedelta(days=1)
+
 # Chaque initiation crée une ligne et appelle CinetPay : plafond par compte.
 LIMITE_INITIATION = "10 per minute"
 
@@ -182,26 +189,33 @@ def _cle_payeur():
 def _reprendre_paiement_en_attente(type_paiement, user_id, match_id, listing_id):
     """Revérifie les paiements en attente du même service avant d'en créer un.
 
-    Renvoie le paiement encore en attente et trop récent pour être abandonné,
-    ou None si l'on peut en initier un nouveau. Les vérifications ont lieu hors
-    de toute transaction, puis s'appliquent sous verrou comme un callback.
+    Renvoie `(confirme, en_cours)` : le paiement que cette reprise vient de
+    confirmer, et celui encore en attente trop récent pour être abandonné.
+    Les deux à None : on peut en initier un nouveau. Les vérifications ont
+    lieu hors de toute transaction, puis s'appliquent sous verrou comme un
+    callback.
     """
+    maintenant = datetime.utcnow()
     en_attente = (Payment.query
                   .filter(*_filtre_service(type_paiement, user_id, match_id, listing_id),
-                          Payment.statut == "pending")
-                  .order_by(Payment.created_at.desc()).all())
+                          Payment.statut == "pending",
+                          Payment.created_at > maintenant - REPRISE_FENETRE)
+                  .order_by(Payment.created_at.desc())
+                  .limit(REPRISE_MAX_VERIFICATIONS).all())
     a_verifier = [(p.id, p.cinetpay_transaction_id) for p in en_attente]
     if a_verifier:
         db.session.rollback()  # pas de transaction ouverte pendant les appels sortants
 
-    bloquant = None
-    limite = datetime.utcnow() - DELAI_REPRISE_PAIEMENT
+    confirme = en_cours = None
+    limite = maintenant - DELAI_REPRISE_PAIEMENT
     for paiement_id, transaction_id in a_verifier:
         issue, donnees = _verifier_aupres_de_cinetpay(transaction_id)
         paiement = _appliquer_verification(paiement_id, issue, donnees)
-        if paiement.statut == "pending" and paiement.created_at > limite and bloquant is None:
-            bloquant = paiement
-    return bloquant
+        if paiement.statut == "success" and confirme is None:
+            confirme = paiement
+        elif paiement.statut == "pending" and paiement.created_at > limite and en_cours is None:
+            en_cours = paiement
+    return confirme, en_cours
 
 
 # ─── GET /api/payments/tarifs ────────────────────────────────
@@ -254,12 +268,24 @@ def initier_paiement(current_user, corps):
     if type_paiement == "commission" and match and current_user.id != match.listing.landlord_id:
         return jsonify({"error": "La commission est réglée par le propriétaire"}), 403
 
+    montant, description, erreur = _montant_attendu(type_paiement, current_user, match, listing)
+    if erreur:
+        return jsonify({"error": erreur}), 400
+
     # Callback perdu, réseau coupé : le client a peut-être déjà payé ce
     # service. On le revérifie avant de lui faire payer une seconde fois.
     match_id = match.id if match else None
     listing_id = listing.id if listing else (match.listing_id if match else None)
     user_id = current_user.id
-    en_cours = _reprendre_paiement_en_attente(type_paiement, user_id, match_id, listing_id)
+    confirme, en_cours = _reprendre_paiement_en_attente(type_paiement, user_id, match_id,
+                                                        listing_id)
+    if confirme:
+        # Vaut aussi pour la mise en avant : le client vient d'être débité, il
+        # doit le voir avant de décider d'en racheter une.
+        return jsonify({
+            "error": "Votre paiement précédent pour ce service vient d'être confirmé.",
+            "paiement": confirme.to_dict(),
+        }), 409
     if en_cours:
         return jsonify({
             "error": "Un paiement pour ce service attend encore la confirmation de "
@@ -271,9 +297,6 @@ def initier_paiement(current_user, corps):
     match = db.session.get(Match, match_id) if match_id else None
     listing = db.session.get(Listing, corps.listing_id) if corps.listing_id else None
 
-    montant, description, erreur = _montant_attendu(type_paiement, current_user, match, listing)
-    if erreur:
-        return jsonify({"error": erreur}), 400
     if _service_deja_regle(type_paiement, user_id, match_id,
                            listing or (match.listing if match else None)):
         return jsonify({"error": "Ce service est déjà réglé"}), 409
@@ -502,9 +525,11 @@ def _verrouiller_service(paiement):
         modele, cle = Listing, paiement.listing_id
     else:
         modele, cle = User, paiement.user_id
+    # FOR NO KEY UPDATE : sérialise les confirmations sans bloquer les
+    # insertions qui référencent la ligne (notifications, paiements).
     return db.session.execute(
         select(modele).where(modele.id == cle)
-        .with_for_update().execution_options(populate_existing=True)
+        .with_for_update(key_share=True).execution_options(populate_existing=True)
     ).scalar_one_or_none()
 
 
@@ -623,7 +648,8 @@ def verifier_paiement(current_user, payment_id):
     issue, donnees = _verifier_aupres_de_cinetpay(transaction_id)
     paiement = _appliquer_verification(paiement_id, issue, donnees)
 
-    messages = {"success": "Paiement confirmé", "failed": "Paiement refusé"}
+    messages = {"success": "Paiement confirmé", "failed": "Paiement refusé",
+                A_REMBOURSER: "Paiement reçu mais non dû : il vous sera remboursé"}
     return jsonify({
         "message": messages.get(paiement.statut, "Paiement toujours en attente"),
         "paiement": paiement.to_dict(),
