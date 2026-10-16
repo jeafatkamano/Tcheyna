@@ -17,7 +17,13 @@ import {
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { adminAPI, urlFichier, type Listing } from "../../api";
+import {
+  adminAPI,
+  urlFichier,
+  type Listing,
+  type MotifRemboursement,
+  type Payment,
+} from "../../api";
 import { Avatar } from "../../components/Avatar";
 import { BadgeVerification } from "../../components/BadgeVerification";
 import { ChangementMotDePasse } from "../../components/ChangementMotDePasse";
@@ -25,7 +31,12 @@ import { Chargement, Erreur, ListeVide, MessageErreur, MessageSucces } from "../
 import { useAction, useApi } from "../../hooks/useApi";
 import { formatMontant, formatMontantCourt, formatRelatif } from "../../lib/format";
 
-type Onglet = "identites" | "revenus" | "annonces";
+type Onglet = "identites" | "revenus" | "annonces" | "remboursements";
+
+const MOTIFS: Record<MotifRemboursement, string> = {
+  hors_plateforme: "Caution ou loyer : ne passe pas par Tcheyna",
+  doublon: "Service déjà réglé : paiement en double",
+};
 
 export function AdminDashboard() {
   const [onglet, setOnglet] = useState<Onglet>("identites");
@@ -35,10 +46,12 @@ export function AdminDashboard() {
   const cni = useApi(() => adminAPI.cniEnAttente(), []);
   const revenus = useApi(() => adminAPI.revenusEnAttente(), []);
   const certifications = useApi(() => adminAPI.certificationsEnAttente(), []);
+  const remboursements = useApi(() => adminAPI.paiementsARembourser(), []);
 
   const validationCNI = useAction(adminAPI.validerCNI);
   const validationRevenus = useAction(adminAPI.validerRevenus);
   const certification = useAction(adminAPI.certifier);
+  const remboursement = useAction(adminAPI.marquerRembourse);
 
   function confirmer(message: string) {
     setSucces(message);
@@ -52,6 +65,11 @@ export function AdminDashboard() {
     { cle: "identites" as const, label: "Identités", compteur: file?.cni_en_attente ?? 0 },
     { cle: "revenus" as const, label: "Revenus", compteur: file?.revenus_en_attente ?? 0 },
     { cle: "annonces" as const, label: "Annonces", compteur: file?.annonces_en_attente ?? 0 },
+    {
+      cle: "remboursements" as const,
+      label: "Rembours.",
+      compteur: file?.paiements_a_rembourser ?? 0,
+    },
   ];
 
   return (
@@ -157,7 +175,12 @@ export function AdminDashboard() {
       <div className="px-4 pt-5 space-y-4">
         <MessageSucces message={succes} />
         <MessageErreur
-          message={validationCNI.erreur ?? validationRevenus.erreur ?? certification.erreur}
+          message={
+            validationCNI.erreur ??
+            validationRevenus.erreur ??
+            certification.erreur ??
+            remboursement.erreur
+          }
         />
 
         {/* ─── Identités ─────────────────────────────────── */}
@@ -251,6 +274,31 @@ export function AdminDashboard() {
                   if (ok) {
                     void certifications.recharger();
                     confirmer(approuve ? "Annonce certifiée" : "Certification refusée");
+                  }
+                }}
+              />
+            ))
+          ))}
+
+        {/* ─── Remboursements ────────────────────────────── */}
+        {onglet === "remboursements" &&
+          (remboursements.chargement ? (
+            <Chargement />
+          ) : remboursements.erreur ? (
+            <Erreur message={remboursements.erreur} onReessayer={remboursements.recharger} />
+          ) : !remboursements.data?.length ? (
+            <ListeVide titre="Aucun paiement à rembourser" description="La file est vide." />
+          ) : (
+            remboursements.data.map((paiement) => (
+              <FicheRemboursement
+                key={paiement.id}
+                paiement={paiement}
+                enCours={remboursement.enCours}
+                onRembourse={async (reference) => {
+                  const ok = await remboursement.executer(paiement.id, reference);
+                  if (ok) {
+                    void remboursements.recharger();
+                    confirmer("Paiement marqué remboursé");
                   }
                 }}
               />
@@ -545,6 +593,72 @@ function FicheCertification({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ─── Paiement à rembourser ────────────────────────────────── */
+
+/**
+ * Le remboursement se fait à la main dans le back-office CinetPay (décision
+ * du 16/10/2026) ; ce bouton ne fait que clore le paiement et prévenir le payeur.
+ */
+function FicheRemboursement({
+  paiement,
+  enCours,
+  onRembourse,
+}: {
+  paiement: Payment & { motif: MotifRemboursement; cinetpay_transaction_id: string | null };
+  enCours: boolean;
+  onRembourse: (reference?: string) => Promise<void>;
+}) {
+  const [reference, setReference] = useState("");
+
+  return (
+    <div
+      className="rounded-2xl p-4"
+      style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }}
+    >
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="min-w-0">
+          <p className="font-bold text-sm truncate" style={{ color: "#1E293B" }}>
+            {paiement.payeur?.full_name ?? "Payeur inconnu"}
+          </p>
+          <p className="text-xs text-gray-400 truncate">
+            {paiement.payeur?.phone ?? paiement.payeur?.email ?? "sans contact"}
+          </p>
+        </div>
+        <p className="font-bold text-sm flex-shrink-0" style={{ color: "#7C3AED" }}>
+          {formatMontant(paiement.montant, paiement.devise)}
+        </p>
+      </div>
+      <p className="text-xs mb-1" style={{ color: "#475569" }}>
+        {paiement.type_label} · réf. {paiement.reference}
+      </p>
+      <p className="text-xs mb-1" style={{ color: "#475569" }}>
+        Transaction CinetPay : {paiement.cinetpay_transaction_id ?? "—"}
+      </p>
+      <p className="text-xs font-semibold mb-3" style={{ color: "#7C3AED" }}>
+        {MOTIFS[paiement.motif]}
+      </p>
+      <input
+        value={reference}
+        onChange={(e) => setReference(e.target.value)}
+        maxLength={100}
+        placeholder="Référence du remboursement (facultatif)"
+        aria-label="Référence du remboursement"
+        className="w-full px-3.5 py-2.5 rounded-xl outline-none mb-2"
+        style={{ background: "white", border: "1.5px solid #E2E8F0", fontSize: "14px" }}
+      />
+      <button
+        onClick={() => onRembourse(reference.trim() || undefined)}
+        disabled={enCours}
+        className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+        style={{ background: "#7C3AED" }}
+      >
+        <Check size={15} />
+        Remboursé
+      </button>
     </div>
   );
 }

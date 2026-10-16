@@ -242,7 +242,7 @@ export interface Payment {
   commission: number;
   devise: string;
   methode?: string | null;
-  statut: "pending" | "success" | "failed";
+  statut: "pending" | "success" | "failed" | "a_rembourser" | "rembourse";
   match_id?: string | null;
   paid_at?: string | null;
   created_at?: string;

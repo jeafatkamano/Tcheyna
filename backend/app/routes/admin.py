@@ -6,7 +6,8 @@ d'identité, des justificatifs de revenus et certification des annonces.
 """
 from datetime import datetime, timedelta
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
+from sqlalchemy import select
 
 from app import db
 from app.models import (
@@ -20,8 +21,8 @@ from app.models import (
 )
 from app.routes import role_required
 from app.schemas import erreur_champ, valider_corps
-from app.schemas.admin import Decision, StatutCompte
-from app.schemas.payments import PAIEMENTS_HORS_PLATEFORME
+from app.schemas.admin import Decision, Remboursement, StatutCompte
+from app.schemas.payments import A_REMBOURSER, PAIEMENTS_HORS_PLATEFORME, REMBOURSE
 from app.services import donnees_personnelles as dp
 from app.services import notifications as notify
 from app.services import stockage
@@ -174,6 +175,8 @@ def stats(current_user):
                 TenantPassport.income_doc_url.isnot(None),
                 TenantPassport.income_verified.is_(False)).count(),
             "annonces_en_attente": Listing.query.filter_by(certification_status="pending").count(),
+            # Encaissés par CinetPay mais non dus (caution, loyer, doublon).
+            "paiements_a_rembourser": Payment.query.filter_by(statut=A_REMBOURSER).count(),
         },
         "avis": {"total": Review.query.count()},
     }), 200
@@ -378,6 +381,54 @@ def certifier_annonce(current_user, listing_id, corps):
         "message": "Annonce certifiée" if approuve else "Certification refusée",
         "listing": listing.to_dict(avec_adresse=True),
     }), 200
+
+
+# ─── Remboursements ──────────────────────────────────────────
+# Décision de Kamano (16/10/2026) : un admin rembourse à la main depuis le
+# back-office CinetPay, puis clôt le paiement ici.
+
+def _motif_remboursement(paiement):
+    if paiement.type_paiement in PAIEMENTS_HORS_PLATEFORME:
+        return "hors_plateforme"
+    return "doublon"
+
+
+@admin_bp.route("/paiements-a-rembourser", methods=["GET"])
+@admin_required
+def paiements_a_rembourser(current_user):
+    paiements = (Payment.query.filter_by(statut=A_REMBOURSER)
+                 .order_by(Payment.updated_at.asc()).all())
+    return jsonify([
+        {
+            **p.to_dict(),
+            "motif": _motif_remboursement(p),
+            "cinetpay_transaction_id": p.cinetpay_transaction_id,
+            "payeur": p.user.to_dict() if p.user else None,
+        }
+        for p in paiements
+    ]), 200
+
+
+@admin_bp.route("/paiements/<string:payment_id>/rembourse", methods=["PUT"])
+@admin_required
+@valider_corps(Remboursement)
+def marquer_rembourse(current_user, payment_id, corps):
+    """Clôt un paiement « à rembourser » une fois l'argent rendu au payeur."""
+    paiement = db.session.execute(
+        select(Payment).where(Payment.id == payment_id)
+        .with_for_update().execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if not paiement:
+        return jsonify({"error": "Paiement introuvable"}), 404
+    if paiement.statut != A_REMBOURSER:
+        return jsonify({"error": "Ce paiement n'est pas à rembourser"}), 409
+
+    paiement.statut = REMBOURSE
+    current_app.logger.info("Paiement %s remboursé par %s (réf. %s)", paiement.id,
+                            current_user.id, corps.reference_remboursement or "—")
+    notify.paiement_rembourse(paiement)
+    db.session.commit()
+    return jsonify({"message": "Paiement marqué remboursé", "paiement": paiement.to_dict()}), 200
 
 
 # ─── Utilisateurs ────────────────────────────────────────────

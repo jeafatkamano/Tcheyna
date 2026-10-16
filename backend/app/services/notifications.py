@@ -89,6 +89,44 @@ def paiement_confirme(user_id, montant, devise, type_label, payment_id):
     )
 
 
+MOTIFS_REMBOURSEMENT = {
+    "hors_plateforme": "la caution et le loyer ne se paient pas via Tcheyna",
+    "doublon": "ce service était déjà réglé",
+}
+
+
+def paiement_a_rembourser(paiement, motif, admin_ids):
+    """Paiement encaissé par l'opérateur que Tcheyna ne doit pas garder :
+    le payeur est prévenu, l'administration doit rembourser."""
+    raison = MOTIFS_REMBOURSEMENT.get(motif, motif)
+    montant = f"{paiement.montant:,} {paiement.devise}".replace(",", " ")
+    lien = f"/paiements/{paiement.id}"
+    notifier(
+        paiement.user_id, "paiement_a_rembourser",
+        "Paiement à rembourser",
+        f"{montant} reçu, mais {raison}. L'équipe Tcheyna vous contacte pour le remboursement.",
+        lien,
+    )
+    for admin_id in admin_ids:
+        notifier(
+            admin_id, "paiement_a_rembourser",
+            "Remboursement à effectuer",
+            f"Réf. {paiement.reference} · {montant} : {raison}. "
+            f"Transaction CinetPay {paiement.cinetpay_transaction_id}.",
+            lien,
+        )
+
+
+def paiement_rembourse(paiement):
+    montant = f"{paiement.montant:,} {paiement.devise}".replace(",", " ")
+    return notifier(
+        paiement.user_id, "paiement_rembourse",
+        "Paiement remboursé",
+        f"Les {montant} de la référence {paiement.reference} vous ont été remboursés.",
+        f"/paiements/{paiement.id}",
+    )
+
+
 def nouvel_avis(target_id, reviewer_name, note):
     return notifier(
         target_id, "nouvel_avis",

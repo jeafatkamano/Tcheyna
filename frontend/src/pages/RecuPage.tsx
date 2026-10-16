@@ -4,7 +4,7 @@
  * La traçabilité promise dans le business plan : les deux parties d'une mise en
  * relation peuvent consulter le même reçu.
  */
-import { ArrowLeft, CheckCircle, Clock, RefreshCw, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle, Clock, RefreshCw, RotateCcw, XCircle } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { paiementsAPI, urlFichier, type Payment } from "../api";
@@ -19,6 +19,14 @@ const STATUTS: Record<
   pending: { label: "Paiement en attente", couleur: "#D97706", fond: "#FEF3C7", icone: Clock },
   success: { label: "Paiement confirmé", couleur: "#059669", fond: "#ECFDF5", icone: CheckCircle },
   failed: { label: "Paiement échoué", couleur: "#DC2626", fond: "#FEE2E2", icone: XCircle },
+  // Encaissé par l'opérateur mais non dû (caution, loyer, doublon) : Tcheyna rembourse.
+  a_rembourser: {
+    label: "Paiement à rembourser",
+    couleur: "#7C3AED",
+    fond: "#EDE9FE",
+    icone: RotateCcw,
+  },
+  rembourse: { label: "Paiement remboursé", couleur: "#475569", fond: "#F1F5F9", icone: RotateCcw },
 };
 
 const METHODES: Record<string, string> = {

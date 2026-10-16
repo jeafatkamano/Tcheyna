@@ -777,7 +777,8 @@ class Payment(db.Model):
     cinetpay_token          = db.Column(db.String(200), nullable=True)
     cinetpay_operator_id    = db.Column(db.String(100), nullable=True)
 
-    statut     = db.Column(db.String(20), default="pending", index=True)  # pending | success | failed
+    # pending | success | failed | a_rembourser | rembourse
+    statut     = db.Column(db.String(20), default="pending", index=True)
     paid_at    = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
