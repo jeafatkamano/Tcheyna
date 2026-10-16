@@ -502,6 +502,9 @@ export interface StatsAdmin {
  */
 export type PiecesPasseport = Partial<Record<TypeDocument, string | null>>;
 
+/** Pourquoi un paiement encaissé doit être rendu. */
+export type MotifRemboursement = "hors_plateforme" | "doublon";
+
 export const adminAPI = {
   stats: () => api.get<StatsAdmin>("/admin/stats"),
 
@@ -536,6 +539,16 @@ export const adminAPI = {
     api.put<{ message: string; listing: Listing }>(`/admin/certifier/${listingId}`, {
       approuve,
       motif,
+    }),
+
+  paiementsARembourser: () =>
+    api.get<(Payment & { motif: MotifRemboursement; cinetpay_transaction_id: string | null })[]>(
+      "/admin/paiements-a-rembourser",
+    ),
+
+  marquerRembourse: (paymentId: string, reference_remboursement?: string) =>
+    api.put<{ message: string; paiement: Payment }>(`/admin/paiements/${paymentId}/rembourse`, {
+      reference_remboursement,
     }),
 
   utilisateurs: (filtres: { role?: Role; q?: string; page?: number } = {}) =>

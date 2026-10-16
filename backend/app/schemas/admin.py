@@ -12,3 +12,8 @@ class Decision(BaseCorps):
 class StatutCompte(BaseCorps):
     # Absent : bascule l'état actuel (comportement historique).
     is_active: bool | None = None
+
+
+class Remboursement(BaseCorps):
+    # Référence du transfert dans le back-office CinetPay, pour la trace.
+    reference_remboursement: Texte(100) | None = None

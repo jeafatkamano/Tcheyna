@@ -26,6 +26,7 @@ const STATUTS: Record<
     fond: "#EDE9FE",
     icone: RotateCcw,
   },
+  rembourse: { label: "Paiement remboursé", couleur: "#475569", fond: "#F1F5F9", icone: RotateCcw },
 };
 
 const METHODES: Record<string, string> = {

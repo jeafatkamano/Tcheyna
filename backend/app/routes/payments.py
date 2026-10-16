@@ -36,6 +36,7 @@ from app.models import (
 from app.routes import current_user_required
 from app.schemas import valider_corps
 from app.schemas.payments import (
+    A_REMBOURSER,
     PAIEMENTS_HORS_PLATEFORME,
     CallbackCinetPay,
     InitierPaiement,
@@ -63,11 +64,6 @@ DUREE_MISE_EN_AVANT = timedelta(days=30)
 # illisible, transaction encore en cours, montant non conforme) : le paiement
 # reste alors en attente, car un client a peut-être déjà été débité.
 ACCEPTE, REFUSE, INCONNU = "accepte", "refuse", "inconnu"
-
-# Argent encaissé par CinetPay que Tcheyna ne doit pas garder : caution ou
-# loyer initiés avant D2 = A, ou second paiement d'un service déjà réglé.
-# Jamais confirmé ; l'administration rembourse depuis le back-office CinetPay.
-A_REMBOURSER = "a_rembourser"
 
 # La commission découle d'une candidature acceptée par le bailleur.
 MATCH_CONCLU = ("accepted", "completed")

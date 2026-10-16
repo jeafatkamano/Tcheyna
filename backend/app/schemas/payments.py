@@ -16,6 +16,11 @@ METHODES = ("orange_money", "mtn_momo", "wave", "moov", "carte")
 PAIEMENTS_HORS_PLATEFORME = ("caution", "premier_loyer")
 MESSAGE_HORS_PLATEFORME = ("La caution et le loyer ne se paient pas via Tcheyna : ils se "
                            "règlent directement entre le bailleur et le locataire.")
+# Encaissé par CinetPay mais non dû (caution, loyer, doublon) : jamais
+# confirmé. Un admin rembourse à la main puis passe le paiement à REMBOURSE.
+A_REMBOURSER = "a_rembourser"
+REMBOURSE = "rembourse"
+
 TYPES_PAYABLES = tuple(t for t in PAYMENT_TYPES if t not in PAIEMENTS_HORS_PLATEFORME)
 
 

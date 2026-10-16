@@ -635,3 +635,44 @@ def test_verifier_annonce_le_remboursement(client, fabrique, match, locataire, e
 
     assert "rembours" in corps["message"]
 
+
+
+# ─── Remboursement manuel par l'administration ───────────────
+
+def test_admin_liste_et_clot_un_remboursement(client, fabrique, locataire, admin, entetes):
+    paiement = fabrique.paiement(locataire, type_paiement="caution", montant=4_000_000,
+                                 statut=payments.A_REMBOURSER)
+
+    (ligne,) = client.get("/api/admin/paiements-a-rembourser", headers=entetes(admin)).get_json()
+    assert (ligne["id"], ligne["motif"]) == (paiement.id, "hors_plateforme")
+    assert ligne["payeur"]["id"] == locataire.id
+
+    reponse = client.put(f"/api/admin/paiements/{paiement.id}/rembourse", headers=entetes(admin),
+                         json={"reference_remboursement": "CP-REMB-001"})
+
+    assert reponse.status_code == 200
+    assert Payment.query.get(paiement.id).statut == "rembourse"
+    assert _notifications(locataire, "paiement_rembourse") == 1
+    assert client.get("/api/admin/paiements-a-rembourser", headers=entetes(admin)).get_json() == []
+
+
+@pytest.mark.parametrize("statut", ["pending", "success", "failed", "rembourse"])
+def test_seul_un_paiement_a_rembourser_se_clot(client, fabrique, locataire, admin, entetes,
+                                               statut):
+    paiement = fabrique.paiement(locataire, statut=statut)
+
+    reponse = client.put(f"/api/admin/paiements/{paiement.id}/rembourse", headers=entetes(admin),
+                         json={})
+
+    assert reponse.status_code == 409
+    assert Payment.query.get(paiement.id).statut == statut
+
+
+def test_remboursement_reserve_a_l_admin(client, fabrique, locataire, entetes):
+    paiement = fabrique.paiement(locataire, statut=payments.A_REMBOURSER)
+
+    assert client.get("/api/admin/paiements-a-rembourser",
+                      headers=entetes(locataire)).status_code == 403
+    assert client.put(f"/api/admin/paiements/{paiement.id}/rembourse",
+                      headers=entetes(locataire), json={}).status_code == 403
+    assert Payment.query.get(paiement.id).statut == payments.A_REMBOURSER

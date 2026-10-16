@@ -18,6 +18,7 @@ const STATUTS: Record<Payment["statut"], { label: string; couleur: string; fond:
   success: { label: "Payé", couleur: "#059669", fond: "#D1FAE5" },
   failed: { label: "Échoué", couleur: "#DC2626", fond: "#FEE2E2" },
   a_rembourser: { label: "À rembourser", couleur: "#7C3AED", fond: "#EDE9FE" },
+  rembourse: { label: "Remboursé", couleur: "#475569", fond: "#F1F5F9" },
 };
 
 export function PaiementsPage() {
