@@ -173,6 +173,8 @@ def stats(current_user):
                 TenantPassport.income_doc_url.isnot(None),
                 TenantPassport.income_verified.is_(False)).count(),
             "annonces_en_attente": Listing.query.filter_by(certification_status="pending").count(),
+            # Encaissés par CinetPay mais non dus (caution, loyer, doublon).
+            "paiements_a_rembourser": Payment.query.filter_by(statut="a_rembourser").count(),
         },
         "avis": {"total": Review.query.count()},
     }), 200

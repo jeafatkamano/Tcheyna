@@ -17,6 +17,7 @@ const STATUTS: Record<Payment["statut"], { label: string; couleur: string; fond:
   pending: { label: "En attente", couleur: "#D97706", fond: "#FEF3C7" },
   success: { label: "Payé", couleur: "#059669", fond: "#D1FAE5" },
   failed: { label: "Échoué", couleur: "#DC2626", fond: "#FEE2E2" },
+  a_rembourser: { label: "À rembourser", couleur: "#7C3AED", fond: "#EDE9FE" },
 };
 
 export function PaiementsPage() {

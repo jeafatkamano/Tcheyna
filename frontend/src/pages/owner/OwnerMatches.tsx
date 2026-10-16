@@ -2,6 +2,7 @@ import {
   Calendar,
   Check,
   ChevronRight,
+  Clock,
   Handshake,
   MapPin,
   MessageSquare,
@@ -58,10 +59,14 @@ export function OwnerMatches() {
   const reponse = useAction(matchesAPI.repondre);
   const conclusion = useAction(matchesAPI.conclure);
 
-  function commissionReglee(matchId: string) {
-    return (paiements.data?.paiements ?? []).some(
-      (p) => p.match_id === matchId && p.type_paiement === "commission" && p.statut !== "failed",
+  // « Réglée » seulement une fois confirmée : un paiement en attente peut encore échouer.
+  function etatCommission(matchId: string): "reglee" | "en_attente" | null {
+    const commissions = (paiements.data?.paiements ?? []).filter(
+      (p) => p.match_id === matchId && p.type_paiement === "commission",
     );
+    if (commissions.some((p) => p.statut === "success")) return "reglee";
+    if (commissions.some((p) => p.statut === "pending")) return "en_attente";
+    return null;
   }
 
   async function repondre(match: Match, statut: "accepted" | "rejected") {
@@ -331,7 +336,7 @@ export function OwnerMatches() {
                             </p>
                           </div>
 
-                          {commissionReglee(match.id) ? (
+                          {etatCommission(match.id) === "reglee" ? (
                             <div
                               className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold"
                               style={{ background: "#ECFDF5", color: "#047857" }}
@@ -339,6 +344,15 @@ export function OwnerMatches() {
                               <CheckCircle2 size={14} />
                               Commission réglée
                             </div>
+                          ) : etatCommission(match.id) === "en_attente" ? (
+                            <Link
+                              to="/paiements"
+                              className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold"
+                              style={{ background: "#FEF3C7", color: "#B45309" }}
+                            >
+                              <Clock size={14} />
+                              Paiement de la commission en attente de confirmation
+                            </Link>
                           ) : match.commission > 0 && !match.listing?.est_vente ? (
                             <BoutonPaiement
                               label="Régler la commission"

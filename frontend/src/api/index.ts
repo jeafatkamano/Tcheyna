@@ -491,6 +491,7 @@ export interface StatsAdmin {
     cni_en_attente: number;
     revenus_en_attente: number;
     annonces_en_attente: number;
+    paiements_a_rembourser: number;
   };
   avis: { total: number };
 }
