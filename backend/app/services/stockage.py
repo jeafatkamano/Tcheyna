@@ -334,9 +334,21 @@ def _televerser_disque(flux, nom):
 
 # ─── Suppression ─────────────────────────────────────────────
 
+def est_stocke(url):
+    """Vrai si l'URL désigne un fichier de notre stockage (Supabase ou disque
+    local), faux pour une URL externe comme les photos de démonstration."""
+    return bool(url) and (url.startswith(("supabase://", "/uploads/"))
+                          or "/storage/v1/object/public/" in url)
+
+
 def supprimer(url):
     """Retire un fichier. Une URL inconnue est ignorée sans lever d'erreur :
-    la base ne doit pas rester bloquée par un fichier déjà absent."""
+    la base ne doit pas rester bloquée par un fichier déjà absent.
+
+    Retourne True quand le fichier n'existe plus dans le stockage, y compris
+    s'il était déjà absent : c'est l'état recherché, et une reprise
+    (`FichierASupprimer`) ne doit pas buter indéfiniment dessus. False signale
+    un échec à retenter (panne, refus) ou une URL hors de notre stockage."""
     if not url:
         return False
 
@@ -351,6 +363,8 @@ def supprimer(url):
         try:
             os.remove(cible)
             return True
+        except FileNotFoundError:
+            return True
         except OSError:
             return False
     else:
@@ -361,10 +375,23 @@ def supprimer(url):
             f"{current_app.config['SUPABASE_URL']}/storage/v1/object/{bucket}/{chemin}",
             headers=_entetes(), timeout=30,
         )
-        return reponse.status_code in (200, 204)
+        return reponse.status_code in (200, 204) or _objet_absent(reponse)
     except requests.RequestException as exc:
         current_app.logger.error("Suppression Supabase impossible : %s", exc)
         return False
+
+
+def _objet_absent(reponse):
+    """Supabase signale un objet inexistant par un 404, ou selon les versions
+    par un 400 dont le corps porte `"statusCode": "404"`."""
+    if reponse.status_code == 404:
+        return True
+    if reponse.status_code == 400:
+        try:
+            return str(reponse.json().get("statusCode")) == "404"
+        except (ValueError, AttributeError):
+            return False
+    return False
 
 
 # ─── Lecture d'un fichier privé ──────────────────────────────

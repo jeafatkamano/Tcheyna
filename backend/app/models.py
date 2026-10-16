@@ -94,6 +94,10 @@ class User(db.Model):
     # `server_default` : les comptes existants prennent 0 à la migration,
     # comme les jetons émis avant elle, qui n'ont pas de claim.
     token_version = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    # Renseignée quand le compte a été supprimé à la demande de son titulaire
+    # (données anonymisées, voir services/donnees_personnelles.py). Distingue
+    # une suppression, définitive, d'une simple désactivation.
+    supprime_le   = db.Column(db.DateTime, nullable=True)
 
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -475,6 +479,12 @@ class TenantPassport(db.Model):
     docs_uploaded   = db.Column(db.Boolean, default=False)
     income_verified = db.Column(db.Boolean, default=False)
 
+    # Date du dernier dépôt de chaque catégorie de pièce : point de départ de
+    # la durée de conservation d'une pièce restée sans décision (D5). Remise
+    # à NULL quand la pièce est supprimée.
+    identite_deposee_le = db.Column(db.DateTime, nullable=True)
+    revenus_deposes_le  = db.Column(db.DateTime, nullable=True)
+
     # Situation professionnelle et financière
     revenu_mensuel = db.Column(db.Integer, nullable=True)
     devise         = db.Column(db.String(10), nullable=True)
@@ -511,9 +521,11 @@ class TenantPassport(db.Model):
         """Score du dossier sur 100 — ce que le propriétaire voit d'un coup d'œil."""
         score = 0
         if self.tenant and self.tenant.phone_verified:  score += 15
-        if self.cni_recto_url or self.passport_url:     score += 15
+        # Une pièce validée est supprimée à la décision (lot 1.5) : le dépôt
+        # reste compté grâce à `docs_uploaded` et `income_verified`.
+        if self.cni_recto_url or self.passport_url or self.docs_uploaded:  score += 15
         if self.tenant and self.tenant.cni_verified:    score += 15
-        if self.income_doc_url:                         score += 10
+        if self.income_doc_url or self.income_verified: score += 10
         if self.income_verified:                        score += 15
         if self.revenu_mensuel:                         score += 10
         if self.situation_pro:                          score += 5
@@ -819,3 +831,72 @@ def abonnements_passeport(user_ids):
               .group_by(Payment.user_id)
               .all())
     return {user_id: paye_le + DUREE_ABONNEMENT_PASSEPORT for user_id, paye_le in lignes}
+
+
+# ─────────────────────────────────────────────────────────────
+# VÉRIFICATION — Journal des décisions du back-office
+# ─────────────────────────────────────────────────────────────
+
+# objet : ce sur quoi porte la décision.
+OBJETS_VERIFICATION = ("identite", "revenus", "certification_annonce", "statut_compte")
+# decision : approuvee | refusee ; classee (demande sans pièce retirée de la
+# file) ; purgee (pièce supprimée faute de décision dans le délai) ;
+# activation | desactivation (statut d'un compte).
+DECISIONS_VERIFICATION = ("approuvee", "refusee", "classee", "purgee", "activation", "desactivation")
+
+
+class Verification(db.Model):
+    """Une ligne par décision : qui a décidé quoi, sur qui, quand et pourquoi.
+
+    Les pièces étant supprimées à la décision, ce journal est la seule trace
+    qui permette de répondre à « qui a validé cette identité ? ». Il ne
+    contient aucune donnée de la pièce elle-même.
+    """
+    __tablename__ = "verifications"
+
+    id        = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    # NULL : traitement automatique (purge), sans décideur humain.
+    acteur_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True, index=True)
+    # Utilisateur ou annonce selon `objet` : pas de clé étrangère commune.
+    cible_id  = db.Column(db.String(36), nullable=False, index=True)
+    objet     = db.Column(db.String(30), nullable=False)
+    decision  = db.Column(db.String(20), nullable=False)
+    motif     = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    acteur = db.relationship("User")
+
+    def to_dict(self):
+        return {
+            "id":        self.id,
+            "acteur_id": self.acteur_id,
+            "cible_id":  self.cible_id,
+            "objet":     self.objet,
+            "decision":  self.decision,
+            "motif":     self.motif,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ─────────────────────────────────────────────────────────────
+# FICHIER À SUPPRIMER — Suppressions de stockage en attente
+# ─────────────────────────────────────────────────────────────
+
+class FichierASupprimer(db.Model):
+    """Fichier dont la référence a quitté la base mais qui doit encore
+    disparaître du stockage.
+
+    La ligne est écrite dans la même transaction que l'effacement de la
+    référence, puis retirée une fois le fichier supprimé. Une panne de
+    Supabase ou un arrêt du processus entre les deux laisse donc une trace
+    qu'une reprise (`flask donnees retenter-suppressions`) traite, au lieu
+    d'un fichier orphelin que plus rien ne désigne.
+    """
+    __tablename__ = "fichiers_a_supprimer"
+
+    id         = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    reference  = db.Column(db.String(300), nullable=False)
+    origine    = db.Column(db.String(40), nullable=False)  # decision_identite, suppression_compte…
+    tentatives = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    derniere_tentative = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)

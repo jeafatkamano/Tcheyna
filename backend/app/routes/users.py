@@ -1,11 +1,13 @@
 """routes/users.py — Profil public, édition du compte et photo de profil."""
 from flask import Blueprint, jsonify, request
+from werkzeug.security import check_password_hash
 
-from app import db
+from app import db, limiter
 from app.models import Listing, Review, User
 from app.routes import current_user_required, utilisateur_optionnel
-from app.schemas import valider_corps
-from app.schemas.users import MajProfil
+from app.schemas import erreur_champ, valider_corps
+from app.schemas.users import MajProfil, SuppressionCompte
+from app.services import donnees_personnelles as dp
 from app.services import stockage
 from app.services.acces import nom_reduit, passeport_pour, peut_voir_passeport, visibilite_adresse
 
@@ -97,6 +99,40 @@ def desactiver_compte(current_user):
 
     db.session.commit()
     return jsonify({"message": "Compte désactivé"}), 200
+
+
+# ─── POST /api/users/me/suppression ──────────────────────────
+
+# Le mot de passe est exigé : sans plafond, un jeton volé permettrait de le
+# deviner hors du plafond de /auth/login.
+LIMITE_SUPPRESSION = "5 per hour"
+
+
+@users_bp.route("/me/suppression", methods=["POST"])
+@limiter.limit(LIMITE_SUPPRESSION)
+@current_user_required
+@valider_corps(SuppressionCompte)
+def supprimer_compte(current_user, corps):
+    """Suppression définitive du compte, à la demande de son titulaire.
+
+    Contrairement à DELETE /me (désactivation, réversible par un admin), les
+    données personnelles sont anonymisées et les fichiers supprimés ; seuls
+    restent les éléments rattachés à d'autres personnes ou à une obligation
+    (paiements, avis, messages), sans plus rien qui identifie le titulaire.
+    """
+    if current_user.role == "admin":
+        # Les décisions qu'il a signées restent attribuables : un compte
+        # administrateur se retire par désactivation.
+        return jsonify({"error": "Un compte administrateur ne peut pas être supprimé "
+                                 "de cette façon"}), 403
+    if not check_password_hash(current_user.password_hash, corps.mot_de_passe):
+        # 422 et non 401 : le client lirait un 401 comme une session expirée.
+        raise erreur_champ("mot_de_passe", "mot_de_passe_incorrect", "Mot de passe incorrect")
+
+    a_supprimer = dp.anonymiser_compte(current_user)
+    db.session.commit()
+    dp.executer_suppressions(a_supprimer)
+    return jsonify({"message": "Compte supprimé"}), 200
 
 
 # ─── POST /api/users/me/avatar ───────────────────────────────
