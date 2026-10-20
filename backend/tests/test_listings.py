@@ -353,7 +353,33 @@ def test_tri_match_porte_sur_toute_la_recherche(client, fabrique, locataire, ent
     corps = client.get("/api/listings/?tri=match&per_page=1&page=4", headers=en_tetes).get_json()
     assert corps["listings"] == [] and corps["total"] == 3
 
-    # Le tri sur tout l'ensemble ne réintroduit pas de requête par annonce.
+
+def test_tri_match_sur_30_annonces_en_nombre_de_requetes_borne(client, fabrique, locataire,
+                                                               entetes, compteur_sql):
+    # L'ensemble filtré (30) dépasse la page (5) : tout est noté, seule la
+    # page est chargée, sans requête par annonce.
+    auteur = fabrique.locataire()
+    for i in range(30):
+        proprietaire = fabrique.bailleur()
+        annonce = fabrique.annonce(proprietaire, prix=1_000_000 + 100_000 * i)
+        fabrique.avis(auteur, proprietaire, note=1 + i % 5)
+        fabrique.match(fabrique.locataire(), annonce)
+    en_tetes = entetes(locataire)
+
     with compteur_sql() as requetes:
-        client.get("/api/listings/?tri=match&per_page=3", headers=en_tetes)
-    assert len(requetes) <= SEUIL_REQUETES_PAGE
+        corps = client.get("/api/listings/?tri=match&per_page=5&page=2",
+                           headers=en_tetes).get_json()
+
+    assert (len(corps["listings"]), corps["total"], corps["pages"]) == (5, 30, 6)
+    assert len(requetes) <= SEUIL_REQUETES_PAGE, (
+        f"{len(requetes)} requêtes SQL pour le tri « match » de 30 annonces, 5 par page "
+        f"(seuil : {SEUIL_REQUETES_PAGE})"
+    )
+
+    # Bornes de `paginate(error_out=False)` : page 0 → 1, per_page 0 → 20 ;
+    # la réponse renvoie les valeurs demandées, comme avant le lot 3.1.
+    nul = client.get("/api/listings/?tri=match&per_page=0&page=0", headers=en_tetes).get_json()
+    vingt = client.get("/api/listings/?tri=match&per_page=20&page=1",
+                       headers=en_tetes).get_json()
+    assert (nul["page"], nul["per_page"], nul["total"], nul["pages"]) == (0, 0, 30, 2)
+    assert nul["listings"] == vingt["listings"] and len(nul["listings"]) == 20

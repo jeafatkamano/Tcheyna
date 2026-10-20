@@ -950,7 +950,9 @@ def agregats_annonces(annonces):
         db.select(db.func.count(Match.id))
           .where(Match.listing_id == Listing.id).scalar_subquery(),
         db.select(db.func.count(Review.id)).where(avis_du_bailleur).scalar_subquery(),
-        db.select(db.func.coalesce(db.func.sum(Review.note), 0))
+        # Entier sur toutes les bases (SUM d'un INTEGER est un BIGINT, voire
+        # un NUMERIC, selon le moteur).
+        db.select(db.cast(db.func.coalesce(db.func.sum(Review.note), 0), db.Integer))
           .where(avis_du_bailleur).scalar_subquery(),
     ).filter(Listing.id.in_(ids))
 
