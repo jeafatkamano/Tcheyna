@@ -264,3 +264,58 @@ def test_aucune_transaction_ouverte_pendant_le_stockage(client, annonce, bailleu
 
     assert reponse.status_code == 201
     assert pendant == [False]
+
+
+# ─── Nombre de requêtes de la recherche (lot 3.1) ────────────
+# Avant le lot 3.1, chaque annonce relisait son bailleur, le nombre de ses
+# candidatures et les avis de son bailleur (deux fois) : 85 requêtes pour une
+# page de 20 annonces vue par un locataire, 25 pour une page de 5. Depuis,
+# les agrégats se lisent en une requête pour toute la page et les bailleurs
+# en une autre : 7 requêtes, quelle que soit la taille de la page.
+
+SEUIL_REQUETES_PAGE = 10
+
+
+def _requetes_pour_une_page(client, fabrique, entetes, compteur_sql, nb_annonces):
+    lecteur = fabrique.locataire()
+    auteur = fabrique.locataire()
+    for i in range(nb_annonces):
+        proprietaire = fabrique.bailleur()
+        annonce = fabrique.annonce(proprietaire,
+                                   certification_status="certified" if i % 3 else "none")
+        fabrique.avis(auteur, proprietaire, note=1 + i % 5)
+        fabrique.avis(lecteur, proprietaire, note=5)
+        fabrique.match(fabrique.locataire(), annonce)
+        if i % 2:
+            fabrique.match(lecteur, annonce, status="accepted" if i % 4 == 1 else "pending")
+    en_tetes = entetes(lecteur)
+
+    with compteur_sql() as requetes:
+        reponse = client.get(f"/api/listings/?per_page={nb_annonces}", headers=en_tetes)
+
+    assert reponse.status_code == 200
+    assert len(reponse.get_json()["listings"]) == nb_annonces
+    return len(requetes)
+
+
+def test_recherche_de_20_annonces_en_nombre_de_requetes_borne(client, fabrique, entetes,
+                                                             compteur_sql):
+    nombre = _requetes_pour_une_page(client, fabrique, entetes, compteur_sql, 20)
+
+    assert nombre <= SEUIL_REQUETES_PAGE, (
+        f"{nombre} requêtes SQL pour une page de 20 annonces (seuil : {SEUIL_REQUETES_PAGE})"
+    )
+
+
+def test_recherche_en_requetes_independantes_de_la_taille_de_page(client, fabrique, entetes,
+                                                                  compteur_sql):
+    from app import db
+
+    petite = _requetes_pour_une_page(client, fabrique, entetes, compteur_sql, 5)
+    # Les 5 premières annonces sortent de la recherche : la seconde page n'en
+    # montre que 20, toutes nouvelles.
+    Listing.query.update({"is_visible": False})
+    db.session.commit()
+    grande = _requetes_pour_une_page(client, fabrique, entetes, compteur_sql, 20)
+
+    assert grande == petite

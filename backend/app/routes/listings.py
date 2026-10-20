@@ -9,6 +9,7 @@ from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request
 from pydantic_core import PydanticCustomError
+from sqlalchemy.orm import selectinload
 
 from app import db
 from app.models import (
@@ -16,6 +17,7 @@ from app.models import (
     Favorite,
     Listing,
     Payment,
+    agregats_annonces,
 )
 from app.routes import current_user_required, role_required, utilisateur_optionnel
 from app.routes.geo import CURRENCIES
@@ -127,7 +129,11 @@ def get_listings():
         ordres.get(tri, ordres["recent"]),
     )
 
+    # Bailleurs de la page lus en une requête (et non un par annonce).
+    query = query.options(selectinload(Listing.landlord))
     paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+    # Candidatures et avis des bailleurs : une requête pour toute la page.
+    agregats = agregats_annonces(paginated.items)
 
     # Un locataire connecté voit le score de compatibilité et ses favoris
     user = utilisateur_optionnel()
@@ -141,7 +147,8 @@ def get_listings():
 
     listings = []
     for annonce in paginated.items:
-        data = annonce.to_dict(lang=lang, avec_adresse=adresse_visible(annonce))
+        data = annonce.to_dict(lang=lang, avec_adresse=adresse_visible(annonce),
+                               agregats=agregats[annonce.id])
         data["is_favorite"] = annonce.id in favoris
         if user and user.role == "tenant":
             data["score_compatibilite"], _ = score_compatibilite(passport, annonce, user)
