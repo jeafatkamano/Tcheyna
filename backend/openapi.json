@@ -586,8 +586,19 @@
         "responses": {
           "2XX": {
             "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
           }
-        }
+        },
+        "security": [
+          {
+            "jwtRefresh": []
+          }
+        ]
       }
     },
     "/api/auth/register": {
@@ -5595,7 +5606,14 @@
       "jwt": {
         "type": "http",
         "scheme": "bearer",
-        "bearerFormat": "JWT"
+        "bearerFormat": "JWT",
+        "description": "Jeton d'accès (`access_token`)."
+      },
+      "jwtRefresh": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Jeton de rafraîchissement (`refresh_token`)."
       }
     }
   }

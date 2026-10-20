@@ -3,7 +3,8 @@ app/openapi.py — Spécification OpenAPI de l'API, générée depuis le code (l
 
 Rien n'est écrit à la main : la spécification se déduit
   • des routes Flask (`app.url_map`) : chemins, méthodes, paramètres ;
-  • de `role_required` : route authentifiée et rôles admis ;
+  • de `role_required` : route authentifiée et rôles admis (et de
+    l'attribut `jeton_refresh` pour POST /api/auth/refresh) ;
   • de `valider_corps` : schéma Pydantic du corps de requête ;
   • de app/schemas/reponses.py : les objets que l'API renvoie.
 
@@ -97,6 +98,11 @@ def _operation(vue, endpoint: str, parametres: list, composants: dict, origine: 
         if roles:
             operation["x-roles"] = list(roles)
 
+    if getattr(vue, "jeton_refresh", False):
+        operation["security"] = [{"jwtRefresh": []}]
+        operation["responses"]["401"] = _erreur("NonAuthentifie")
+        operation["responses"]["403"] = _erreur("Interdit")
+
     schema = getattr(vue, "schema_corps", None)
     if schema is not None:
         ref = _ajouter_schema(composants, schema, origine)
@@ -155,7 +161,12 @@ def construire_spec(app: Flask) -> dict:
                 }
                 for nom, description in REPONSES_ERREUR.items()
             },
-            "securitySchemes": {"jwt": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}},
+            "securitySchemes": {
+                "jwt": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT",
+                        "description": "Jeton d'accès (`access_token`)."},
+                "jwtRefresh": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT",
+                               "description": "Jeton de rafraîchissement (`refresh_token`)."},
+            },
         },
     }
 

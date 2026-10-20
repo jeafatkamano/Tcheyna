@@ -2207,6 +2207,8 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            401: components["responses"]["NonAuthentifie"];
+            403: components["responses"]["Interdit"];
             /** @description Succès */
             "2XX": {
                 headers: {

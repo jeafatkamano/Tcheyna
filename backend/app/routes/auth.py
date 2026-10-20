@@ -398,6 +398,10 @@ def refresh():
         identity=user.id, additional_claims={"tv": user.token_version})}), 200
 
 
+# Lu par app/openapi.py : route protégée par le jeton de rafraîchissement.
+refresh.jeton_refresh = True
+
+
 # ─── POST /api/auth/logout ────────────────────────────────────
 
 @auth_bp.route("/logout", methods=["POST"])
