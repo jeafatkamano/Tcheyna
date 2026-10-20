@@ -128,6 +128,11 @@ jobs:
       - name: Lint (ESLint)
         run: npm run lint
 
+      - name: Contrat d'API à jour
+        # Les types de src/api/schema.gen.ts doivent correspondre à
+        # backend/openapi.json (vérifié côté backend par tests/test_openapi.py).
+        run: npm run api:types:check
+
       - name: Typage
         run: npm run typecheck
 
