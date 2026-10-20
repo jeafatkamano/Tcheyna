@@ -1,0 +1,133 @@
+# android-apk.yml — Construit l'APK Android (Capacitor) du frontend.
+#
+# Le PC de développement n'a pas de SDK Android : l'APK se construit ici.
+#   • sur une PR qui touche frontend/ ou ce fichier, et à la demande
+#     (workflow_dispatch) : APK en artefact, gardée 14 jours ;
+#   • sur un tag `apk-v*` : APK jointe à une Release GitHub (dépôt public,
+#     donc téléchargeable par les testeurs).
+# Signature : avec la vraie clé si les secrets ANDROID_* existent, sinon avec
+# la clé de debug (APK « TEST », qui ne peut pas mettre à jour une APK signée
+# avec la vraie clé : il faut alors désinstaller). Voir frontend/ANDROID.md.
+name: APK Android
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/android-apk.yml"
+  workflow_dispatch:
+  push:
+    tags: ["apk-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  apk:
+    name: APK (Capacitor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      # Même valeur que VITE_API_URL dans render.yaml : dans l'APK, un "/api"
+      # relatif viserait la WebView elle-même.
+      VITE_API_URL: https://tcheyna-api.onrender.com/api
+      # Présent seulement si le secret existe (jamais sur une PR d'un fork).
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22.21.1"  # Capacitor 8 exige Node ≥ 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-java@v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"  # JDK recommandé par Capacitor 8 (AGP 8.13)
+          cache: gradle
+          cache-dependency-path: |
+            frontend/android/**/*.gradle*
+            frontend/android/gradle/wrapper/gradle-wrapper.properties
+
+      - uses: android-actions/setup-android@v4.0.4
+
+      - name: Dépendances
+        run: npm ci
+
+      - name: Build web
+        run: npm run build
+
+      - name: Copie dans le projet Android
+        run: npx cap sync android
+
+      - name: Clé de signature
+        if: env.KEYSTORE_BASE64 != ''
+        # Décodée hors du dépôt, supprimée en fin de job.
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/tcheyna-release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/tcheyna-release.jks" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        working-directory: frontend/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          VERSION=$(node -p "require('../package.json').version")
+          chmod +x gradlew
+          # versionCode = numéro du run : toujours croissant.
+          ./gradlew assembleRelease --no-daemon \
+            -PversionCode=${{ github.run_number }} -PversionName="$VERSION"
+          if [ -n "${ANDROID_KEYSTORE_PATH:-}" ]; then
+            NOM="tcheyna-$VERSION-${{ github.run_number }}.apk"
+          else
+            NOM="tcheyna-TEST-non-signee-$VERSION-${{ github.run_number }}.apk"
+          fi
+          mkdir -p "$RUNNER_TEMP/apk"
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/apk/$NOM"
+          ls -lh "$RUNNER_TEMP/apk"
+
+      - name: Suppression de la clé
+        if: always()
+        working-directory: .
+        run: rm -f "$RUNNER_TEMP/tcheyna-release.jks"
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: apk-tcheyna
+          path: ${{ runner.temp }}/apk/*.apk
+          retention-days: 14
+          if-no-files-found: error
+
+  release:
+    name: Release GitHub
+    needs: apk
+    if: startsWith(github.ref, 'refs/tags/apk-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Seul job autorisé à écrire : il crée la Release.
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: apk-tcheyna
+          path: apk
+
+      - uses: softprops/action-gh-release@v3.0.3
+        with:
+          files: apk/*.apk
+          body: |
+            APK Android de Tcheyna. Installation : voir frontend/ANDROID.md.

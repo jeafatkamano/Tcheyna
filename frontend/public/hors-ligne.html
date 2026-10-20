@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1E3A5F" />
+    <title>Tcheyna — Hors ligne</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f0f4fa;
+        color: #1e293b;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      main {
+        max-width: 22rem;
+        margin: 1rem;
+        padding: 2rem 1.5rem;
+        background: #fff;
+        border-radius: 1rem;
+        text-align: center;
+        box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+      }
+      h1 { margin: 0 0 0.75rem; font-size: 1.25rem; color: #1e3a5f; }
+      p { margin: 0 0 1.5rem; line-height: 1.5; color: #475569; }
+      button {
+        padding: 0.75rem 1.5rem;
+        border: 0;
+        border-radius: 0.75rem;
+        background: #1e3a5f;
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Pas de connexion</h1>
+      <p>
+        Tcheyna n'arrive pas à joindre Internet. Vérifiez votre réseau
+        (données mobiles ou Wi-Fi), puis réessayez.
+      </p>
+      <button type="button" onclick="location.reload()">Réessayer</button>
+    </main>
+  </body>
+</html>

@@ -80,6 +80,22 @@ export function Erreur({ message, onReessayer }: ErreurProps) {
   );
 }
 
+/**
+ * Écran d'erreur de dernier recours des routes (errorElement) : page qui
+ * plante ou espace introuvable même après rechargement (pwa/rechargement.ts).
+ * Remplace l'écran par défaut de React Router, en anglais.
+ */
+export function ErreurRoute() {
+  return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
+      <Erreur
+        message="La page n'a pas pu s'afficher. Vérifiez votre connexion, puis rechargez."
+        onReessayer={() => window.location.reload()}
+      />
+    </div>
+  );
+}
+
 interface VideProps {
   titre: string;
   description?: string;
