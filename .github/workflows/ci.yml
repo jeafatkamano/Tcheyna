@@ -75,6 +75,10 @@ jobs:
           # SQLAlchemy 2.0 de requirements.txt garde le pilote psycopg2.
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tcheyna
         run: |
+          # ProductionConfig refuse de démarrer sans secrets forts (lot 1.10) :
+          # secrets jetables, tirés à chaque run, qui ne protègent rien.
+          export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          export JWT_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
           flask db upgrade
           # Échoue si un modèle a changé sans révision correspondante.
           flask db check
@@ -104,6 +108,11 @@ jobs:
 
       - name: Lint (ESLint)
         run: npm run lint
+
+      - name: Contrat d'API à jour
+        # Les types de src/api/schema.gen.ts doivent correspondre à
+        # backend/openapi.json (vérifié côté backend par tests/test_openapi.py).
+        run: npm run api:types:check
 
       - name: Typage
         run: npm run typecheck

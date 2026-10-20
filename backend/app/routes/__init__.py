@@ -32,6 +32,8 @@ def role_required(*roles):
                 attendus = " ou ".join(libelles.get(r, r) for r in roles)
                 return jsonify({"error": f"Action réservée aux {attendus}"}), 403
             return fn(*args, current_user=user, **kwargs)
+        # Lu par app/openapi.py : route authentifiée, rôles admis (vide = tous).
+        wrapper.roles_requis = roles
         return wrapper
     return decorator
 

@@ -25,6 +25,7 @@ import pytest
 import requests
 from flask import request_tearing_down
 from flask_jwt_extended import create_access_token
+from pydantic import ValidationError
 from werkzeug.security import generate_password_hash
 
 from app import create_app, db
@@ -37,6 +38,7 @@ from app.models import (
     TenantPassport,
     User,
 )
+from app.schemas import reponses
 from config import TestingConfig
 
 MOT_DE_PASSE = "motdepasse-test"
@@ -127,6 +129,35 @@ def reseau(monkeypatch):
     monkeypatch.setattr(socket.socket, "connect", bloquer_si_reseau(socket.socket.connect))
     monkeypatch.setattr(socket.socket, "connect_ex", bloquer_si_reseau(socket.socket.connect_ex))
     return faux
+
+
+@pytest.fixture(autouse=True)
+def contrat_des_reponses(monkeypatch):
+    """Chaque `to_dict()` appelé pendant un test est validé contre son modèle
+    de app/schemas/reponses.py, sous forme JSON (ce que reçoit le client).
+
+    Toute la suite devient ainsi un test du contrat d'API : un champ ajouté,
+    retiré ou retypé dans un `to_dict()` échoue tant que le contrat (et donc
+    openapi.json et les types du frontend) n'a pas suivi.
+    """
+    classes = {User, TenantPassport, *reponses.MODELES_PAR_CLASSE}
+    for classe in classes:
+        origine = classe.to_dict
+
+        def verifie(self, *args, _origine=origine, **kwargs):
+            assert not args, "to_dict() s'appelle avec des arguments nommés"
+            donnees = _origine(self, **kwargs)
+            modele = reponses.modele_de(self, kwargs)
+            try:
+                modele.model_validate_json(json.dumps(donnees))
+            except ValidationError as exc:
+                pytest.fail(
+                    f"{type(self).__name__}.to_dict({kwargs}) ne respecte plus le "
+                    f"contrat {modele.__name__} (app/schemas/reponses.py) :\n{exc}"
+                )
+            return donnees
+
+        monkeypatch.setattr(classe, "to_dict", verifie)
 
 
 @pytest.fixture(autouse=True)

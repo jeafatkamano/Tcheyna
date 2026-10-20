@@ -117,7 +117,9 @@ def create_app(config_class=Config):
     app.register_blueprint(admin_bp,         url_prefix="/api/admin")
 
     from app.commandes import donnees_cli
+    from app.openapi import api_cli
     app.cli.add_command(donnees_cli)
+    app.cli.add_command(api_cli)
 
     # ─── Fichiers téléversés sur disque (développement) ──────
     # Le stockage disque n'existe qu'en développement et en test (voir
