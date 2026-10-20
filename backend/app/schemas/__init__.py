@@ -243,6 +243,10 @@ def valider_corps(schema, source="json"):
             except ValidationError as exc:
                 return reponse_422(exc)
             return fn(*args, corps=corps, **kwargs)
+        # Lu par app/openapi.py pour décrire le corps attendu. `wraps` recopie
+        # ces attributs sur les décorateurs posés au-dessus (`role_required`).
+        wrapper.schema_corps = schema
+        wrapper.source_corps = source
         return wrapper
     return decorateur
 

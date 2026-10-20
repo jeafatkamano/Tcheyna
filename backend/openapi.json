@@ -1,0 +1,5602 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API Tcheyna",
+    "version": "1.0.0",
+    "description": "Générée par `flask api spec` depuis backend/app. Ne pas modifier à la main."
+  },
+  "paths": {
+    "/api/admin/certifications-pending": {
+      "get": {
+        "operationId": "admin_certifications_pending",
+        "tags": [
+          "admin"
+        ],
+        "summary": "admin.certifications_pending",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/certifier/{listing_id}": {
+      "put": {
+        "operationId": "admin_certifier_annonce",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Accorde ou refuse le badge « Annonce Certifiée »",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Decision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/cni-pending": {
+      "get": {
+        "operationId": "admin_cni_pending",
+        "tags": [
+          "admin"
+        ],
+        "summary": "admin.cni_pending",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/diagnostic": {
+      "get": {
+        "operationId": "admin_diagnostic",
+        "tags": [
+          "admin"
+        ],
+        "summary": "État de la configuration serveur, sans jamais révéler de secret",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/paiements-a-rembourser": {
+      "get": {
+        "operationId": "admin_paiements_a_rembourser",
+        "tags": [
+          "admin"
+        ],
+        "summary": "admin.paiements_a_rembourser",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/paiements/{payment_id}/rembourse": {
+      "put": {
+        "operationId": "admin_marquer_rembourse",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Clôt un paiement « à rembourser » une fois l'argent rendu au payeur",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "parameters": [
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Remboursement"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/revenus-pending": {
+      "get": {
+        "operationId": "admin_revenus_pending",
+        "tags": [
+          "admin"
+        ],
+        "summary": "admin.revenus_pending",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/stats": {
+      "get": {
+        "operationId": "admin_stats",
+        "tags": [
+          "admin"
+        ],
+        "summary": "admin.stats",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "operationId": "admin_list_users",
+        "tags": [
+          "admin"
+        ],
+        "summary": "admin.list_users",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users/{user_id}/statut": {
+      "put": {
+        "operationId": "admin_basculer_statut",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Active ou désactive un compte (fraude avérée, demande de l'utilisateur…)",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatutCompte"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/verify-cni/{user_id}": {
+      "put": {
+        "operationId": "admin_verify_cni",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Valide ou refuse la pièce d'identité d'un utilisateur",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Decision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/verify-revenus/{user_id}": {
+      "put": {
+        "operationId": "admin_verify_revenus",
+        "tags": [
+          "admin"
+        ],
+        "summary": "admin.verify_revenus",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Decision"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "auth_login",
+        "tags": [
+          "auth"
+        ],
+        "summary": "auth.login",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Connexion"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "operationId": "auth_me",
+        "tags": [
+          "auth"
+        ],
+        "summary": "auth.me",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/auth/niveaux": {
+      "get": {
+        "operationId": "auth_niveaux",
+        "tags": [
+          "auth"
+        ],
+        "summary": "Grille publique des niveaux de confiance (affichée à l'onboarding)",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          }
+        }
+      }
+    },
+    "/api/auth/password": {
+      "put": {
+        "operationId": "auth_change_password",
+        "tags": [
+          "auth"
+        ],
+        "summary": "auth.change_password",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangementMotDePasse"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "operationId": "auth_refresh",
+        "tags": [
+          "auth"
+        ],
+        "summary": "auth.refresh",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "operationId": "auth_register",
+        "tags": [
+          "auth"
+        ],
+        "summary": "auth.register",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Inscription"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/send-otp": {
+      "post": {
+        "operationId": "auth_send_otp",
+        "tags": [
+          "auth"
+        ],
+        "summary": "auth.send_otp",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvoiOTP"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/verify-otp": {
+      "post": {
+        "operationId": "auth_verify_otp",
+        "tags": [
+          "auth"
+        ],
+        "summary": "auth.verify_otp",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerificationOTP"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/favorites/": {
+      "get": {
+        "operationId": "favorites_liste_favoris",
+        "tags": [
+          "favorites"
+        ],
+        "summary": "favorites.liste_favoris",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/favorites/{listing_id}": {
+      "post": {
+        "operationId": "favorites_ajouter_favori",
+        "tags": [
+          "favorites"
+        ],
+        "summary": "favorites.ajouter_favori",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "favorites_retirer_favori",
+        "tags": [
+          "favorites"
+        ],
+        "summary": "favorites.retirer_favori",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/geo/pays": {
+      "get": {
+        "operationId": "geo_get_pays",
+        "tags": [
+          "geo"
+        ],
+        "summary": "geo.get_pays",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          }
+        }
+      }
+    },
+    "/api/geo/quartiers/{pays}/{ville}": {
+      "get": {
+        "operationId": "geo_get_quartiers",
+        "tags": [
+          "geo"
+        ],
+        "summary": "geo.get_quartiers",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "pays",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ville",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/geo/referentiel": {
+      "get": {
+        "operationId": "geo_referentiel",
+        "tags": [
+          "geo"
+        ],
+        "summary": "Tout le référentiel en une requête — évite au frontend d'enchaîner",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          }
+        }
+      }
+    },
+    "/api/geo/villes/{pays}": {
+      "get": {
+        "operationId": "geo_get_villes",
+        "tags": [
+          "geo"
+        ],
+        "summary": "geo.get_villes",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "pays",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/listings/": {
+      "get": {
+        "operationId": "listings_get_listings",
+        "tags": [
+          "listings"
+        ],
+        "summary": "Recherche publique. Les annonces certifiées et premium sont priorisées",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          }
+        }
+      },
+      "post": {
+        "operationId": "listings_create_listing",
+        "tags": [
+          "listings"
+        ],
+        "summary": "listings.create_listing",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreationAnnonce"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/listings/{listing_id}": {
+      "get": {
+        "operationId": "listings_get_listing",
+        "tags": [
+          "listings"
+        ],
+        "summary": "listings.get_listing",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "listings_update_listing",
+        "tags": [
+          "listings"
+        ],
+        "summary": "listings.update_listing",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MajAnnonce"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "listings_delete_listing",
+        "tags": [
+          "listings"
+        ],
+        "summary": "listings.delete_listing",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ]
+      }
+    },
+    "/api/listings/{listing_id}/certification": {
+      "post": {
+        "operationId": "listings_demander_certification",
+        "tags": [
+          "listings"
+        ],
+        "summary": "Soumet l'annonce à la certification Tcheyna",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ]
+      }
+    },
+    "/api/listings/{listing_id}/documents": {
+      "post": {
+        "operationId": "listings_televerser_documents",
+        "tags": [
+          "listings"
+        ],
+        "summary": "Dépose les pièces établissant la propriété : titre foncier, bail, acte",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ]
+      },
+      "get": {
+        "operationId": "listings_lister_documents",
+        "tags": [
+          "listings"
+        ],
+        "summary": "Retourne des liens temporaires vers les pièces justificatives",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "listings_supprimer_document",
+        "tags": [
+          "listings"
+        ],
+        "summary": "listings.supprimer_document",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UrlFichier"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/listings/{listing_id}/photos": {
+      "post": {
+        "operationId": "listings_televerser_photos",
+        "tags": [
+          "listings"
+        ],
+        "summary": "Ajoute une ou plusieurs photos du bien",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ]
+      },
+      "delete": {
+        "operationId": "listings_supprimer_photo",
+        "tags": [
+          "listings"
+        ],
+        "summary": "Retire une photo, désignée par son URL",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UrlFichier"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/listings/{listing_id}/photos/ordre": {
+      "put": {
+        "operationId": "listings_reordonner_photos",
+        "tags": [
+          "listings"
+        ],
+        "summary": "Redéfinit l'ordre des photos ; la première sert de vignette",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrdrePhotos"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/listings/mes-annonces": {
+      "get": {
+        "operationId": "listings_mes_annonces",
+        "tags": [
+          "listings"
+        ],
+        "summary": "listings.mes_annonces",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ]
+      }
+    },
+    "/api/listings/recommandations": {
+      "get": {
+        "operationId": "listings_recommandations",
+        "tags": [
+          "listings"
+        ],
+        "summary": "Annonces les plus compatibles avec le Passeport Locataire de l'appelant",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "tenant"
+        ]
+      }
+    },
+    "/api/matches/": {
+      "post": {
+        "operationId": "matches_create_match",
+        "tags": [
+          "matches"
+        ],
+        "summary": "matches.create_match",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "tenant"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Candidature"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/matches/{match_id}": {
+      "get": {
+        "operationId": "matches_get_match",
+        "tags": [
+          "matches"
+        ],
+        "summary": "matches.get_match",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "match_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "matches_retirer_candidature",
+        "tags": [
+          "matches"
+        ],
+        "summary": "matches.retirer_candidature",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "match_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "tenant"
+        ]
+      }
+    },
+    "/api/matches/{match_id}/conclure": {
+      "put": {
+        "operationId": "matches_conclure_location",
+        "tags": [
+          "matches"
+        ],
+        "summary": "Marque la location comme conclue : l'annonce sort du marché et les deux",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "match_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ]
+      }
+    },
+    "/api/matches/{match_id}/statut": {
+      "put": {
+        "operationId": "matches_update_match_status",
+        "tags": [
+          "matches"
+        ],
+        "summary": "Le propriétaire accepte ou refuse une candidature",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "parameters": [
+          {
+            "name": "match_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionCandidature"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/matches/{match_id}/visite": {
+      "put": {
+        "operationId": "matches_planifier_visite",
+        "tags": [
+          "matches"
+        ],
+        "summary": "Fixe la date de visite. Les deux parties peuvent la proposer",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "parameters": [
+          {
+            "name": "match_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Visite"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/matches/candidats-suggeres": {
+      "get": {
+        "operationId": "matches_candidats_suggeres",
+        "tags": [
+          "matches"
+        ],
+        "summary": "Locataires vérifiés dont le profil correspond à une annonce donnée",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ]
+      }
+    },
+    "/api/matches/mes-candidatures": {
+      "get": {
+        "operationId": "matches_mes_candidatures",
+        "tags": [
+          "matches"
+        ],
+        "summary": "Côté locataire : le suivi de ses candidatures",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "tenant"
+        ]
+      }
+    },
+    "/api/matches/mes-demandes": {
+      "get": {
+        "operationId": "matches_mes_demandes",
+        "tags": [
+          "matches"
+        ],
+        "summary": "Côté propriétaire : les candidatures reçues, les meilleurs dossiers d'abord",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ]
+      }
+    },
+    "/api/messages/conversations": {
+      "get": {
+        "operationId": "messages_liste_conversations",
+        "tags": [
+          "messages"
+        ],
+        "summary": "messages.liste_conversations",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/messages/conversations/{conversation_id}": {
+      "get": {
+        "operationId": "messages_get_conversation",
+        "tags": [
+          "messages"
+        ],
+        "summary": "Retourne le fil complet et marque comme lus les messages reçus",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "messages_envoyer_message",
+        "tags": [
+          "messages"
+        ],
+        "summary": "messages.envoyer_message",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NouveauMessage"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/messages/non-lus": {
+      "get": {
+        "operationId": "messages_compteur_non_lus",
+        "tags": [
+          "messages"
+        ],
+        "summary": "Alimente la pastille de la barre de navigation",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/messages/par-match/{match_id}": {
+      "get": {
+        "operationId": "messages_conversation_par_match",
+        "tags": [
+          "messages"
+        ],
+        "summary": "Permet au frontend d'ouvrir un fil à partir d'un identifiant de match",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "match_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/notifications/": {
+      "get": {
+        "operationId": "notifications_liste",
+        "tags": [
+          "notifications"
+        ],
+        "summary": "notifications.liste",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/notifications/{notif_id}": {
+      "delete": {
+        "operationId": "notifications_supprimer",
+        "tags": [
+          "notifications"
+        ],
+        "summary": "notifications.supprimer",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "notif_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/notifications/{notif_id}/lue": {
+      "put": {
+        "operationId": "notifications_marquer_lue",
+        "tags": [
+          "notifications"
+        ],
+        "summary": "notifications.marquer_lue",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "notif_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/notifications/non-lues": {
+      "get": {
+        "operationId": "notifications_compteur",
+        "tags": [
+          "notifications"
+        ],
+        "summary": "notifications.compteur",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/notifications/tout-lire": {
+      "put": {
+        "operationId": "notifications_tout_marquer_lu",
+        "tags": [
+          "notifications"
+        ],
+        "summary": "notifications.tout_marquer_lu",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/passport/": {
+      "get": {
+        "operationId": "passport_get_passport",
+        "tags": [
+          "passport"
+        ],
+        "summary": "passport.get_passport",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "tenant"
+        ]
+      },
+      "post": {
+        "operationId": "passport_create_or_update_passport",
+        "tags": [
+          "passport"
+        ],
+        "summary": "Met à jour la situation professionnelle et le garant",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "tenant"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MajPasseport"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/passport/{tenant_id}": {
+      "get": {
+        "operationId": "passport_voir_passeport",
+        "tags": [
+          "passport"
+        ],
+        "summary": "Dossier d'un locataire, selon `services.acces.peut_voir_passeport` :",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/passport/preferences": {
+      "put": {
+        "operationId": "passport_update_preferences",
+        "tags": [
+          "passport"
+        ],
+        "summary": "Critères de recherche : ce que le moteur de matching utilise",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "tenant"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Criteres"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/passport/upload/{doc_type}": {
+      "post": {
+        "operationId": "passport_upload_document",
+        "tags": [
+          "passport"
+        ],
+        "summary": "Téléverse un document : cni_recto | cni_verso | passport | income",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "doc_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "tenant"
+        ]
+      },
+      "delete": {
+        "operationId": "passport_supprimer_document",
+        "tags": [
+          "passport"
+        ],
+        "summary": "passport.supprimer_document",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "doc_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "tenant"
+        ]
+      }
+    },
+    "/api/payments/{payment_id}": {
+      "get": {
+        "operationId": "payments_recu",
+        "tags": [
+          "payments"
+        ],
+        "summary": "Reçu numérique — accessible au payeur, à l'autre partie et à l'admin",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/payments/{payment_id}/verifier": {
+      "post": {
+        "operationId": "payments_verifier_paiement",
+        "tags": [
+          "payments"
+        ],
+        "summary": "Re-vérifie un paiement resté en attente (retour utilisateur sur le site)",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/payments/callback": {
+      "post": {
+        "operationId": "payments_cinetpay_callback",
+        "tags": [
+          "payments"
+        ],
+        "summary": "Webhook CinetPay",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CallbackCinetPay"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/CallbackCinetPay"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/payments/initier": {
+      "post": {
+        "operationId": "payments_initier_paiement",
+        "tags": [
+          "payments"
+        ],
+        "summary": "payments.initier_paiement",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitierPaiement"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/payments/mes-paiements": {
+      "get": {
+        "operationId": "payments_mes_paiements",
+        "tags": [
+          "payments"
+        ],
+        "summary": "payments.mes_paiements",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/payments/tarifs": {
+      "get": {
+        "operationId": "payments_tarifs",
+        "tags": [
+          "payments"
+        ],
+        "summary": "Grille tarifaire publique",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          }
+        }
+      }
+    },
+    "/api/reviews/": {
+      "post": {
+        "operationId": "reviews_create_review",
+        "tags": [
+          "reviews"
+        ],
+        "summary": "reviews.create_review",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Avis"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reviews/a-donner": {
+      "get": {
+        "operationId": "reviews_avis_a_donner",
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Locations conclues pour lesquelles l'appelant n'a pas encore noté l'autre partie",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/reviews/user/{user_id}": {
+      "get": {
+        "operationId": "reviews_get_user_reviews",
+        "tags": [
+          "reviews"
+        ],
+        "summary": "reviews.get_user_reviews",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/users/{user_id}": {
+      "get": {
+        "operationId": "users_get_user",
+        "tags": [
+          "users"
+        ],
+        "summary": "Profil public : niveau de confiance, avis reçus, annonces si bailleur",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/users/me": {
+      "put": {
+        "operationId": "users_update_profile",
+        "tags": [
+          "users"
+        ],
+        "summary": "users.update_profile",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MajProfil"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "users_desactiver_compte",
+        "tags": [
+          "users"
+        ],
+        "summary": "Désactivation plutôt que suppression : les historiques d'avis et de",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/users/me/avatar": {
+      "post": {
+        "operationId": "users_televerser_avatar",
+        "tags": [
+          "users"
+        ],
+        "summary": "Enregistre la photo de profil",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "users_supprimer_avatar",
+        "tags": [
+          "users"
+        ],
+        "summary": "users.supprimer_avatar",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
+      }
+    },
+    "/api/users/me/suppression": {
+      "post": {
+        "operationId": "users_supprimer_compte",
+        "tags": [
+          "users"
+        ],
+        "summary": "Suppression définitive du compte, à la demande de son titulaire",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuppressionCompte"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "tags": [
+          "application"
+        ],
+        "summary": "health",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Avis": {
+        "additionalProperties": false,
+        "properties": {
+          "match_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "type": "string"
+          },
+          "note": {
+            "ge": 1,
+            "le": 5,
+            "type": "integer"
+          },
+          "commentaire": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "match_id",
+          "note"
+        ],
+        "title": "Avis",
+        "type": "object"
+      },
+      "CallbackCinetPay": {
+        "properties": {
+          "cpm_trans_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "cpm_trans_id"
+        ],
+        "title": "CallbackCinetPay",
+        "type": "object"
+      },
+      "Candidature": {
+        "additionalProperties": false,
+        "properties": {
+          "listing_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "listing_id"
+        ],
+        "title": "Candidature",
+        "type": "object"
+      },
+      "ChangementMotDePasse": {
+        "additionalProperties": false,
+        "properties": {
+          "ancien_mot_de_passe": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "nouveau_mot_de_passe": {
+            "maxLength": 128,
+            "minLength": 8,
+            "type": "string"
+          }
+        },
+        "required": [
+          "ancien_mot_de_passe",
+          "nouveau_mot_de_passe"
+        ],
+        "title": "ChangementMotDePasse",
+        "type": "object"
+      },
+      "Connexion": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "Connexion",
+        "type": "object"
+      },
+      "Conversation": {
+        "additionalProperties": false,
+        "description": "`interlocuteur` et `nb_non_lus` : seulement quand la conversation est\nlue par l'un de ses participants (`to_dict(user_id=…)`).",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "match_id": {
+            "type": "string"
+          },
+          "listing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Listing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dernier_message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Message"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_message_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "interlocuteur": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "nb_non_lus": {
+            "default": null,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "match_id",
+          "listing",
+          "dernier_message",
+          "last_message_at",
+          "created_at"
+        ],
+        "title": "Conversation",
+        "type": "object"
+      },
+      "CreationAnnonce": {
+        "additionalProperties": false,
+        "properties": {
+          "title_fr": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title_en": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "description_fr": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "description_en": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "pays": {
+            "enum": [
+              "Guinée"
+            ],
+            "type": "string"
+          },
+          "ville": {
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string"
+          },
+          "quartier": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "adresse": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type_transaction": {
+            "default": "location",
+            "enum": [
+              "location",
+              "vente"
+            ],
+            "type": "string"
+          },
+          "type_bien": {
+            "enum": [
+              "appartement",
+              "maison",
+              "studio",
+              "chambre",
+              "villa",
+              "hangar",
+              "terrain"
+            ],
+            "type": "string"
+          },
+          "prix": {
+            "ge": 1,
+            "le": 1000000000000,
+            "type": "integer"
+          },
+          "charges": {
+            "anyOf": [
+              {
+                "ge": 0,
+                "le": 1000000000,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0
+          },
+          "caution": {
+            "anyOf": [
+              {
+                "ge": 0,
+                "le": 2147483647,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "nb_pieces": {
+            "anyOf": [
+              {
+                "ge": 1,
+                "le": 50,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 1
+          },
+          "superficie": {
+            "anyOf": [
+              {
+                "gt": 0,
+                "le": 1000000,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "etage": {
+            "anyOf": [
+              {
+                "ge": -5,
+                "le": 200,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "meuble": {
+            "default": false,
+            "type": "boolean"
+          },
+          "disponible_a_partir": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "has_generator": {
+            "default": false,
+            "type": "boolean"
+          },
+          "has_water": {
+            "default": false,
+            "type": "boolean"
+          },
+          "has_wifi": {
+            "default": false,
+            "type": "boolean"
+          },
+          "is_secured": {
+            "default": false,
+            "type": "boolean"
+          },
+          "has_parking": {
+            "default": false,
+            "type": "boolean"
+          },
+          "has_ac": {
+            "default": false,
+            "type": "boolean"
+          },
+          "devise": {
+            "anyOf": [
+              {
+                "maxLength": 10,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "title_fr",
+          "description_fr",
+          "pays",
+          "ville",
+          "type_bien",
+          "prix"
+        ],
+        "title": "CreationAnnonce",
+        "type": "object"
+      },
+      "Criteres": {
+        "additionalProperties": false,
+        "properties": {
+          "budget_min": {
+            "anyOf": [
+              {
+                "ge": 0,
+                "le": 2147483647,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "budget_max": {
+            "anyOf": [
+              {
+                "ge": 0,
+                "le": 2147483647,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "ville_souhaitee": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Conakry",
+                  "Kindia",
+                  "Kankan",
+                  "Labé",
+                  "Nzérékoré",
+                  "Boké"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "quartiers_souhaites": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 40,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type_bien_souhaite": {
+            "anyOf": [
+              {
+                "enum": [
+                  "appartement",
+                  "maison",
+                  "studio",
+                  "chambre",
+                  "villa",
+                  "hangar",
+                  "terrain"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "nb_pieces_min": {
+            "anyOf": [
+              {
+                "ge": 1,
+                "le": 50,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "nb_occupants": {
+            "anyOf": [
+              {
+                "ge": 1,
+                "le": 30,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "date_emmenagement": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "title": "Criteres",
+        "type": "object"
+      },
+      "Decision": {
+        "additionalProperties": false,
+        "properties": {
+          "approuve": {
+            "type": "boolean"
+          },
+          "motif": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "approuve"
+        ],
+        "title": "Decision",
+        "type": "object"
+      },
+      "DecisionCandidature": {
+        "additionalProperties": false,
+        "properties": {
+          "statut": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "statut"
+        ],
+        "title": "DecisionCandidature",
+        "type": "object"
+      },
+      "DetailCompatibilite": {
+        "additionalProperties": false,
+        "properties": {
+          "critere": {
+            "type": "string"
+          },
+          "points": {
+            "type": "integer"
+          },
+          "max": {
+            "type": "integer"
+          },
+          "libelle": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "critere",
+          "points",
+          "max",
+          "libelle"
+        ],
+        "title": "DetailCompatibilite",
+        "type": "object"
+      },
+      "DetailErreur": {
+        "additionalProperties": false,
+        "properties": {
+          "champ": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "champ",
+          "code",
+          "message"
+        ],
+        "title": "DetailErreur",
+        "type": "object"
+      },
+      "DocumentsPasseport": {
+        "additionalProperties": false,
+        "properties": {
+          "cni_recto": {
+            "type": "boolean"
+          },
+          "cni_verso": {
+            "type": "boolean"
+          },
+          "passport": {
+            "type": "boolean"
+          },
+          "income": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cni_recto",
+          "cni_verso",
+          "passport",
+          "income"
+        ],
+        "title": "DocumentsPasseport",
+        "type": "object"
+      },
+      "EnvoiOTP": {
+        "additionalProperties": false,
+        "properties": {
+          "phone": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "title": "EnvoiOTP",
+        "type": "object"
+      },
+      "Equipements": {
+        "additionalProperties": false,
+        "properties": {
+          "generateur": {
+            "type": "boolean"
+          },
+          "eau": {
+            "type": "boolean"
+          },
+          "wifi": {
+            "type": "boolean"
+          },
+          "securite": {
+            "type": "boolean"
+          },
+          "parking": {
+            "type": "boolean"
+          },
+          "climatisation": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generateur",
+          "eau",
+          "wifi",
+          "securite",
+          "parking",
+          "climatisation"
+        ],
+        "title": "Equipements",
+        "type": "object"
+      },
+      "Erreur": {
+        "additionalProperties": false,
+        "description": "Corps de toute réponse d'erreur. `details` : seulement sur un 422.",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "details": {
+            "default": null,
+            "items": {
+              "$ref": "#/components/schemas/DetailErreur"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "Erreur",
+        "type": "object"
+      },
+      "InitierPaiement": {
+        "additionalProperties": false,
+        "description": "Le montant et la devise sont toujours fixés par le serveur : `devise`\nest refusée comme tout champ inconnu.",
+        "properties": {
+          "type_paiement": {
+            "enum": [
+              "commission",
+              "certification",
+              "abonnement_passeport",
+              "mise_en_avant"
+            ],
+            "type": "string"
+          },
+          "methode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "orange_money",
+                  "mtn_momo",
+                  "wave",
+                  "moov",
+                  "carte"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "match_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "listing_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "type_paiement"
+        ],
+        "title": "InitierPaiement",
+        "type": "object"
+      },
+      "Inscription": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "type": "string"
+          },
+          "full_name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "tenant",
+              "landlord",
+              "agency"
+            ],
+            "type": "string"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "pays": {
+            "default": "Guinée",
+            "enum": [
+              "Guinée",
+              "Sénégal",
+              "Côte d'Ivoire",
+              "Ghana",
+              "Nigeria"
+            ],
+            "type": "string"
+          },
+          "ville": {
+            "default": "Conakry",
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string"
+          },
+          "quartier": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "preferred_lang": {
+            "default": "fr",
+            "enum": [
+              "fr",
+              "en"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "full_name",
+          "role"
+        ],
+        "title": "Inscription",
+        "type": "object"
+      },
+      "Listing": {
+        "additionalProperties": false,
+        "description": "`Listing.to_dict()`. `landlord` n'est présent qu'avec\n`include_landlord=True` (défaut).",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "pays": {
+            "type": "string"
+          },
+          "ville": {
+            "type": "string"
+          },
+          "quartier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "adresse": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "adresse_masquee": {
+            "type": "boolean"
+          },
+          "type_transaction": {
+            "enum": [
+              "location",
+              "vente"
+            ],
+            "type": "string"
+          },
+          "est_vente": {
+            "type": "boolean"
+          },
+          "type_bien": {
+            "type": "string"
+          },
+          "prix": {
+            "type": "integer"
+          },
+          "charges": {
+            "type": "integer"
+          },
+          "caution": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cout_entree": {
+            "type": "integer"
+          },
+          "devise": {
+            "type": "string"
+          },
+          "nb_pieces": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "superficie": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "etage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meuble": {
+            "type": "boolean"
+          },
+          "disponible_a_partir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "equipements": {
+            "$ref": "#/components/schemas/Equipements"
+          },
+          "certification_status": {
+            "enum": [
+              "none",
+              "pending",
+              "certified",
+              "rejected"
+            ],
+            "type": "string"
+          },
+          "nb_documents": {
+            "type": "integer"
+          },
+          "is_certified": {
+            "type": "boolean"
+          },
+          "certified_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_premium": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "matched",
+              "closed"
+            ],
+            "type": "string"
+          },
+          "views_count": {
+            "type": "integer"
+          },
+          "nb_candidatures": {
+            "type": "integer"
+          },
+          "images": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "landlord": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "is_favorite": {
+            "default": null,
+            "type": "boolean"
+          },
+          "is_owner": {
+            "default": null,
+            "type": "boolean"
+          },
+          "score_compatibilite": {
+            "default": null,
+            "type": "integer"
+          },
+          "details_compatibilite": {
+            "default": null,
+            "items": {
+              "$ref": "#/components/schemas/DetailCompatibilite"
+            },
+            "type": "array"
+          },
+          "ma_candidature": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaCandidature"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "ajoute_le": {
+            "default": null,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "pays",
+          "ville",
+          "quartier",
+          "adresse",
+          "adresse_masquee",
+          "type_transaction",
+          "est_vente",
+          "type_bien",
+          "prix",
+          "charges",
+          "caution",
+          "cout_entree",
+          "devise",
+          "nb_pieces",
+          "superficie",
+          "etage",
+          "meuble",
+          "disponible_a_partir",
+          "equipements",
+          "certification_status",
+          "nb_documents",
+          "is_certified",
+          "certified_at",
+          "is_premium",
+          "status",
+          "views_count",
+          "nb_candidatures",
+          "images",
+          "created_at"
+        ],
+        "title": "Listing",
+        "type": "object"
+      },
+      "MaCandidature": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected",
+              "completed",
+              "cancelled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "MaCandidature",
+        "type": "object"
+      },
+      "MajAnnonce": {
+        "additionalProperties": false,
+        "description": "Mise à jour partielle. Les champs obligatoires de l'annonce ont pour\ndéfaut `None` sans l'accepter en entrée : absent = inchangé, `null` = 422\n(il violerait la contrainte NOT NULL, donc un 500).",
+        "properties": {
+          "title_fr": {
+            "default": null,
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title_en": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "description_fr": {
+            "default": null,
+            "maxLength": 5000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "description_en": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "pays": {
+            "default": null,
+            "enum": [
+              "Guinée"
+            ],
+            "type": "string"
+          },
+          "ville": {
+            "default": null,
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string"
+          },
+          "quartier": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "adresse": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type_transaction": {
+            "default": null,
+            "enum": [
+              "location",
+              "vente"
+            ],
+            "type": "string"
+          },
+          "type_bien": {
+            "default": null,
+            "enum": [
+              "appartement",
+              "maison",
+              "studio",
+              "chambre",
+              "villa",
+              "hangar",
+              "terrain"
+            ],
+            "type": "string"
+          },
+          "prix": {
+            "default": null,
+            "ge": 1,
+            "le": 1000000000000,
+            "type": "integer"
+          },
+          "charges": {
+            "anyOf": [
+              {
+                "ge": 0,
+                "le": 1000000000,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "caution": {
+            "anyOf": [
+              {
+                "ge": 0,
+                "le": 2147483647,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "nb_pieces": {
+            "anyOf": [
+              {
+                "ge": 1,
+                "le": 50,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "superficie": {
+            "anyOf": [
+              {
+                "gt": 0,
+                "le": 1000000,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "etage": {
+            "anyOf": [
+              {
+                "ge": -5,
+                "le": 200,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "meuble": {
+            "default": null,
+            "type": "boolean"
+          },
+          "disponible_a_partir": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "has_generator": {
+            "default": null,
+            "type": "boolean"
+          },
+          "has_water": {
+            "default": null,
+            "type": "boolean"
+          },
+          "has_wifi": {
+            "default": null,
+            "type": "boolean"
+          },
+          "is_secured": {
+            "default": null,
+            "type": "boolean"
+          },
+          "has_parking": {
+            "default": null,
+            "type": "boolean"
+          },
+          "has_ac": {
+            "default": null,
+            "type": "boolean"
+          },
+          "devise": {
+            "anyOf": [
+              {
+                "maxLength": 10,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "title": "MajAnnonce",
+        "type": "object"
+      },
+      "MajPasseport": {
+        "additionalProperties": false,
+        "properties": {
+          "revenu_mensuel": {
+            "anyOf": [
+              {
+                "ge": 0,
+                "le": 2147483647,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "devise": {
+            "default": null,
+            "enum": [
+              "GNF"
+            ],
+            "type": "string"
+          },
+          "employeur": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "situation_pro": {
+            "anyOf": [
+              {
+                "enum": [
+                  "salarié",
+                  "indépendant",
+                  "étudiant",
+                  "commerçant",
+                  "fonctionnaire",
+                  "autre"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "a_un_garant": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "garant_nom": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "garant_revenu": {
+            "anyOf": [
+              {
+                "ge": 0,
+                "le": 2147483647,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "title": "MajPasseport",
+        "type": "object"
+      },
+      "MajProfil": {
+        "additionalProperties": false,
+        "description": "Mise à jour partielle : un champ absent reste inchangé, `null` efface\nun champ facultatif et est refusé sur un champ obligatoire.\n\n`avatar_url` n'en fait pas partie : la photo se change par téléversement\n(POST /api/users/me/avatar), jamais en soumettant une URL arbitraire.",
+        "properties": {
+          "full_name": {
+            "default": null,
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "pays": {
+            "default": null,
+            "enum": [
+              "Guinée",
+              "Sénégal",
+              "Côte d'Ivoire",
+              "Ghana",
+              "Nigeria"
+            ],
+            "type": "string"
+          },
+          "ville": {
+            "default": null,
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string"
+          },
+          "quartier": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "preferred_lang": {
+            "default": null,
+            "enum": [
+              "fr",
+              "en"
+            ],
+            "type": "string"
+          },
+          "bio": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "title": "MajProfil",
+        "type": "object"
+      },
+      "Match": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenant": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "listing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Listing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected",
+              "completed",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "score_compatibilite": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "visite_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "commission": {
+            "type": "integer"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "tenant",
+          "listing",
+          "status",
+          "message",
+          "score_compatibilite",
+          "visite_date",
+          "completed_at",
+          "commission",
+          "conversation_id",
+          "created_at"
+        ],
+        "title": "Match",
+        "type": "object"
+      },
+      "Message": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sender_id": {
+            "type": "string"
+          },
+          "contenu": {
+            "type": "string"
+          },
+          "lu": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "sender_id",
+          "contenu",
+          "lu",
+          "created_at"
+        ],
+        "title": "Message",
+        "type": "object"
+      },
+      "Niveau": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "critere": {
+            "type": "string"
+          },
+          "debloque": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "critere",
+          "debloque"
+        ],
+        "title": "Niveau",
+        "type": "object"
+      },
+      "Notification": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "titre": {
+            "type": "string"
+          },
+          "contenu": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lien": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lu": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "titre",
+          "contenu",
+          "lien",
+          "lu",
+          "created_at"
+        ],
+        "title": "Notification",
+        "type": "object"
+      },
+      "NouveauMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "contenu": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contenu"
+        ],
+        "title": "NouveauMessage",
+        "type": "object"
+      },
+      "OrdrePhotos": {
+        "additionalProperties": false,
+        "properties": {
+          "images": {
+            "items": {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10,
+            "type": "array"
+          }
+        },
+        "required": [
+          "images"
+        ],
+        "title": "OrdrePhotos",
+        "type": "object"
+      },
+      "Payment": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "type_paiement": {
+            "enum": [
+              "caution",
+              "premier_loyer",
+              "commission",
+              "certification",
+              "abonnement_passeport",
+              "mise_en_avant"
+            ],
+            "type": "string"
+          },
+          "type_label": {
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "montant": {
+            "type": "integer"
+          },
+          "commission": {
+            "type": "integer"
+          },
+          "devise": {
+            "type": "string"
+          },
+          "methode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "statut": {
+            "enum": [
+              "pending",
+              "success",
+              "failed",
+              "a_rembourser",
+              "rembourse"
+            ],
+            "type": "string"
+          },
+          "match_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "reference",
+          "type_paiement",
+          "type_label",
+          "description",
+          "montant",
+          "commission",
+          "devise",
+          "methode",
+          "statut",
+          "match_id",
+          "paid_at",
+          "created_at"
+        ],
+        "title": "Payment",
+        "type": "object"
+      },
+      "Remboursement": {
+        "additionalProperties": false,
+        "properties": {
+          "reference_remboursement": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 0,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "title": "Remboursement",
+        "type": "object"
+      },
+      "Review": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "reviewer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target_id": {
+            "type": "string"
+          },
+          "note": {
+            "type": "integer"
+          },
+          "commentaire": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type_avis": {
+            "enum": [
+              "tenant_to_landlord",
+              "landlord_to_tenant"
+            ],
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "reviewer",
+          "target_id",
+          "note",
+          "commentaire",
+          "type_avis",
+          "created_at"
+        ],
+        "title": "Review",
+        "type": "object"
+      },
+      "StatutCompte": {
+        "additionalProperties": false,
+        "properties": {
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "title": "StatutCompte",
+        "type": "object"
+      },
+      "SuppressionCompte": {
+        "additionalProperties": false,
+        "properties": {
+          "mot_de_passe": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "mot_de_passe"
+        ],
+        "title": "SuppressionCompte",
+        "type": "object"
+      },
+      "TenantPassport": {
+        "additionalProperties": false,
+        "description": "`TenantPassport.to_dict(public=True)` : vue d'un bailleur autorisé.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "docs_uploaded": {
+            "type": "boolean"
+          },
+          "income_verified": {
+            "type": "boolean"
+          },
+          "score": {
+            "type": "integer"
+          },
+          "situation_pro": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "a_un_garant": {
+            "type": "boolean"
+          },
+          "budget_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "budget_max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ville_souhaitee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quartiers_souhaites": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "type_bien_souhaite": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nb_pieces_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nb_occupants": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "date_emmenagement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "docs_uploaded",
+          "income_verified",
+          "score",
+          "situation_pro",
+          "a_un_garant",
+          "budget_min",
+          "budget_max",
+          "ville_souhaitee",
+          "quartiers_souhaites",
+          "type_bien_souhaite",
+          "nb_pieces_min",
+          "nb_occupants",
+          "date_emmenagement",
+          "created_at"
+        ],
+        "title": "TenantPassport",
+        "type": "object"
+      },
+      "TenantPassportPrive": {
+        "additionalProperties": false,
+        "description": "`TenantPassport.to_dict()` : le locataire lui-même ou un admin.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "docs_uploaded": {
+            "type": "boolean"
+          },
+          "income_verified": {
+            "type": "boolean"
+          },
+          "score": {
+            "type": "integer"
+          },
+          "situation_pro": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "a_un_garant": {
+            "type": "boolean"
+          },
+          "budget_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "budget_max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ville_souhaitee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quartiers_souhaites": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "type_bien_souhaite": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nb_pieces_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nb_occupants": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "date_emmenagement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revenu_mensuel": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "devise": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "employeur": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "garant_nom": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "garant_revenu": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "documents": {
+            "$ref": "#/components/schemas/DocumentsPasseport"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "docs_uploaded",
+          "income_verified",
+          "score",
+          "situation_pro",
+          "a_un_garant",
+          "budget_min",
+          "budget_max",
+          "ville_souhaitee",
+          "quartiers_souhaites",
+          "type_bien_souhaite",
+          "nb_pieces_min",
+          "nb_occupants",
+          "date_emmenagement",
+          "created_at",
+          "revenu_mensuel",
+          "devise",
+          "employeur",
+          "garant_nom",
+          "garant_revenu",
+          "documents"
+        ],
+        "title": "TenantPassportPrive",
+        "type": "object"
+      },
+      "UrlFichier": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "UrlFichier",
+        "type": "object"
+      },
+      "User": {
+        "additionalProperties": false,
+        "description": "`User.to_dict()` : profil public.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "tenant",
+              "landlord",
+              "agency",
+              "admin"
+            ],
+            "type": "string"
+          },
+          "pays": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ville": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quartier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trust_level": {
+            "type": "integer"
+          },
+          "badge": {
+            "type": "string"
+          },
+          "phone_verified": {
+            "type": "boolean"
+          },
+          "cni_verified": {
+            "type": "boolean"
+          },
+          "income_verified": {
+            "type": "boolean"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preferred_lang": {
+            "enum": [
+              "fr",
+              "en"
+            ],
+            "type": "string"
+          },
+          "note_moyenne": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nb_avis": {
+            "type": "integer"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "role",
+          "pays",
+          "ville",
+          "quartier",
+          "bio",
+          "trust_level",
+          "badge",
+          "phone_verified",
+          "cni_verified",
+          "income_verified",
+          "avatar_url",
+          "preferred_lang",
+          "note_moyenne",
+          "nb_avis",
+          "created_at"
+        ],
+        "title": "User",
+        "type": "object"
+      },
+      "UserPrive": {
+        "additionalProperties": false,
+        "description": "`User.to_dict(public=False)` : le titulaire du compte ou un admin.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "tenant",
+              "landlord",
+              "agency",
+              "admin"
+            ],
+            "type": "string"
+          },
+          "pays": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ville": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quartier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trust_level": {
+            "type": "integer"
+          },
+          "badge": {
+            "type": "string"
+          },
+          "phone_verified": {
+            "type": "boolean"
+          },
+          "cni_verified": {
+            "type": "boolean"
+          },
+          "income_verified": {
+            "type": "boolean"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preferred_lang": {
+            "enum": [
+              "fr",
+              "en"
+            ],
+            "type": "string"
+          },
+          "note_moyenne": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nb_avis": {
+            "type": "integer"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cni_uploaded": {
+            "type": "boolean"
+          },
+          "is_active": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "role",
+          "pays",
+          "ville",
+          "quartier",
+          "bio",
+          "trust_level",
+          "badge",
+          "phone_verified",
+          "cni_verified",
+          "income_verified",
+          "avatar_url",
+          "preferred_lang",
+          "note_moyenne",
+          "nb_avis",
+          "created_at",
+          "email",
+          "phone",
+          "cni_uploaded",
+          "is_active"
+        ],
+        "title": "UserPrive",
+        "type": "object"
+      },
+      "VerificationOTP": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 6,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "VerificationOTP",
+        "type": "object"
+      },
+      "Visite": {
+        "additionalProperties": false,
+        "properties": {
+          "visite_date": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "visite_date"
+        ],
+        "title": "Visite",
+        "type": "object"
+      }
+    },
+    "responses": {
+      "NonAuthentifie": {
+        "description": "Jeton absent, invalide ou expiré",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Erreur"
+            }
+          }
+        }
+      },
+      "Interdit": {
+        "description": "Compte désactivé, rôle non admis ou ressource d'un autre utilisateur",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Erreur"
+            }
+          }
+        }
+      },
+      "Introuvable": {
+        "description": "Ressource introuvable",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Erreur"
+            }
+          }
+        }
+      },
+      "CorpsInvalide": {
+        "description": "Corps de requête invalide (champ par champ dans `details`)",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Erreur"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "jwt": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

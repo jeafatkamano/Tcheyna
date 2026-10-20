@@ -47,7 +47,7 @@ export function MessagesList() {
           />
         ) : (
           conversations.data.conversations.map((conversation) => {
-            const nonLus = conversation.nb_non_lus > 0;
+            const nonLus = (conversation.nb_non_lus ?? 0) > 0;
             return (
               <Link
                 key={conversation.id}
