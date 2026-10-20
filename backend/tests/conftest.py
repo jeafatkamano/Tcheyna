@@ -109,13 +109,16 @@ def reseau(monkeypatch):
 
     # Filet sous `requests` : un client HTTP qui le contournerait (urllib,
     # SDK tiers) bute sur la résolution DNS ou sur l'ouverture de socket.
-    # Les sockets Unix (ex. PostgreSQL local) restent permis.
+    # Les sockets Unix (ex. PostgreSQL local) restent permis. Python sous
+    # Windows n'a pas `socket.AF_UNIX` : là, tout socket est bloqué.
+    af_unix = getattr(socket, "AF_UNIX", None)
+
     def bloquer_resolution(hote, *_args, **_kwargs):
         raise ReseauBloque(f"Résolution DNS interdite pendant un test : {hote!r}")
 
     def bloquer_si_reseau(origine):
         def connecter(sock, adresse):
-            if sock.family == socket.AF_UNIX:
+            if af_unix is not None and sock.family == af_unix:
                 return origine(sock, adresse)
             raise ReseauBloque(f"Connexion réseau interdite pendant un test : {adresse!r}")
         return connecter
