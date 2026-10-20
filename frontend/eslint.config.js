@@ -13,7 +13,8 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules"] },
+  // android/ : projet natif généré par Capacitor, avec une copie de dist/.
+  { ignores: ["dist", "node_modules", "android"] },
   {
     files: ["**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

@@ -60,8 +60,11 @@ services:
         sync: false
 
       # Doit reproduire exactement l'URL du frontend, sans barre oblique finale.
+      # https://localhost : origine de l'application Android (WebView
+      # Capacitor). Sans risque ici : l'authentification passe par l'en-tête
+      # Authorization, jamais par un cookie (voir frontend/ANDROID.md).
       - key: CORS_ORIGINS
-        value: https://tcheyna.onrender.com
+        value: https://tcheyna.onrender.com,https://localhost
 
       # Stockage des fichiers (Supabase Storage). Sans SUPABASE_SERVICE_KEY,
       # l'API refuse les téléversements en production plutôt que de les
