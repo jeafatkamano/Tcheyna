@@ -10,6 +10,7 @@ Marché initial : Conakry (Guinée). Extension prévue : Sénégal, Côte d'Ivoi
 Ghana, Nigeria — d'où les champs `pays` / `devise` sur les entités monétaires.
 """
 import uuid
+from collections import namedtuple
 from datetime import datetime, timedelta
 
 from app import db
@@ -142,7 +143,7 @@ class User(db.Model):
     @property
     def note_moyenne(self):
         notes = [r.note for r in self.reviews_received]
-        return round(sum(notes) / len(notes), 1) if notes else None
+        return moyenne_des_notes(sum(notes), len(notes))
 
     def revoquer_jetons(self):
         """Invalide tous les jetons déjà émis pour ce compte (tous appareils).
@@ -153,7 +154,13 @@ class User(db.Model):
         """
         self.token_version = type(self).token_version + 1
 
-    def to_dict(self, public=True):
+    def to_dict(self, public=True, avis=None):
+        """`avis` : couple (nombre d'avis reçus, somme de leurs notes) déjà lu
+        par l'appelant (voir `agregats_annonces`). Sans lui, deux requêtes."""
+        if avis is None:
+            nb_avis, note_moyenne = self.reviews_received.count(), self.note_moyenne
+        else:
+            nb_avis, note_moyenne = avis[0], moyenne_des_notes(avis[1], avis[0])
         data = {
             "id":             self.id,
             "full_name":      self.full_name,
@@ -169,8 +176,8 @@ class User(db.Model):
             "income_verified": self.income_verified,
             "avatar_url":     self.avatar_url,
             "preferred_lang": self.preferred_lang,
-            "note_moyenne":   self.note_moyenne,
-            "nb_avis":        self.reviews_received.count(),
+            "note_moyenne":   note_moyenne,
+            "nb_avis":        nb_avis,
             "created_at":     self.created_at.isoformat() if self.created_at else None,
         }
         if not public:
@@ -182,6 +189,12 @@ class User(db.Model):
 
     def __repr__(self):
         return f"<User {self.full_name} [{self.role}] — Niveau {self.trust_level}>"
+
+
+def moyenne_des_notes(somme, nombre):
+    """Note moyenne arrondie au dixième, `None` sans avis. Seule formule de
+    `note_moyenne`, qu'elle soit lue avis par avis ou agrégée en SQL."""
+    return round(somme / nombre, 1) if nombre else None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -329,13 +342,17 @@ class Listing(db.Model):
             return self.prix or 0
         return (self.prix or 0) + (self.charges or 0) + (self.caution or 0)
 
-    def to_dict(self, lang="fr", include_landlord=True, avec_adresse=False):
+    def to_dict(self, lang="fr", include_landlord=True, avec_adresse=False, agregats=None):
         """Sérialise l'annonce.
 
         L'adresse exacte est MASQUÉE par défaut : seul un appelant qui a
         vérifié le droit du lecteur (`services.acces.peut_voir_adresse` ou
         `visibilite_adresse`) passe `avec_adresse=True`. Un appelant oublié
         ne fuit donc pas l'adresse. Quartier et ville restent publics.
+
+        `agregats` (un `AgregatsAnnonce`, voir `agregats_annonces`) : compteurs
+        déjà lus pour toute une liste. Sans eux, l'annonce les relit, au prix
+        de trois requêtes : acceptable pour une annonce, pas pour une page.
         """
         masquee = bool(self.adresse) and not avec_adresse
         data = {
@@ -375,12 +392,14 @@ class Listing(db.Model):
             "is_premium":    self.premium_actif,
             "status":        self.status,
             "views_count":   self.views_count or 0,
-            "nb_candidatures": self.matches.count(),
+            "nb_candidatures": (agregats.nb_candidatures if agregats
+                                else self.matches.count()),
             "images":        self.images_urls.split(",") if self.images_urls else [],
             "created_at":    self.created_at.isoformat() if self.created_at else None,
         }
         if include_landlord:
-            data["landlord"] = self.landlord.to_dict() if self.landlord else None
+            avis = (agregats.nb_avis_bailleur, agregats.somme_notes_bailleur) if agregats else None
+            data["landlord"] = self.landlord.to_dict(avis=avis) if self.landlord else None
         return data
 
     def __repr__(self):
@@ -900,3 +919,41 @@ class FichierASupprimer(db.Model):
     tentatives = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     derniere_tentative = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+# ─────────────────────────────────────────────────────────────
+# AGRÉGATS D'UNE LISTE D'ANNONCES (lot 3.1)
+# ─────────────────────────────────────────────────────────────
+
+AgregatsAnnonce = namedtuple(
+    "AgregatsAnnonce", "nb_candidatures nb_avis_bailleur somme_notes_bailleur")
+
+
+def agregats_annonces(annonces):
+    """Compteurs de `Listing.to_dict` pour toute une liste, en UNE requête.
+
+    Pour chaque annonce : nombre de candidatures (tous statuts, comme
+    `matches.count()`), nombre d'avis reçus par son bailleur et somme de
+    leurs notes (comme `reviews_received`). Sous-requêtes corrélées : la
+    base ne compte que pour les annonces demandées. La moyenne se calcule
+    ensuite en Python (`moyenne_des_notes`), à l'identique de `note_moyenne`.
+
+    Renvoie {id d'annonce: AgregatsAnnonce}.
+    """
+    ids = [annonce.id for annonce in annonces]
+    if not ids:
+        return {}
+
+    avis_du_bailleur = Review.target_id == Listing.landlord_id
+    lignes = db.session.query(
+        Listing.id,
+        db.select(db.func.count(Match.id))
+          .where(Match.listing_id == Listing.id).scalar_subquery(),
+        db.select(db.func.count(Review.id)).where(avis_du_bailleur).scalar_subquery(),
+        # Entier sur toutes les bases (SUM d'un INTEGER est un BIGINT, voire
+        # un NUMERIC, selon le moteur).
+        db.select(db.cast(db.func.coalesce(db.func.sum(Review.note), 0), db.Integer))
+          .where(avis_du_bailleur).scalar_subquery(),
+    ).filter(Listing.id.in_(ids))
+
+    return {listing_id: AgregatsAnnonce(*compteurs) for listing_id, *compteurs in lignes}
