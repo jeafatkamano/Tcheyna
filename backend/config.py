@@ -131,6 +131,23 @@ class DevelopmentConfig(Config):
     DEBUG = True
 
 
+LONGUEUR_MIN_SECRET = 32
+
+# Valeurs de repli de Config, ou d'exemple de .env.example. Le dépôt est
+# public : une clé connue de tous permet de signer soi-même un JWT
+# administrateur, ou de recalculer le HMAC des codes OTP.
+SECRETS_CONNUS = frozenset({
+    "dev-secret-a-changer-en-production",
+    "dev-jwt-secret-a-changer",
+    "changez-moi-en-production",
+    "changez-moi-aussi-en-production",
+})
+
+
+def _secret_valide(valeur: str) -> bool:
+    return len(valeur) >= LONGUEUR_MIN_SECRET and valeur not in SECRETS_CONNUS
+
+
 class ProductionConfig(Config):
     DEBUG = False
 
@@ -145,6 +162,33 @@ class ProductionConfig(Config):
                 "est obligatoire : le repli SQLite perdrait les données à "
                 "chaque redémarrage."
             )
+
+        # Même logique pour les secrets : la classe de base retombe sur des
+        # valeurs publiques. Les valeurs sont relues ici et posées sur
+        # l'instance, pour que la clé contrôlée soit celle qu'emploie Flask
+        # (`from_object` lit les attributs de l'instance). Le message ne cite
+        # jamais la valeur reçue.
+        for cle in ("SECRET_KEY", "JWT_SECRET_KEY"):
+            valeur = os.getenv(cle, "")
+            if not _secret_valide(valeur):
+                raise RuntimeError(
+                    f"{cle} est absent, trop court (moins de "
+                    f"{LONGUEUR_MIN_SECRET} caractères) ou égal à une valeur "
+                    "d'exemple publique. Générez-en un avec : "
+                    'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+                )
+            setattr(self, cle, valeur)
+
+        # OTP_HMAC_KEY reste facultatif (dérivé de SECRET_KEY s'il est vide),
+        # mais une clé fournie doit être aussi forte que les autres.
+        otp = os.getenv("OTP_HMAC_KEY", "")
+        if otp and not _secret_valide(otp):
+            raise RuntimeError(
+                f"OTP_HMAC_KEY est trop court (moins de {LONGUEUR_MIN_SECRET} "
+                "caractères) ou égal à une valeur d'exemple publique. "
+                "Laissez-le vide pour le dériver de SECRET_KEY."
+            )
+        self.OTP_HMAC_KEY = otp
 
 
 class TestingConfig(Config):
