@@ -51,6 +51,10 @@ def test_corps_et_authentification_viennent_des_decorateurs(app):
     moi = chemins["/api/auth/me"]["get"]
     assert moi["security"] == [{"jwt": []}] and "x-roles" not in moi
 
+    # Le rafraîchissement exige le jeton de rafraîchissement, pas celui d'accès.
+    rafraichir = chemins["/api/auth/refresh"]["post"]
+    assert rafraichir["security"] == [{"jwtRefresh": []}] and "401" in rafraichir["responses"]
+
     # Le webhook CinetPay accepte aussi un formulaire.
     callback = chemins["/api/payments/callback"]["post"]["requestBody"]["content"]
     assert set(callback) == {"application/json", "application/x-www-form-urlencoded"}
