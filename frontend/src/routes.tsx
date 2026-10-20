@@ -4,42 +4,62 @@
  * Les routes applicatives passent par `RequireAuth`, qui redirige vers la
  * connexion et empêche un rôle d'accéder à l'espace d'un autre.
  */
-import { createBrowserRouter, Navigate, useLocation } from "react-router";
-import type { ReactNode } from "react";
+import { createBrowserRouter, Navigate, useLocation, type RouteObject } from "react-router";
+import { Suspense, type ComponentType, type ReactNode } from "react";
 
 import type { Role } from "./api";
-import { Chargement, Erreur } from "./components/Etats";
+import { Chargement, Erreur, ErreurRoute } from "./components/Etats";
 import { Layout } from "./components/Layout";
 import { useAuth } from "./context/AuthContext";
 
-import { AdminDashboard } from "./pages/admin/AdminDashboard";
-import { AdminUsers } from "./pages/admin/AdminUsers";
 import { Landing } from "./pages/Landing";
-import { CGU } from "./pages/legal/CGU";
-import { Confidentialite } from "./pages/legal/Confidentialite";
-import { MentionsLegales } from "./pages/legal/MentionsLegales";
 import { ListingDetail } from "./pages/ListingDetail";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFound } from "./pages/NotFound";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OnboardingOwner } from "./pages/OnboardingOwner";
 import { OnboardingTenant } from "./pages/OnboardingTenant";
-import { OwnerDashboard } from "./pages/owner/OwnerDashboard";
-import { OwnerListingForm } from "./pages/owner/OwnerListingForm";
-import { OwnerListings } from "./pages/owner/OwnerListings";
-import { OwnerMatches } from "./pages/owner/OwnerMatches";
-import { OwnerProfile } from "./pages/owner/OwnerProfile";
 import { PaiementsPage } from "./pages/PaiementsPage";
 import { RecuPage } from "./pages/RecuPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ConversationPage } from "./pages/shared/ConversationPage";
 import { MessagesList } from "./pages/shared/MessagesList";
 import { TenantProfileView } from "./pages/shared/TenantProfileView";
-import { FavorisPage } from "./pages/tenant/FavorisPage";
-import { ListingsPage } from "./pages/tenant/ListingsPage";
-import { TenantDashboard } from "./pages/tenant/TenantDashboard";
-import { TenantMatches } from "./pages/tenant/TenantMatches";
-import { TenantProfile } from "./pages/tenant/TenantProfile";
+
+// Pages des espaces locataire, propriétaire, admin et légal : chargées à la
+// demande, un fichier JS par espace (voir pages/espaces.tsx).
+import {
+  AdminDashboard,
+  AdminUsers,
+  CGU,
+  Confidentialite,
+  FavorisPage,
+  ListingsPage,
+  MentionsLegales,
+  OwnerDashboard,
+  OwnerListingForm,
+  OwnerListings,
+  OwnerMatches,
+  OwnerProfile,
+  TenantDashboard,
+  TenantMatches,
+  TenantProfile,
+} from "./pages/espaces";
+
+/** Page chargée à la demande : indicateur de chargement le temps du téléchargement. */
+function aLaDemande(Page: ComponentType) {
+  return (
+    <Suspense
+      fallback={
+        <div className="py-16 flex items-center justify-center">
+          <Chargement />
+        </div>
+      }
+    >
+      <Page />
+    </Suspense>
+  );
+}
 
 // ─── Gardes ──────────────────────────────────────────────────
 
@@ -98,7 +118,7 @@ function EspaceProtege({ roles }: { roles?: Role[] }) {
 
 // ─── Plan de routes ──────────────────────────────────────────
 
-export const router = createBrowserRouter([
+const ROUTES: RouteObject[] = [
   { path: "/", Component: Landing },
   {
     path: "/login",
@@ -123,9 +143,9 @@ export const router = createBrowserRouter([
   { path: "/listing/:id", Component: ListingDetail },
 
   // Pages légales : lisibles sans compte, puisqu'il faut les accepter pour en créer un.
-  { path: "/legal/cgu", Component: CGU },
-  { path: "/legal/confidentialite", Component: Confidentialite },
-  { path: "/legal/mentions", Component: MentionsLegales },
+  { path: "/legal/cgu", element: aLaDemande(CGU) },
+  { path: "/legal/confidentialite", element: aLaDemande(Confidentialite) },
+  { path: "/legal/mentions", element: aLaDemande(MentionsLegales) },
 
   // ─── Espace locataire ──────────────────────────────────────
   {
@@ -133,11 +153,11 @@ export const router = createBrowserRouter([
     element: <EspaceProtege roles={["tenant"]} />,
     children: [
       { index: true, element: <Navigate to="/tenant/dashboard" replace /> },
-      { path: "dashboard", Component: TenantDashboard },
-      { path: "listings", Component: ListingsPage },
-      { path: "matches", Component: TenantMatches },
-      { path: "favoris", Component: FavorisPage },
-      { path: "profile", Component: TenantProfile },
+      { path: "dashboard", element: aLaDemande(TenantDashboard) },
+      { path: "listings", element: aLaDemande(ListingsPage) },
+      { path: "matches", element: aLaDemande(TenantMatches) },
+      { path: "favoris", element: aLaDemande(FavorisPage) },
+      { path: "profile", element: aLaDemande(TenantProfile) },
     ],
   },
 
@@ -147,12 +167,12 @@ export const router = createBrowserRouter([
     element: <EspaceProtege roles={["landlord", "agency"]} />,
     children: [
       { index: true, element: <Navigate to="/owner/dashboard" replace /> },
-      { path: "dashboard", Component: OwnerDashboard },
-      { path: "listings", Component: OwnerListings },
-      { path: "listings/nouveau", Component: OwnerListingForm },
-      { path: "listings/:id", Component: OwnerListingForm },
-      { path: "matches", Component: OwnerMatches },
-      { path: "profile", Component: OwnerProfile },
+      { path: "dashboard", element: aLaDemande(OwnerDashboard) },
+      { path: "listings", element: aLaDemande(OwnerListings) },
+      { path: "listings/nouveau", element: aLaDemande(OwnerListingForm) },
+      { path: "listings/:id", element: aLaDemande(OwnerListingForm) },
+      { path: "matches", element: aLaDemande(OwnerMatches) },
+      { path: "profile", element: aLaDemande(OwnerProfile) },
     ],
   },
 
@@ -161,8 +181,8 @@ export const router = createBrowserRouter([
     path: "/admin",
     element: <EspaceProtege roles={["admin"]} />,
     children: [
-      { index: true, Component: AdminDashboard },
-      { path: "users", Component: AdminUsers },
+      { index: true, element: aLaDemande(AdminDashboard) },
+      { path: "users", element: aLaDemande(AdminUsers) },
     ],
   },
 
@@ -189,4 +209,7 @@ export const router = createBrowserRouter([
   },
 
   { path: "*", Component: NotFound },
-]);
+];
+
+// Route racine sans chemin : son écran d'erreur, en français, couvre toutes les pages.
+export const router = createBrowserRouter([{ errorElement: <ErreurRoute />, children: ROUTES }]);

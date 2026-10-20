@@ -133,3 +133,11 @@ services:
       - path: /assets/*
         name: Cache-Control
         value: public, max-age=31536000, immutable
+      # Service worker et manifest (lot 3.3) : toujours revérifiés, sinon une
+      # nouvelle version du site resterait invisible derrière l'ancienne.
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+      - path: /manifest.webmanifest
+        name: Cache-Control
+        value: no-cache
