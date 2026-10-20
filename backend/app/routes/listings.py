@@ -5,6 +5,7 @@ Inclut le parcours « Annonce Certifiée » : le propriétaire dépose un docume
 propriété, l'annonce passe en `pending`, un administrateur tranche. Une annonce
 certifiée remonte dans les résultats et affiche un badge visible.
 """
+import math
 from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request
@@ -129,12 +130,6 @@ def get_listings():
         ordres.get(tri, ordres["recent"]),
     )
 
-    # Bailleurs de la page lus en une requête (et non un par annonce).
-    query = query.options(selectinload(Listing.landlord))
-    paginated = query.paginate(page=page, per_page=per_page, error_out=False)
-    # Candidatures et avis des bailleurs : une requête pour toute la page.
-    agregats = agregats_annonces(paginated.items)
-
     # Un locataire connecté voit le score de compatibilité et ses favoris
     user = utilisateur_optionnel()
     favoris = set()
@@ -144,23 +139,51 @@ def get_listings():
         if user.role == "tenant":
             passport = user.passport
     adresse_visible = visibilite_adresse(user)
+    locataire = user is not None and user.role == "tenant"
+
+    # Bailleurs lus en une requête (et non un par annonce).
+    query = query.options(selectinload(Listing.landlord))
+
+    scores = {}
+    if tri == "match" and locataire:
+        # Le score se calcule en Python : le tri porte sur TOUTES les annonces
+        # filtrées, puis la page se découpe dans la liste triée (trier la seule
+        # page courante ferait manquer, en page 1, les meilleures annonces des
+        # pages suivantes). Tri stable : à score égal, l'ordre SQL (mise en
+        # avant, certification, date) est conservé.
+        annonces = query.all()
+        for annonce in annonces:
+            scores[annonce.id], _ = score_compatibilite(passport, annonce, user)
+        annonces.sort(key=lambda a: scores[a.id], reverse=True)
+        # Mêmes bornes que `paginate(error_out=False)` : page < 1 → 1,
+        # per_page < 1 → 20.
+        page_reelle = max(page, 1)
+        taille = per_page if per_page >= 1 else 20
+        items = annonces[(page_reelle - 1) * taille:page_reelle * taille]
+        total = len(annonces)
+        nb_pages = math.ceil(total / taille)
+    else:
+        paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+        items, total, nb_pages = paginated.items, paginated.total, paginated.pages
+
+    # Candidatures et avis des bailleurs : une requête pour toute la page.
+    agregats = agregats_annonces(items)
 
     listings = []
-    for annonce in paginated.items:
+    for annonce in items:
         data = annonce.to_dict(lang=lang, avec_adresse=adresse_visible(annonce),
                                agregats=agregats[annonce.id])
         data["is_favorite"] = annonce.id in favoris
-        if user and user.role == "tenant":
-            data["score_compatibilite"], _ = score_compatibilite(passport, annonce, user)
+        if locataire:
+            if annonce.id not in scores:
+                scores[annonce.id], _ = score_compatibilite(passport, annonce, user)
+            data["score_compatibilite"] = scores[annonce.id]
         listings.append(data)
-
-    if tri == "match" and user and user.role == "tenant":
-        listings.sort(key=lambda d: d.get("score_compatibilite", 0), reverse=True)
 
     return jsonify({
         "listings": listings,
-        "total": paginated.total,
-        "pages": paginated.pages,
+        "total": total,
+        "pages": nb_pages,
         "page": page,
         "per_page": per_page,
     }), 200

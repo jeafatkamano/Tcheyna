@@ -319,3 +319,41 @@ def test_recherche_en_requetes_independantes_de_la_taille_de_page(client, fabriq
     grande = _requetes_pour_une_page(client, fabrique, entetes, compteur_sql, 20)
 
     assert grande == petite
+
+
+# ─── Tri « match » (lot 3.1) ─────────────────────────────────
+
+def test_tri_match_porte_sur_toute_la_recherche(client, fabrique, locataire, entetes,
+                                                compteur_sql):
+    # La plus récente (donc première en SQL) est hors budget ; la meilleure
+    # annonce pour ce locataire est la plus ancienne. Avant le lot 3.1, seule
+    # la page courante était triée : la page 1 montrait l'annonce hors budget.
+    from datetime import datetime
+
+    meilleure = fabrique.annonce(prix=2_500_000, created_at=datetime(2026, 1, 1))
+    moyenne = fabrique.annonce(prix=3_300_000, created_at=datetime(2026, 1, 2))
+    hors_budget = fabrique.annonce(prix=9_000_000, created_at=datetime(2026, 1, 3))
+    en_tetes = entetes(locataire)
+
+    pages = []
+    for page in (1, 2, 3):
+        corps = client.get(f"/api/listings/?tri=match&per_page=1&page={page}",
+                           headers=en_tetes).get_json()
+        assert (corps["total"], corps["pages"], corps["page"]) == (3, 3, page)
+        pages.extend((a["id"], a["score_compatibilite"]) for a in corps["listings"])
+
+    assert [i for i, _ in pages] == [meilleure.id, moyenne.id, hors_budget.id]
+    scores = [s for _, s in pages]
+    assert scores == sorted(scores, reverse=True) and len(set(scores)) == 3
+
+    # Hors de la recherche filtrée, rien ; au-delà de la dernière page, rien.
+    corps = client.get("/api/listings/?tri=match&prix_min=3000000&per_page=1",
+                       headers=en_tetes).get_json()
+    assert [a["id"] for a in corps["listings"]] == [moyenne.id] and corps["total"] == 2
+    corps = client.get("/api/listings/?tri=match&per_page=1&page=4", headers=en_tetes).get_json()
+    assert corps["listings"] == [] and corps["total"] == 3
+
+    # Le tri sur tout l'ensemble ne réintroduit pas de requête par annonce.
+    with compteur_sql() as requetes:
+        client.get("/api/listings/?tri=match&per_page=3", headers=en_tetes)
+    assert len(requetes) <= SEUIL_REQUETES_PAGE
