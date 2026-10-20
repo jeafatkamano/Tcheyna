@@ -116,9 +116,10 @@ export function CGU() {
           hors plateforme : Tcheyna n'y est pas partie et n'en perçoit rien.
         </p>
         <p>
-          La caution et le premier loyer peuvent être réglés par Mobile Money via la
-          plateforme. Ces sommes sont dues au propriétaire : Tcheyna en assure l'acheminement
-          et la traçabilité, sans en être bénéficiaire.
+          La caution et le premier loyer se règlent directement entre le propriétaire et le
+          locataire, hors de la plateforme. Ces sommes sont dues au propriétaire : Tcheyna ne
+          les encaisse pas et n'en est pas bénéficiaire ; elle ne perçoit que les sommes dues
+          pour ses propres services, listés ci-dessus.
         </p>
         <p>
           Les frais de certification et de mise en avant correspondent à un service rendu dès
