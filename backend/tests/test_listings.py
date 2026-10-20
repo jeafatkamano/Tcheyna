@@ -264,3 +264,122 @@ def test_aucune_transaction_ouverte_pendant_le_stockage(client, annonce, bailleu
 
     assert reponse.status_code == 201
     assert pendant == [False]
+
+
+# ─── Nombre de requêtes de la recherche (lot 3.1) ────────────
+# Avant le lot 3.1, chaque annonce relisait son bailleur, le nombre de ses
+# candidatures et les avis de son bailleur (deux fois) : 85 requêtes pour une
+# page de 20 annonces vue par un locataire, 25 pour une page de 5. Depuis,
+# les agrégats se lisent en une requête pour toute la page et les bailleurs
+# en une autre : 7 requêtes, quelle que soit la taille de la page.
+
+SEUIL_REQUETES_PAGE = 10
+
+
+def _requetes_pour_une_page(client, fabrique, entetes, compteur_sql, nb_annonces):
+    lecteur = fabrique.locataire()
+    auteur = fabrique.locataire()
+    for i in range(nb_annonces):
+        proprietaire = fabrique.bailleur()
+        annonce = fabrique.annonce(proprietaire,
+                                   certification_status="certified" if i % 3 else "none")
+        fabrique.avis(auteur, proprietaire, note=1 + i % 5)
+        fabrique.avis(lecteur, proprietaire, note=5)
+        fabrique.match(fabrique.locataire(), annonce)
+        if i % 2:
+            fabrique.match(lecteur, annonce, status="accepted" if i % 4 == 1 else "pending")
+    en_tetes = entetes(lecteur)
+
+    with compteur_sql() as requetes:
+        reponse = client.get(f"/api/listings/?per_page={nb_annonces}", headers=en_tetes)
+
+    assert reponse.status_code == 200
+    assert len(reponse.get_json()["listings"]) == nb_annonces
+    return len(requetes)
+
+
+def test_recherche_de_20_annonces_en_nombre_de_requetes_borne(client, fabrique, entetes,
+                                                             compteur_sql):
+    nombre = _requetes_pour_une_page(client, fabrique, entetes, compteur_sql, 20)
+
+    assert nombre <= SEUIL_REQUETES_PAGE, (
+        f"{nombre} requêtes SQL pour une page de 20 annonces (seuil : {SEUIL_REQUETES_PAGE})"
+    )
+
+
+def test_recherche_en_requetes_independantes_de_la_taille_de_page(client, fabrique, entetes,
+                                                                  compteur_sql):
+    from app import db
+
+    petite = _requetes_pour_une_page(client, fabrique, entetes, compteur_sql, 5)
+    # Les 5 premières annonces sortent de la recherche : la seconde page n'en
+    # montre que 20, toutes nouvelles.
+    Listing.query.update({"is_visible": False})
+    db.session.commit()
+    grande = _requetes_pour_une_page(client, fabrique, entetes, compteur_sql, 20)
+
+    assert grande == petite
+
+
+# ─── Tri « match » (lot 3.1) ─────────────────────────────────
+
+def test_tri_match_porte_sur_toute_la_recherche(client, fabrique, locataire, entetes,
+                                                compteur_sql):
+    # La plus récente (donc première en SQL) est hors budget ; la meilleure
+    # annonce pour ce locataire est la plus ancienne. Avant le lot 3.1, seule
+    # la page courante était triée : la page 1 montrait l'annonce hors budget.
+    from datetime import datetime
+
+    meilleure = fabrique.annonce(prix=2_500_000, created_at=datetime(2026, 1, 1))
+    moyenne = fabrique.annonce(prix=3_300_000, created_at=datetime(2026, 1, 2))
+    hors_budget = fabrique.annonce(prix=9_000_000, created_at=datetime(2026, 1, 3))
+    en_tetes = entetes(locataire)
+
+    pages = []
+    for page in (1, 2, 3):
+        corps = client.get(f"/api/listings/?tri=match&per_page=1&page={page}",
+                           headers=en_tetes).get_json()
+        assert (corps["total"], corps["pages"], corps["page"]) == (3, 3, page)
+        pages.extend((a["id"], a["score_compatibilite"]) for a in corps["listings"])
+
+    assert [i for i, _ in pages] == [meilleure.id, moyenne.id, hors_budget.id]
+    scores = [s for _, s in pages]
+    assert scores == sorted(scores, reverse=True) and len(set(scores)) == 3
+
+    # Hors de la recherche filtrée, rien ; au-delà de la dernière page, rien.
+    corps = client.get("/api/listings/?tri=match&prix_min=3000000&per_page=1",
+                       headers=en_tetes).get_json()
+    assert [a["id"] for a in corps["listings"]] == [moyenne.id] and corps["total"] == 2
+    corps = client.get("/api/listings/?tri=match&per_page=1&page=4", headers=en_tetes).get_json()
+    assert corps["listings"] == [] and corps["total"] == 3
+
+
+def test_tri_match_sur_30_annonces_en_nombre_de_requetes_borne(client, fabrique, locataire,
+                                                               entetes, compteur_sql):
+    # L'ensemble filtré (30) dépasse la page (5) : tout est noté, seule la
+    # page est chargée, sans requête par annonce.
+    auteur = fabrique.locataire()
+    for i in range(30):
+        proprietaire = fabrique.bailleur()
+        annonce = fabrique.annonce(proprietaire, prix=1_000_000 + 100_000 * i)
+        fabrique.avis(auteur, proprietaire, note=1 + i % 5)
+        fabrique.match(fabrique.locataire(), annonce)
+    en_tetes = entetes(locataire)
+
+    with compteur_sql() as requetes:
+        corps = client.get("/api/listings/?tri=match&per_page=5&page=2",
+                           headers=en_tetes).get_json()
+
+    assert (len(corps["listings"]), corps["total"], corps["pages"]) == (5, 30, 6)
+    assert len(requetes) <= SEUIL_REQUETES_PAGE, (
+        f"{len(requetes)} requêtes SQL pour le tri « match » de 30 annonces, 5 par page "
+        f"(seuil : {SEUIL_REQUETES_PAGE})"
+    )
+
+    # Bornes de `paginate(error_out=False)` : page 0 → 1, per_page 0 → 20 ;
+    # la réponse renvoie les valeurs demandées, comme avant le lot 3.1.
+    nul = client.get("/api/listings/?tri=match&per_page=0&page=0", headers=en_tetes).get_json()
+    vingt = client.get("/api/listings/?tri=match&per_page=20&page=1",
+                       headers=en_tetes).get_json()
+    assert (nul["page"], nul["per_page"], nul["total"], nul["pages"]) == (0, 0, 30, 2)
+    assert nul["listings"] == vingt["listings"] and len(nul["listings"]) == 20

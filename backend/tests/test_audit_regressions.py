@@ -227,11 +227,12 @@ def test_r7_send_otp_plafond_partage_entre_comptes(app, client, fabrique, entete
 
 
 # ─── R8 · N+1 sur la recherche ───────────────────────────────
+# Corrigée au lot 3.1 (agrégats lus pour toute la page, bailleurs préchargés) :
+# le test reste en garde-fou.
 
 SEUIL_REQUETES_RECHERCHE = 10
 
 
-@faille("R8", "3.1", "nb_candidatures, nb_avis, note_moyenne et landlord relus par annonce")
 def test_r8_recherche_en_nombre_de_requetes_borne(client, fabrique, locataire, entetes,
                                                   compteur_sql):
     # 12 annonces de 12 bailleurs différents, chacun avec un avis et une
