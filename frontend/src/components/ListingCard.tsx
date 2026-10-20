@@ -7,10 +7,9 @@ import { Link } from "react-router";
 
 import { urlFichier, type Listing } from "../api";
 import { formatMontantCourt, labelTransaction, labelTypeBien } from "../lib/format";
+import { HAUTEUR_REPLI, LARGEUR_REPLI, TAILLES_CARTE } from "../lib/imageRepli";
 import { BadgeCertifie, ScoreMatch } from "./BadgeVerification";
-
-const IMAGE_PAR_DEFAUT =
-  "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1080&q=80";
+import { PhotoAnnonce } from "./PhotoAnnonce";
 
 interface Props {
   listing: Listing;
@@ -23,7 +22,7 @@ interface Props {
 export function ListingCard({ listing, onToggleFavori, to }: Props) {
   // urlFichier : en développement sans Supabase, les photos sont des chemins
   // relatifs (/uploads/…) servis par l'API, pas par le serveur du frontend.
-  const photo = urlFichier(listing.images?.[0]) || IMAGE_PAR_DEFAUT;
+  const photo = urlFichier(listing.images?.[0]);
   const destination = to ?? `/listing/${listing.id}`;
 
   return (
@@ -33,14 +32,16 @@ export function ListingCard({ listing, onToggleFavori, to }: Props) {
     >
       <Link to={destination} className="block">
         <div className="relative h-44">
-          <img
-            src={photo}
+          {/* width/height : réservent la place (ratio 8:5) avant le chargement. */}
+          <PhotoAnnonce
+            url={photo}
+            tailles={TAILLES_CARTE}
             alt={listing.title}
+            width={LARGEUR_REPLI}
+            height={HAUTEUR_REPLI}
             className="w-full h-full object-cover"
             loading="lazy"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src = IMAGE_PAR_DEFAUT;
-            }}
+            decoding="async"
           />
 
           <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start">

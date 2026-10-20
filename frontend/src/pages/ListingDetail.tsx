@@ -36,8 +36,11 @@ import { Chargement, Erreur, MessageErreur } from "../components/Etats";
 import { useAuth } from "../context/AuthContext";
 import { useAction, useApi } from "../hooks/useApi";
 import { formatDate, formatMontant, formatMontantCourt, labelTransaction } from "../lib/format";
+import { HAUTEUR_REPLI, LARGEUR_REPLI } from "../lib/imageRepli";
+import { PhotoAnnonce } from "../components/PhotoAnnonce";
 
-const IMAGE_PAR_DEFAUT = "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1080&q=80";
+/** Photo du carrousel : pleine largeur de l'écran. */
+const TAILLES_CARROUSEL = "100vw";
 
 const EQUIPEMENTS = [
   { cle: "generateur", label: "Groupe électrogène", icone: Zap },
@@ -126,7 +129,8 @@ export function ListingDetail() {
     );
   }
 
-  const photos = listing.images.length ? listing.images : [IMAGE_PAR_DEFAUT];
+  // `undefined` : annonce sans photo, l'image de repli locale s'affiche.
+  const photos: (string | undefined)[] = listing.images.length ? listing.images : [undefined];
   const equipementsActifs = EQUIPEMENTS.filter((e) => listing.equipements[e.cle]);
   const dejaCandidat = Boolean(listing.ma_candidature);
   const estLocataire = user?.role === "tenant";
@@ -140,13 +144,15 @@ export function ListingDetail() {
     <div className="min-h-screen" style={{ background: "#F0F4FA" }}>
       {/* Carrousel */}
       <div className="relative h-64 sm:h-80">
-        <img
-          src={urlFichier(photos[indexPhoto])}
+        {/* Pas de lazy : première image visible de la page. */}
+        <PhotoAnnonce
+          url={urlFichier(photos[indexPhoto])}
+          tailles={TAILLES_CARROUSEL}
           alt={listing.title}
+          width={LARGEUR_REPLI}
+          height={HAUTEUR_REPLI}
           className="w-full h-full object-cover"
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).src = IMAGE_PAR_DEFAUT;
-          }}
+          decoding="async"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-transparent pointer-events-none" />
 

@@ -8,11 +8,13 @@ import { StatutPastille } from "../../components/ListingCard";
 import { ModalePaiement } from "../../components/ModalePaiement";
 import { useApi } from "../../hooks/useApi";
 import { formatMontantCourt, labelTransaction, labelTypeBien } from "../../lib/format";
+import { PhotoAnnonce } from "../../components/PhotoAnnonce";
 
 /** Tarif de la mise en avant, aligné sur la grille du serveur. */
 const PRIX_MISE_EN_AVANT = 200_000;
 
-const IMAGE_PAR_DEFAUT = "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1080&q=80";
+/** Vignette carrée de 96 px (w-24). */
+const TAILLES_VIGNETTE = "96px";
 
 const CERTIFICATION = {
   none: { label: "Non certifiée", couleur: "#64748B", fond: "#F1F5F9" },
@@ -92,11 +94,15 @@ export function OwnerListings() {
                     className="w-24 h-24 rounded-xl overflow-hidden flex-shrink-0"
                     style={{ background: "#F0F4FA" }}
                   >
-                    <img
-                      src={urlFichier(listing.images[0]) || IMAGE_PAR_DEFAUT}
+                    <PhotoAnnonce
+                      url={urlFichier(listing.images[0])}
+                      tailles={TAILLES_VIGNETTE}
                       alt=""
+                      width={96}
+                      height={96}
                       className="w-full h-full object-cover"
                       loading="lazy"
+                      decoding="async"
                     />
                   </div>
 
