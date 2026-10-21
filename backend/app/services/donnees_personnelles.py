@@ -17,6 +17,7 @@ Suppression d'un fichier en deux temps, pour ne jamais perdre sa trace :
 from datetime import datetime, timedelta
 
 from flask import current_app
+from sqlalchemy import func
 
 from app import db
 from app.models import (
@@ -103,10 +104,16 @@ def retirer_pieces_identite(passeport):
     return [r for r in references if r]
 
 
-def retirer_justificatif_revenus(passeport):
+def retirer_justificatif_revenus(passeport, garder_date=False):
+    """Efface la référence du justificatif ; retourne cette référence.
+
+    `garder_date` : un justificatif validé garde sa date de dépôt, point de
+    départ de sa validité de 3 mois (décision D12).
+    """
     reference = passeport.income_doc_url
     passeport.income_doc_url = None
-    passeport.revenus_deposes_le = None
+    if not garder_date:
+        passeport.revenus_deposes_le = None
     return [reference] if reference else []
 
 
@@ -180,7 +187,7 @@ def purger_pieces_decidees():
                       .filter(User.cni_verified.is_(True)).all()):
         lignes += planifier_suppression(retirer_pieces_identite(passeport), "rattrapage_identite")
     for passeport in TenantPassport.query.filter(TenantPassport.income_verified.is_(True)).all():
-        lignes += planifier_suppression(retirer_justificatif_revenus(passeport),
+        lignes += planifier_suppression(retirer_justificatif_revenus(passeport, garder_date=True),
                                         "rattrapage_revenus")
     db.session.commit()
     executer_suppressions(lignes)
@@ -191,6 +198,90 @@ def _recalculer(passeport):
     if passeport.tenant:
         passeport.tenant.update_trust_level()
     passeport.calculate_score()
+
+
+# ─── Validité des justificatifs de revenus (décision D12) ────
+
+# D12 : un justificatif de revenus vaut 3 mois. Compté en jours plutôt qu'en
+# mois calendaires : l'échéance est la même pour tous et sans ambiguïté
+# (30 novembre + 3 mois ?), sans dépendance de plus.
+VALIDITE_REVENUS_JOURS = 90
+# Le locataire est relancé une fois, à partir de J-7.
+RELANCE_REVENUS_JOURS = 7
+
+
+def _dernieres_lignes(decision):
+    """{locataire : date de sa dernière ligne `revenus`/`decision` au journal}."""
+    return dict(db.session.query(Verification.cible_id, func.max(Verification.created_at))
+                .filter(Verification.objet == "revenus", Verification.decision == decision)
+                .group_by(Verification.cible_id).all())
+
+
+def appliquer_validite_revenus(maintenant=None):
+    """Relance à J-7, puis retire la vérification des revenus échue.
+
+    Point de départ des 3 mois : la date de dépôt du justificatif validé
+    (conservée à la validation), la plus prudente, puisque la date du
+    document lui-même n'est pas saisie. À défaut, pour une validation
+    antérieure à ce lot, la date de la validation au journal. Sans aucune
+    des deux (validation antérieure au lot 1.5), rien ne prouve que le
+    justificatif a moins de 3 mois : il est considéré comme échu.
+
+    Idempotente : un justificatif échu n'est plus « vérifié », il n'est donc
+    plus repris ; la relance est inscrite au journal, qui, contrairement aux
+    notifications que le locataire peut supprimer, garantit qu'elle n'est
+    envoyée qu'une fois par justificatif, même si la commande est rejouée ou
+    a sauté un jour. Retourne (expirés, relancés).
+    """
+    maintenant = maintenant or datetime.utcnow()
+    passeports = (TenantPassport.query.join(User, User.id == TenantPassport.tenant_id)
+                  .filter(User.income_verified.is_(True))
+                  .all())
+    validations = _dernieres_lignes("approuvee")
+    relances = _dernieres_lignes("relancee")
+
+    expires = relances_envoyees = 0
+    lignes = []
+    for passeport in passeports:
+        debut = passeport.revenus_deposes_le or validations.get(passeport.tenant_id)
+        echeance = debut + timedelta(days=VALIDITE_REVENUS_JOURS) if debut else None
+
+        if echeance is None or maintenant >= echeance:
+            motif = (f"Validité de {VALIDITE_REVENUS_JOURS} jours dépassée "
+                     f"(justificatif du {debut:%d/%m/%Y})" if debut
+                     else "Date du justificatif inconnue (validé avant le lot 1.5)")
+            passeport.income_verified = False
+            passeport.tenant.income_verified = False
+            # Un justificatif validé est supprimé à la décision (lot 1.5) : il
+            # ne reste un fichier que pour une validation antérieure, jamais
+            # rattrapée. Le garder le ferait revenir dans la file d'attente.
+            lignes += planifier_suppression(retirer_justificatif_revenus(passeport),
+                                            "expiration_revenus")
+            consigner(None, passeport.tenant_id, "revenus", "expiree", motif)
+            _recalculer(passeport)
+            notify.notifier(passeport.tenant_id, "niveau_confiance",
+                            "Justificatif de revenus expiré",
+                            "Votre justificatif de revenus a plus de 3 mois : vos revenus ne "
+                            "sont plus considérés comme vérifiés. Déposez un justificatif "
+                            "récent pour les faire vérifier de nouveau.", "/tenant/profile")
+            expires += 1
+            continue
+
+        derniere_relance = relances.get(passeport.tenant_id)
+        deja_relance = derniere_relance is not None and derniere_relance >= debut
+        if maintenant >= echeance - timedelta(days=RELANCE_REVENUS_JOURS) and not deja_relance:
+            consigner(None, passeport.tenant_id, "revenus", "relancee",
+                      f"Échéance le {echeance:%d/%m/%Y}")
+            notify.notifier(passeport.tenant_id, "niveau_confiance",
+                            "Justificatif de revenus à renouveler",
+                            f"Votre justificatif de revenus expire le {echeance:%d/%m/%Y}. "
+                            "Déposez-en un plus récent depuis votre profil : il sera examiné "
+                            "sous 48 h.", "/tenant/profile")
+            relances_envoyees += 1
+
+    db.session.commit()
+    executer_suppressions(lignes)
+    return expires, relances_envoyees
 
 
 # ─── Suppression de compte ───────────────────────────────────
