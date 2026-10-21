@@ -60,6 +60,28 @@ def formater_delai(secondes):
 # routes/listings.py et routes/users.py). Tout autre fichier est privé.
 PREFIXES_UPLOADS_PUBLICS = ("annonce-", "profil-")
 
+# En-têtes de sécurité posés sur toutes les réponses de l'API (lot 1.17). Le
+# site statique a les siens, dans render.yaml. L'API ne sert que du JSON et,
+# en développement, des photos : aucune page HTML, aucun script.
+#   • nosniff : le navigateur s'en tient au Content-Type déclaré, sans
+#     deviner du HTML ou un script dans un corps JSON.
+#   • CSP « default-src 'none' » : un JSON ouvert dans un onglet ne charge
+#     rien ; « frame-ancestors 'none' » : aucune réponse ne s'affiche dans un
+#     cadre d'un autre site.
+#   • X-Frame-Options : même interdiction pour les navigateurs qui ignorent
+#     frame-ancestors (anciens WebView Android) ; les autres l'ignorent.
+#   • Referrer-Policy : rien à transmettre depuis un document de l'API.
+#   • HSTS : Render redirige HTTP vers HTTPS, mais ne pose pas cet en-tête
+#     sur un service web (il le pose sur le site statique). Un an, sans
+#     sous-domaines ni préchargement. Ignoré en HTTP, donc en développement.
+ENTETES_SECURITE = {
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Strict-Transport-Security": "max-age=31536000",
+}
+
 
 def create_app(config_class=Config):
     app = Flask(__name__)
@@ -223,5 +245,15 @@ def create_app(config_class=Config):
     @jwt.revoked_token_loader
     def revoked_token(_header, _payload):
         return jsonify({"error": "Session révoquée, veuillez vous reconnecter", "details": []}), 401
+
+    # ─── En-têtes de sécurité (voir ENTETES_SECURITE) ────────
+    # `after_request` passe aussi sur les réponses des gestionnaires d'erreur
+    # (404, 422, 429, 500…) et sur le préflight CORS. Un en-tête déjà posé
+    # par une route est conservé.
+    @app.after_request
+    def entetes_securite(reponse):
+        for nom, valeur in ENTETES_SECURITE.items():
+            reponse.headers.setdefault(nom, valeur)
+        return reponse
 
     return app
