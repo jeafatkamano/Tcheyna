@@ -6,6 +6,7 @@ Les cas R1, R1 bis et R7 de l'audit sont dans test_audit_regressions.py ;
 ce fichier couvre le reste du comportement livré par le lot.
 """
 import re
+import sys
 from datetime import datetime, timedelta
 
 import pytest
@@ -249,6 +250,46 @@ def test_otp_herite_en_clair_refuse(client, fabrique, entetes):
 
     assert reponse.status_code == 400
     assert "Demandez un nouveau code" in reponse.get_json()["error"]
+
+
+@pytest.mark.parametrize("is_used", [True, False])
+def test_otp_ligne_anonymisee_ne_valide_rien(client, fabrique, entetes, is_used):
+    # Ligne telle que la laisse `anonymiser_compte` (gardée pour le plafond
+    # global des SMS) : ni numéro, ni code, ni empreinte. Même marquée non
+    # utilisée par erreur, elle ne valide aucun code.
+    user = fabrique.locataire(niveau=0)
+    db.session.add(OTPCode(user_id=user.id, phone=None, code=None, code_hash=None,
+                           is_used=is_used, attempts=0,
+                           expires_at=datetime.utcnow() + timedelta(minutes=5)))
+    db.session.commit()
+
+    for code in ("123456", "000000"):
+        reponse = client.post("/api/auth/verify-otp", headers=entetes(user), json={"code": code})
+        assert reponse.status_code == 400
+        assert "Demandez un nouveau code" in reponse.get_json()["error"]
+    assert db.session.get(User, user.id).phone_verified is False
+
+
+def test_echec_sms_journalise_sans_numero_ni_code(app, client, fabrique, entetes, codes_otp,
+                                                 caplog, monkeypatch):
+    app.config["AT_API_KEY"] = "cle-at-de-test"
+    user = fabrique.locataire(niveau=0)
+
+    def echouer(message, destinataires, sender_id=None):
+        # Un fournisseur qui recopie destinataire et texte dans son erreur.
+        raise RuntimeError(f"Envoi refusé pour {destinataires[0]} : « {message} »")
+
+    monkeypatch.setattr(sys.modules["africastalking"].SMS, "send", echouer)
+
+    reponse = client.post("/api/auth/send-otp", headers=entetes(user), json={})
+
+    assert reponse.status_code == 200
+    assert reponse.get_json()["message"] == "Code généré (SMS indisponible)"
+    echecs = [r.getMessage() for r in caplog.records if "Échec envoi OTP" in r.getMessage()]
+    assert len(echecs) == 1
+    assert echecs[0].startswith(f"Échec envoi OTP à {user.phone[:4]}…{user.phone[-2:]} : ")
+    assert user.phone not in echecs[0] and user.phone[1:] not in echecs[0]
+    assert codes_otp[0] not in echecs[0] and "******" in echecs[0]
 
 
 def test_otp_antispam_60_secondes_en_json(client, fabrique, entetes):

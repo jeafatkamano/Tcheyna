@@ -126,6 +126,16 @@ def _cle_connexion():
     return f"{get_remote_address()}|{email}"
 
 
+def masquer_numero(phone):
+    """« +224…52 » : quatre premiers caractères (l'indicatif, pour repérer
+    une destination anormale) et deux derniers chiffres. Le numéro complet,
+    donnée personnelle, n'a rien à faire dans les logs."""
+    phone = phone or ""
+    if len(phone) <= 6:
+        return "…"
+    return f"{phone[:4]}…{phone[-2:]}"
+
+
 def send_sms_otp(phone, code):
     """Envoie l'OTP via Africa's Talking. Retourne False si l'envoi échoue —
     en développement, le code reste consultable dans la réponse de l'API."""
@@ -144,7 +154,14 @@ def send_sms_otp(phone, code):
         )
         return True
     except Exception as exc:  # noqa: BLE001 — un échec SMS ne doit pas bloquer l'inscription
-        current_app.logger.error("Échec envoi OTP à %s : %s", phone, exc)
+        # Le message d'erreur du fournisseur peut reprendre le destinataire,
+        # voire le texte du SMS : numéro et code y sont masqués aussi.
+        masque = masquer_numero(phone)
+        detail = str(exc)
+        for secret, remplacement in ((phone, masque), (code, "******")):
+            if secret:
+                detail = detail.replace(secret, remplacement)
+        current_app.logger.error("Échec envoi OTP à %s : %s", masque, detail)
         return False
 
 
