@@ -61,10 +61,11 @@ def test_les_deux_parties_proposent_toujours_une_date(client, match, locataire, 
     # Droit inchangé tant que la confirmation n'existe pas : le dernier qui
     # propose fixe la date.
     for partie, jours in ((locataire, 2), (bailleur, 4)):
-        moment = datetime.utcnow() + timedelta(days=jours)
+        moment = (datetime.utcnow() + timedelta(days=jours)).replace(second=0, microsecond=0)
         assert client.put(_url(match), headers=entetes(partie),
                           json={"visite_date": _iso(moment)}).status_code == 200
-    assert Match.query.get(match.id).visite_date.date() == (datetime.utcnow() + timedelta(days=4)).date()
+    # `moment` : la dernière date envoyée, celle du bailleur.
+    assert Match.query.get(match.id).visite_date == moment
 
 
 def test_visite_au_dela_d_un_an_refusee(client, match, bailleur, entetes):
@@ -74,6 +75,7 @@ def test_visite_au_dela_d_un_an_refusee(client, match, bailleur, entetes):
 
     assert reponse.status_code == 422
     assert reponse.get_json()["details"][0]["code"] == "date_trop_lointaine"
+    assert reponse.get_json()["error"] == "La visite doit être fixée dans les 365 prochains jours"
 
     dans_onze_mois = datetime.utcnow() + timedelta(days=330)
     assert client.put(_url(match), headers=entetes(bailleur),

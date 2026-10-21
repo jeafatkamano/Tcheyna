@@ -32,7 +32,7 @@ def _visite_a_venir(valeur):
         raise PydanticCustomError("date_passee", "La visite doit être fixée à une date future")
     if valeur > maintenant + VISITE_HORIZON_MAX:
         raise PydanticCustomError("date_trop_lointaine",
-                                  "La visite doit être fixée dans les 12 prochains mois")
+                                  "La visite doit être fixée dans les 365 prochains jours")
     return valeur
 
 
