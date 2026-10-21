@@ -302,8 +302,9 @@ def test_suppression_d_un_compte_locataire(client, fabrique, entetes, supabase):
     paiement = fabrique.paiement(locataire, statut="success", type_paiement="abonnement_passeport")
     db.session.add_all([Favorite(user_id=locataire.id, listing_id=en_cours.listing_id),
                         Notification(user_id=locataire.id, type="x", titre="t"),
-                        OTPCode(user_id=locataire.id, code_hash="a" * 64, phone=telephone,
-                                expires_at=datetime.utcnow())])
+                        # `code` en clair : ligne antérieure au lot 1.4.
+                        OTPCode(user_id=locataire.id, code="123456", code_hash="a" * 64,
+                                phone=telephone, expires_at=datetime.utcnow())])
     db.session.commit()
     en_tetes = entetes(locataire)
 
@@ -320,8 +321,12 @@ def test_suppression_d_un_compte_locataire(client, fabrique, entetes, supabase):
     assert _supprimes(supabase) == [f"{PRIVE}documents/paie.pdf", f"{PRIVE}documents/recto.png",
                                     f"{OBJETS}tcheyna-photos/avatars/profil-x.webp"]
     assert TenantPassport.query.filter_by(tenant_id=user.id).count() == 0
-    for modele in (Favorite, Notification, OTPCode):
+    for modele in (Favorite, Notification):
         assert modele.query.filter_by(user_id=user.id).count() == 0
+    # Les codes OTP restent (plafond global des SMS), sans numéro ni secret.
+    otps = OTPCode.query.filter_by(user_id=user.id).all()
+    assert len(otps) == 1
+    assert [(o.phone, o.code, o.code_hash, o.is_used) for o in otps] == [(None, None, None, True)]
     # Jetons révoqués, ancien identifiant inutilisable, e-mail et numéro libérés.
     assert client.get("/api/auth/me", headers=en_tetes).status_code == 401
     assert client.post("/api/auth/login", json={"email": email, "password": MOT_DE_PASSE}

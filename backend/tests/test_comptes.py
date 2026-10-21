@@ -418,6 +418,27 @@ def test_plafond_global_valeurs_par_defaut_et_surcharge(app, client, fabrique, e
     assert _demander(client, entetes, fabrique.locataire(niveau=0)).status_code == 200
 
 
+def test_plafond_global_resiste_a_la_suppression_des_comptes(app, client, fabrique, entetes,
+                                                             sms):
+    # Comptes jetables : un code chacun, puis suppression du compte. Leurs
+    # envois restent comptés, sans plus aucun numéro en base.
+    app.config["AT_API_KEY"] = "cle-at-de-test"
+    app.config["OTP_PLAFOND_GLOBAL_PAR_HEURE"] = 2
+    for _ in range(2):
+        jetable = fabrique.locataire(niveau=0)
+        assert _demander(client, entetes, jetable).status_code == 200
+        assert client.post("/api/users/me/suppression", headers=entetes(jetable),
+                           json={"mot_de_passe": MOT_DE_PASSE}).status_code == 200
+    assert OTPCode.query.count() == 2
+    assert OTPCode.query.filter(OTPCode.phone.isnot(None)).count() == 0
+
+    reponse = _demander(client, entetes, fabrique.locataire(niveau=0))
+
+    assert reponse.status_code == 429
+    assert reponse.get_json()["error"].startswith(SATURE)
+    assert len(sms) == 2
+
+
 def test_plafond_global_alertes_sans_numero(app, client, fabrique, entetes, caplog):
     app.config["OTP_PLAFOND_GLOBAL_PAR_HEURE"] = 5
     _envois_d_autres_comptes(fabrique, timedelta(minutes=20), timedelta(minutes=10))
