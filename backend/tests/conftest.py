@@ -389,12 +389,15 @@ def admin(fabrique):
 
 @pytest.fixture
 def bailleur(fabrique):
-    return fabrique.bailleur()
+    """Bailleur au téléphone vérifié : le profil minimal pour publier (D3).
+    Un bailleur non vérifié se crée par `fabrique.bailleur()`."""
+    return fabrique.bailleur(phone="+224621000901", phone_verified=True, trust_level=1)
 
 
 @pytest.fixture
 def agence(fabrique):
-    return fabrique.agence()
+    """Agence au téléphone vérifié, comme `bailleur`."""
+    return fabrique.agence(phone="+224621000902", phone_verified=True, trust_level=1)
 
 
 @pytest.fixture
