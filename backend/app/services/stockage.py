@@ -57,6 +57,12 @@ Image.init()  # enregistre tous les formats avant le filtre `formats=`
 FORMATS_LUS = ["JPEG", "PNG", "WEBP"]
 TYPES_CONTENU = {"webp": "image/webp", "jpg": "image/jpeg", "jpeg": "image/jpeg",
                  "png": "image/png", "pdf": "application/pdf"}
+# Format détecté par Pillow → extension sous laquelle la pièce est stockée.
+EXTENSION_DU_FORMAT = {"JPEG": "jpg", "MPO": "jpg", "PNG": "png", "WEBP": "webp"}
+# Les lecteurs PDF (Acrobat le premier) cherchent l'en-tête `%PDF-` dans le
+# premier Kio, pas seulement à l'octet 0 : voir `type_reel`.
+SIGNATURE_PDF = b"%PDF-"
+ZONE_SIGNATURE_PDF = 1024
 
 
 class ErreurStockage(Exception):
@@ -70,6 +76,14 @@ class ErreurStockage(Exception):
 
 class ImageIllisible(ErreurStockage):
     """Le contenu n'est pas une image exploitable (corrompu, piégé, trop grand)."""
+
+    statut = 422
+
+
+class FichierNonConforme(ErreurStockage):
+    """Le contenu d'une pièce ne correspond à aucun des types acceptés : page
+    HTML ou exécutable renommé en `.pdf`, texte renommé en `.jpg`, image
+    tronquée…"""
 
     statut = 422
 
@@ -104,6 +118,83 @@ def valider(fichier, dossier, extensions_permises):
         raise ErreurStockage(f"Fichier trop lourd ({poids // 1024 // 1024} Mo). "
                              f"Maximum : {limite // 1024 // 1024} Mo")
     return ext
+
+
+def type_reel(fichier, extensions_permises):
+    """Vérifie que le contenu d'une pièce est bien un PDF ou une image d'un
+    format accepté, et retourne l'extension correspondant à son type réel.
+
+    L'extension n'est qu'une déclaration du client : sans ce contrôle, une
+    page HTML ou un exécutable renommé en `.pdf` serait stocké puis ouvert
+    par l'administrateur qui examine le dossier. Le fichier n'est pas
+    modifié (les pièces privées ne sont pas ré-encodées) ; seul son type est
+    établi, et c'est lui qui donne l'extension et le `Content-Type` stockés.
+    Une photo PNG nommée `.jpg` est donc acceptée, et rangée en `.png`.
+
+    L'image est reconnue par sa signature en tête de fichier (Pillow), avant
+    le PDF : un JPEG dont un commentaire contiendrait `%PDF-` reste un JPEG,
+    vérifié comme tel.
+    """
+    # `valider` a déjà borné le poids : la lecture complète tient en mémoire.
+    contenu = fichier.stream.read()
+    fichier.stream.seek(0)
+
+    formats = [f for f in FORMATS_LUS if EXTENSION_DU_FORMAT[f] in extensions_permises
+               or (f == "JPEG" and "jpeg" in extensions_permises)]
+    if formats:
+        ext = _type_image(contenu, formats)
+        if ext:
+            return ext
+
+    # Un PDF commence normalement par `%PDF-` ; les lecteurs tolèrent quelques
+    # octets avant (générateurs de numériseurs, en-têtes parasites) tant que la
+    # signature tient dans le premier Kio. Refuser au-delà de l'octet 0 ne
+    # rendrait pas le contrôle plus sûr (un fichier piégé peut aussi commencer
+    # par `%PDF-`), mais rejetterait des pièces que tout lecteur ouvre.
+    if "pdf" in extensions_permises and SIGNATURE_PDF in contenu[:ZONE_SIGNATURE_PDF]:
+        return "pdf"
+
+    attendu = ("un PDF ou une image JPG, PNG ou WEBP" if "pdf" in extensions_permises
+               else "une image JPG, PNG ou WEBP")
+    raise FichierNonConforme("Le fichier ne correspond pas à son type : son contenu "
+                             f"n'est pas {attendu}.")
+
+
+def _type_image(contenu, formats):
+    """Extension de l'image si `contenu` en est une, intacte, d'un des
+    `formats` ; None si ce n'est pas une image. Lève `FichierNonConforme` ou
+    `ImageIllisible` pour une image reconnue mais inexploitable."""
+    try:
+        with warnings.catch_warnings():
+            # Mêmes gardes que `preparer_image` contre les bombes de décompression.
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            # `verify` contrôle la structure sans décoder (sommes CRC de chaque
+            # bloc PNG jusqu'à IEND) ; il rend l'image inutilisable ensuite.
+            with Image.open(io.BytesIO(contenu), formats=formats) as image:
+                format_reel = image.format
+                pixels = image.width * image.height
+                image.verify()
+            if format_reel == "WEBP" and pixels > PIXELS_MAX_SANS_DRAFT:
+                raise ImageIllisible("Image trop grande (16 mégapixels maximum "
+                                     "en WEBP). Envoyez-la en JPG ou en PDF.")
+            if format_reel in ("JPEG", "MPO", "WEBP"):
+                # `verify` ne fait rien pour un JPEG : seul le décodage révèle
+                # une image tronquée. Le JPEG est décodé au huitième (`draft`),
+                # ce qui ne coûte presque rien en mémoire.
+                with Image.open(io.BytesIO(contenu), formats=formats) as image:
+                    if format_reel != "WEBP":
+                        image.draft(None, (1, 1))
+                    image.load()
+    except ImageIllisible:
+        raise
+    except UnidentifiedImageError:
+        return None
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise ImageIllisible("Image trop grande (50 mégapixels maximum).") from exc
+    except (OSError, EOFError, ValueError, SyntaxError) as exc:
+        raise FichierNonConforme("Le fichier ne correspond pas à son type : l'image est "
+                                 "tronquée ou endommagée. Envoyez-la de nouveau.") from exc
+    return EXTENSION_DU_FORMAT[format_reel]
 
 
 # ─── Configuration ───────────────────────────────────────────
@@ -265,7 +356,9 @@ def televerser(fichier, dossier, prefixe, extensions_permises=None):
 
     `dossier` sépare les usages (photos, avatars, documents) ; `prefixe`
     rattache le fichier à son propriétaire, ce qui rend les suppressions et
-    les audits possibles. Photos et avatars sont ré-encodés (`preparer_image`).
+    les audits possibles. Photos et avatars sont ré-encodés (`preparer_image`) ;
+    les pièces privées sont stockées telles quelles, après contrôle de leur
+    type réel (`type_reel`).
     """
     if dossier in DOSSIERS_REENCODES:
         image = preparer_image(fichier, dossier)
@@ -273,6 +366,10 @@ def televerser(fichier, dossier, prefixe, extensions_permises=None):
 
     extensions_permises = extensions_permises or DOCUMENTS
     ext = valider(fichier, dossier, extensions_permises)
+    reel = type_reel(fichier, extensions_permises)
+    # `jpeg` et `jpg` désignent le même type : l'extension déclarée est gardée.
+    if not (reel == "jpg" and ext == "jpeg"):
+        ext = reel
 
     # Un nom aléatoire évite qu'une URL devinée expose le document d'un autre.
     nom = f"{secure_filename(prefixe)}-{uuid.uuid4().hex[:12]}.{ext}"
