@@ -6,6 +6,7 @@ Les cas R1, R1 bis et R7 de l'audit sont dans test_audit_regressions.py ;
 ce fichier couvre le reste du comportement livré par le lot.
 """
 import re
+import sys
 from datetime import datetime, timedelta
 
 import pytest
@@ -251,6 +252,46 @@ def test_otp_herite_en_clair_refuse(client, fabrique, entetes):
     assert "Demandez un nouveau code" in reponse.get_json()["error"]
 
 
+@pytest.mark.parametrize("is_used", [True, False])
+def test_otp_ligne_anonymisee_ne_valide_rien(client, fabrique, entetes, is_used):
+    # Ligne telle que la laisse `anonymiser_compte` (gardée pour le plafond
+    # global des SMS) : ni numéro, ni code, ni empreinte. Même marquée non
+    # utilisée par erreur, elle ne valide aucun code.
+    user = fabrique.locataire(niveau=0)
+    db.session.add(OTPCode(user_id=user.id, phone=None, code=None, code_hash=None,
+                           is_used=is_used, attempts=0,
+                           expires_at=datetime.utcnow() + timedelta(minutes=5)))
+    db.session.commit()
+
+    for code in ("123456", "000000"):
+        reponse = client.post("/api/auth/verify-otp", headers=entetes(user), json={"code": code})
+        assert reponse.status_code == 400
+        assert "Demandez un nouveau code" in reponse.get_json()["error"]
+    assert db.session.get(User, user.id).phone_verified is False
+
+
+def test_echec_sms_journalise_sans_numero_ni_code(app, client, fabrique, entetes, codes_otp,
+                                                 caplog, monkeypatch):
+    app.config["AT_API_KEY"] = "cle-at-de-test"
+    user = fabrique.locataire(niveau=0)
+
+    def echouer(message, destinataires, sender_id=None):
+        # Un fournisseur qui recopie destinataire et texte dans son erreur.
+        raise RuntimeError(f"Envoi refusé pour {destinataires[0]} : « {message} »")
+
+    monkeypatch.setattr(sys.modules["africastalking"].SMS, "send", echouer)
+
+    reponse = client.post("/api/auth/send-otp", headers=entetes(user), json={})
+
+    assert reponse.status_code == 200
+    assert reponse.get_json()["message"] == "Code généré (SMS indisponible)"
+    echecs = [r.getMessage() for r in caplog.records if "Échec envoi OTP" in r.getMessage()]
+    assert len(echecs) == 1
+    assert echecs[0].startswith(f"Échec envoi OTP à {user.phone[:4]}…{user.phone[-2:]} : ")
+    assert user.phone not in echecs[0] and user.phone[1:] not in echecs[0]
+    assert codes_otp[0] not in echecs[0] and "******" in echecs[0]
+
+
 def test_otp_antispam_60_secondes_en_json(client, fabrique, entetes):
     user = fabrique.locataire(niveau=0)
     client.post("/api/auth/send-otp", headers=entetes(user), json={})
@@ -316,6 +357,162 @@ def test_quota_otp_par_compte_quel_que_soit_le_numero(app, client, fabrique, ent
     assert codes == [200] * 5 + [429] * 7, "un SMS par minute en changeant de numéro"
     assert len(sms) == 5
     assert reponse.get_json()["error"].startswith("5 codes maximum par jour pour ce compte.")
+
+
+# ─── Plafond global des envois (lot 1.21, SMS pumping) ────────
+
+SATURE = "Le service d'envoi de codes est momentanément saturé."
+
+
+def _envois_d_autres_comptes(fabrique, *anciennetes):
+    """Un code envoyé par compte, chacun à son propre numéro, il y a
+    `anciennete` : aucun quota par compte ni par numéro n'est en jeu."""
+    maintenant = datetime.utcnow()
+    for anciennete in anciennetes:
+        autre = fabrique.locataire(niveau=0)
+        envoi = maintenant - anciennete
+        db.session.add(OTPCode(user_id=autre.id, phone=autre.phone, code_hash="x" * 64,
+                               is_used=True, created_at=envoi,
+                               expires_at=envoi + timedelta(minutes=10)))
+    db.session.commit()
+
+
+def _demander(client, entetes, user):
+    return client.post("/api/auth/send-otp", headers=entetes(user), json={})
+
+
+def test_plafond_global_horaire(app, client, fabrique, entetes, sms):
+    app.config["AT_API_KEY"] = "cle-at-de-test"
+    app.config["OTP_PLAFOND_GLOBAL_PAR_HEURE"] = 3
+    _envois_d_autres_comptes(fabrique, *(timedelta(minutes=m) for m in (50, 40, 30)))
+    user = fabrique.locataire(niveau=0)
+
+    reponse = _demander(client, entetes, user)
+
+    assert reponse.status_code == 429
+    corps = reponse.get_json()
+    assert corps["error"].startswith(SATURE)
+    assert "compte" not in corps["error"] and "numéro" not in corps["error"]
+    # Le plus ancien des trois envois sort de l'heure glissante dans 10 minutes.
+    assert 590 < int(reponse.headers["Retry-After"]) <= 600
+    assert corps["reessayer_dans"] == int(reponse.headers["Retry-After"])
+    assert sms == []
+    assert OTPCode.query.filter_by(user_id=user.id).count() == 0
+
+
+def test_plafond_global_24_heures(app, client, fabrique, entetes, sms):
+    app.config["AT_API_KEY"] = "cle-at-de-test"
+    app.config["OTP_PLAFOND_GLOBAL_PAR_JOUR"] = 3
+    _envois_d_autres_comptes(fabrique, *(timedelta(hours=h) for h in (23, 22, 21)))
+
+    reponse = _demander(client, entetes, fabrique.locataire(niveau=0))
+
+    assert reponse.status_code == 429
+    assert reponse.get_json()["error"].startswith(SATURE)
+    assert 3500 < int(reponse.headers["Retry-After"]) <= 3600
+    assert sms == []
+
+
+def test_plafond_global_attente_la_plus_longue(app, client, fabrique, entetes):
+    # Les deux fenêtres sont pleines : l'heure se libère dans 30 minutes, la
+    # journée dans une heure. Revenir dans 30 minutes serait refusé.
+    app.config["OTP_PLAFOND_GLOBAL_PAR_HEURE"] = 2
+    app.config["OTP_PLAFOND_GLOBAL_PAR_JOUR"] = 3
+    _envois_d_autres_comptes(fabrique, timedelta(hours=23), timedelta(minutes=30),
+                             timedelta(minutes=20))
+
+    reponse = _demander(client, entetes, fabrique.locataire(niveau=0))
+
+    assert reponse.status_code == 429
+    assert 3500 < int(reponse.headers["Retry-After"]) <= 3600
+
+
+def test_plafond_global_compte_tous_les_comptes(app, client, fabrique, entetes, sms):
+    app.config["AT_API_KEY"] = "cle-at-de-test"
+    app.config["OTP_PLAFOND_GLOBAL_PAR_HEURE"] = 3
+    # Deux envois dans l'heure ; ceux d'il y a deux heures en sont sortis.
+    _envois_d_autres_comptes(fabrique, timedelta(minutes=30), timedelta(minutes=20),
+                             *(timedelta(hours=2) for _ in range(3)))
+    premier = fabrique.locataire(niveau=0)
+    second = fabrique.locataire(niveau=0)
+
+    assert _demander(client, entetes, premier).status_code == 200
+    assert len(sms) == 1 and sms[0]["destinataires"] == [premier.phone]
+    # Le code du premier compte remplit le plafond : un autre compte, à un
+    # autre numéro, est refusé.
+    reponse = _demander(client, entetes, second)
+    assert reponse.status_code == 429
+    assert reponse.get_json()["error"].startswith(SATURE)
+    assert len(sms) == 1
+
+
+def test_plafond_global_valeurs_par_defaut_et_surcharge(app, client, fabrique, entetes,
+                                                        monkeypatch):
+    # Sans réglage dans `app.config`, la constante du module s'applique.
+    assert "OTP_PLAFOND_GLOBAL_PAR_HEURE" not in app.config
+    monkeypatch.setattr(auth, "OTP_PLAFOND_GLOBAL_PAR_HEURE", 1)
+    _envois_d_autres_comptes(fabrique, timedelta(minutes=5))
+    assert _demander(client, entetes, fabrique.locataire(niveau=0)).status_code == 429
+
+    # Un réglage dans `app.config` l'emporte sur la constante.
+    app.config["OTP_PLAFOND_GLOBAL_PAR_HEURE"] = 2
+    assert _demander(client, entetes, fabrique.locataire(niveau=0)).status_code == 200
+
+
+def test_plafond_global_resiste_a_la_suppression_des_comptes(app, client, fabrique, entetes,
+                                                             sms):
+    # Comptes jetables : un code chacun, puis suppression du compte. Leurs
+    # envois restent comptés, sans plus aucun numéro en base.
+    app.config["AT_API_KEY"] = "cle-at-de-test"
+    app.config["OTP_PLAFOND_GLOBAL_PAR_HEURE"] = 2
+    for _ in range(2):
+        jetable = fabrique.locataire(niveau=0)
+        assert _demander(client, entetes, jetable).status_code == 200
+        assert client.post("/api/users/me/suppression", headers=entetes(jetable),
+                           json={"mot_de_passe": MOT_DE_PASSE}).status_code == 200
+    assert OTPCode.query.count() == 2
+    assert OTPCode.query.filter(OTPCode.phone.isnot(None)).count() == 0
+
+    reponse = _demander(client, entetes, fabrique.locataire(niveau=0))
+
+    assert reponse.status_code == 429
+    assert reponse.get_json()["error"].startswith(SATURE)
+    assert len(sms) == 2
+
+
+def test_plafond_global_alertes_sans_numero(app, client, fabrique, entetes, caplog):
+    app.config["OTP_PLAFOND_GLOBAL_PAR_HEURE"] = 5
+    _envois_d_autres_comptes(fabrique, timedelta(minutes=20), timedelta(minutes=10))
+    users = [fabrique.locataire(niveau=0) for _ in range(4)]
+
+    def alertes():
+        return [(r.levelname, r.getMessage()) for r in caplog.records
+                if "Plafond global" in r.getMessage()]
+
+    # 3/5 : sous le seuil de 80 %, aucun log.
+    assert _demander(client, entetes, users[0]).status_code == 200
+    assert alertes() == []
+
+    # 4/5 : avertissement.
+    assert _demander(client, entetes, users[1]).status_code == 200
+    assert alertes() == [("WARNING", "Plafond global des SMS d'OTP bientôt atteint : "
+                                     "4 codes envoyés sur une heure (plafond 5).")]
+
+    # 5/5 : erreur, les demandes suivantes seront refusées.
+    assert _demander(client, entetes, users[2]).status_code == 200
+    niveau, message = alertes()[-1]
+    assert niveau == "ERROR"
+    assert message.startswith("Plafond global des SMS d'OTP atteint : 5 codes envoyés "
+                              "sur une heure (plafond 5).")
+
+    # Les refus ne journalisent rien : un attaquant les répète à volonté.
+    assert _demander(client, entetes, users[3]).status_code == 429
+    assert len(alertes()) == 2
+
+    # Aucun numéro, même partiel, dans les logs d'alerte.
+    for _, message in alertes():
+        for user in users:
+            assert user.phone not in message and user.phone[-6:] not in message
 
 
 def test_numero_deja_pris_apres_les_quotas(client, fabrique, entetes):

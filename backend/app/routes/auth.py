@@ -26,7 +26,9 @@ from app.routes import current_user_required
 from app.schemas import erreur_champ, valider_corps
 from app.schemas.auth import (
     ChangementMotDePasse,
+    ConfirmationReinitialisation,
     Connexion,
+    DemandeReinitialisation,
     EnvoiOTP,
     Inscription,
     VerificationOTP,
@@ -48,6 +50,17 @@ OTP_MAX_PAR_JOUR = 5
 # enverrait un SMS par minute (~1 440 par jour). Même valeur que par numéro,
 # à ajuster selon l'usage réel (numéro mal saisi puis corrigé, etc.).
 OTP_MAX_PAR_COMPTE_PAR_JOUR = 5
+# Plafond global : codes envoyés tous comptes et numéros confondus, sur une
+# heure et sur 24 h glissantes. Les quotas ci-dessus ne bornent pas une
+# attaque menée avec des comptes jetables vers des numéros surtaxés (« SMS
+# pumping ») : ce plafond borne la perte sur le solde Africa's Talking.
+# Compté en base, comme les quotas. Surchargeable par `app.config` sous le
+# même nom ; valeurs justifiées dans la PR du lot 1.21.
+OTP_PLAFOND_GLOBAL_PAR_HEURE = 100
+OTP_PLAFOND_GLOBAL_PAR_JOUR = 500
+# Part du plafond à partir de laquelle chaque envoi accepté laisse un
+# avertissement dans les logs.
+OTP_PLAFOND_GLOBAL_SEUIL_ALERTE = 0.8
 OTP_ANTISPAM_SECONDES = 60
 
 # Limites de débit (R7). Connexion : seuls les échecs comptent, par couple
@@ -115,9 +128,21 @@ def _cle_connexion():
     return f"{get_remote_address()}|{email}"
 
 
-def send_sms_otp(phone, code):
+def masquer_numero(phone):
+    """« +224…52 » : quatre premiers caractères (l'indicatif, pour repérer
+    une destination anormale) et deux derniers chiffres. Le numéro complet,
+    donnée personnelle, n'a rien à faire dans les logs."""
+    phone = phone or ""
+    if len(phone) <= 6:
+        return "…"
+    return f"{phone[:4]}…{phone[-2:]}"
+
+
+def send_sms_otp(phone, code, texte=None):
     """Envoie l'OTP via Africa's Talking. Retourne False si l'envoi échoue —
-    en développement, le code reste consultable dans la réponse de l'API."""
+    en développement, le code reste consultable dans la réponse de l'API.
+    `texte` remplace le message de vérification du téléphone (code de
+    réinitialisation du mot de passe, lot 3.8)."""
     api_key = current_app.config.get("AT_API_KEY")
     if not api_key:
         current_app.logger.warning("AT_API_KEY absent — SMS non envoyé (mode dev)")
@@ -127,13 +152,20 @@ def send_sms_otp(phone, code):
 
         africastalking.initialize(current_app.config["AT_USERNAME"], api_key)
         africastalking.SMS.send(
-            f"[Tcheyna] Votre code de verification : {code}. Valable {OTP_TTL_MINUTES} minutes.",
+            texte or f"[Tcheyna] Votre code de verification : {code}. Valable {OTP_TTL_MINUTES} minutes.",
             [phone],
             sender_id=current_app.config["AT_SENDER_ID"],
         )
         return True
     except Exception as exc:  # noqa: BLE001 — un échec SMS ne doit pas bloquer l'inscription
-        current_app.logger.error("Échec envoi OTP à %s : %s", phone, exc)
+        # Le message d'erreur du fournisseur peut reprendre le destinataire,
+        # voire le texte du SMS : numéro et code y sont masqués aussi.
+        masque = masquer_numero(phone)
+        detail = str(exc)
+        for secret, remplacement in ((phone, masque), (code, "******")):
+            if secret:
+                detail = detail.replace(secret, remplacement)
+        current_app.logger.error("Échec envoi OTP à %s : %s", masque, detail)
         return False
 
 
@@ -195,16 +227,95 @@ def register(corps):
     }), 201
 
 
+# ─── Connexion par téléphone (lot 3.8) ────────────────────────
+#
+# Le champ `email` de /auth/login reçoit l'identifiant saisi : une adresse
+# e-mail (elle contient « @ ») ou un numéro de téléphone. Un seul champ et
+# non un second : le web actuel continue d'envoyer `email`, et les limites de
+# connexion, celles du lot 1.12 comprises, lisent ce champ.
+#
+# Seul un numéro VÉRIFIÉ ouvre une session : un numéro saisi à l'inscription
+# n'est qu'une déclaration, il peut être celui d'un tiers. Un numéro non
+# vérifié se comporte comme un compte inconnu : même 401, même hachage
+# factice, mêmes limites. Le numéro d'un administrateur aussi : il se
+# connecte par e-mail seulement (voir « Mot de passe oublié par SMS »).
+#
+# `users.phone` est unique sur toute la table : un numéro désigne au plus un
+# compte, donc au plus un compte vérifié. Le lot 1.14, s'il lève cette
+# unicité, devra la garder parmi les numéros vérifiés (index unique partiel),
+# sans quoi un numéro pourrait ouvrir deux comptes.
+
+# Par numéro, toutes IP confondues, sur les seuls échecs : même valeur que la
+# limite par e-mail du lot 1.12.
+LIMITE_CONNEXION_PAR_TELEPHONE = "30 per hour"
+
+
+def _telephone_valide(brut):
+    """Numéro normalisé (`normaliser_phone`), ou None si la saisie n'a pas la
+    forme d'un numéro."""
+    phone = normaliser_phone(brut) if isinstance(brut, str) else None
+    return phone if phone and PHONE_RE.match(phone) else None
+
+
+def _telephone_de_connexion():
+    """Numéro normalisé saisi dans le champ `email` de la connexion, relu du
+    corps brut (le schéma n'est pas encore passé). None pour un e-mail, un
+    corps illisible ou une saisie qui n'a pas la forme d'un numéro : ces
+    connexions ne relèvent que des limites par e-mail."""
+    corps = request.get_json(silent=True)
+    brut = corps.get("email") if isinstance(corps, dict) else None
+    if not isinstance(brut, str) or "@" in brut:
+        return None
+    return _telephone_valide(brut)
+
+
+def _pas_une_connexion_par_telephone():
+    return _telephone_de_connexion() is None
+
+
+def _cle_connexion_telephone_ip():
+    """IP + numéro normalisé : « 622 52 92 52 » et « +224622529252 » partagent
+    la même clé, alors que la limite par e-mail compte la saisie brute."""
+    return f"telephone:{_telephone_de_connexion()}|{get_remote_address()}"
+
+
+def _cle_connexion_telephone():
+    """Numéro normalisé, toutes IP confondues."""
+    return f"telephone:{_telephone_de_connexion()}"
+
+
+def _compte_a_connecter(identifiant):
+    """Compte désigné par l'identifiant de connexion (e-mail, sinon numéro
+    de téléphone vérifié), ou None."""
+    if "@" in identifiant:
+        return User.query.filter_by(email=identifiant.lower()).first()
+    phone = _telephone_valide(identifiant)
+    if phone is None:
+        return None
+    # Un administrateur se connecte par e-mail seulement (voir « Mot de passe
+    # oublié par SMS ») : son numéro vaut ici un numéro inconnu.
+    return (User.query.filter_by(phone=phone, phone_verified=True)
+            .filter(User.role != "admin").first())
+
+
 # ─── POST /api/auth/login ─────────────────────────────────────
 
 @auth_bp.route("/login", methods=["POST"])
+# Connexion par téléphone (lot 3.8) : les mêmes limites que l'e-mail, sur le
+# numéro normalisé (voir `_telephone_de_connexion`).
+@limiter.limit(LIMITE_CONNEXION, key_func=_cle_connexion_telephone_ip,
+               exempt_when=_pas_une_connexion_par_telephone,
+               deduct_when=lambda reponse: reponse.status_code in (401, 403))
+@limiter.limit(LIMITE_CONNEXION_PAR_TELEPHONE, key_func=_cle_connexion_telephone,
+               exempt_when=_pas_une_connexion_par_telephone,
+               deduct_when=lambda reponse: reponse.status_code in (401, 403))
 # Le 429 tombe avant la vérification du mot de passe : une fois la limite
 # atteinte, même le bon mot de passe est refusé jusqu'à la fin de la fenêtre.
 @limiter.limit(LIMITE_CONNEXION, key_func=_cle_connexion,
                deduct_when=lambda reponse: reponse.status_code in (401, 403))
 @valider_corps(Connexion)
 def login(corps):
-    user = User.query.filter_by(email=corps.email.lower()).first()
+    user = _compte_a_connecter(corps.email)
     if not user:
         check_password_hash(HASH_FACTICE, corps.password)  # temps égalisé, résultat ignoré
         return jsonify({"error": "Identifiants incorrects"}), 401
@@ -276,6 +387,72 @@ def change_password(current_user, corps):
 
 # ─── POST /api/auth/send-otp ─────────────────────────────────
 
+def _plafond_global(maintenant):
+    """Compte les codes envoyés, tous comptes et numéros confondus, dans
+    chaque fenêtre du plafond global. Retourne `(refus, fenetres)` : `refus`
+    est le 429 à renvoyer si une fenêtre est pleine, sinon None ; `fenetres`
+    sert ensuite à `_alerter_plafond_global`.
+
+    Concurrence : le verrou de `send_otp` porte sur la ligne du compte et
+    n'ordonne que les envois d'un même compte. Deux comptes servis au même
+    instant par deux workers peuvent lire le même total, juste sous le
+    plafond, et envoyer tous les deux. Le total d'une fenêtre reste donc
+    inférieur à plafond + (demandes traitées simultanément - 1) : avec les
+    2 workers gunicorn synchrones de render.yaml, un code de trop au plus par
+    instance, le temps entre ce comptage et le commit n'étant que de quelques
+    millisecondes. Un plafond exact demanderait un verrou global
+    (`pg_advisory_xact_lock`) qui sérialiserait tous les envois du site : ce
+    léger dépassement, borné, est préféré.
+    """
+    fenetres = []
+    attentes = []
+    for libelle, duree, nom, defaut in (
+        ("sur une heure", timedelta(hours=1), "OTP_PLAFOND_GLOBAL_PAR_HEURE",
+         OTP_PLAFOND_GLOBAL_PAR_HEURE),
+        ("sur 24 h", timedelta(hours=24), "OTP_PLAFOND_GLOBAL_PAR_JOUR",
+         OTP_PLAFOND_GLOBAL_PAR_JOUR),
+    ):
+        plafond = int(current_app.config.get(nom, defaut))
+        recents = OTPCode.query.filter(OTPCode.created_at >= maintenant - duree)
+        envois = recents.count()
+        fenetres.append((libelle, plafond, envois))
+        if envois >= plafond:
+            # Comme pour les quotas, une place se libère quand l'envoi de
+            # rang `envois - plafond` (du plus ancien) sort de la fenêtre.
+            libere = (recents.order_by(OTPCode.created_at.asc())
+                      .offset(envois - plafond).first()) if plafond > 0 else None
+            fin = libere.created_at + duree if libere else maintenant + duree
+            attentes.append((fin - maintenant).total_seconds())
+    if attentes:
+        # Toutes les fenêtres pleines doivent se libérer : la plus longue
+        # attente fait foi. Le message ne dit rien du mécanisme.
+        attente = max(attentes)
+        return reponse_trop_de_requetes(
+            "Le service d'envoi de codes est momentanément saturé. "
+            f"Réessayez dans {formater_delai(attente)}.", attente), fenetres
+    return None, fenetres
+
+
+def _alerter_plafond_global(fenetres):
+    """Journalise l'approche puis l'atteinte du plafond global, une fois un
+    envoi enregistré (d'où `envois + 1`). Un log par envoi accepté au-delà du
+    seuil : le volume reste borné par le plafond lui-même, et aucun
+    franchissement n'est manqué sous concurrence. Rien sur les refus, qu'un
+    attaquant peut répéter sans limite. Aucun numéro, seulement des totaux."""
+    for libelle, plafond, envois in fenetres:
+        total = envois + 1
+        if total >= plafond:
+            current_app.logger.error(
+                "Plafond global des SMS d'OTP atteint : %d codes envoyés %s (plafond %d). "
+                "Les demandes suivantes sont refusées (429) jusqu'à ce que la fenêtre "
+                "se libère. Vérifiez les destinations et le solde dans le tableau de "
+                "bord Africa's Talking.", total, libelle, plafond)
+        elif total >= plafond * OTP_PLAFOND_GLOBAL_SEUIL_ALERTE:
+            current_app.logger.warning(
+                "Plafond global des SMS d'OTP bientôt atteint : %d codes envoyés %s "
+                "(plafond %d).", total, libelle, plafond)
+
+
 @auth_bp.route("/send-otp", methods=["POST"])
 @current_user_required
 @valider_corps(EnvoiOTP)
@@ -332,6 +509,12 @@ def send_otp(current_user, corps):
     if refus:
         return refus
 
+    # Plafond global, après les quotas : un refus propre au compte ou au
+    # numéro garde son message précis. Avant toute écriture et tout envoi.
+    refus, fenetres = _plafond_global(maintenant)
+    if refus:
+        return refus
+
     # Après l'anti-spam et les quotas : tester si un numéro est inscrit
     # (énumération) est ainsi borné par le quota du compte.
     if phone != current_user.phone:
@@ -355,6 +538,7 @@ def send_otp(current_user, corps):
         expires_at=maintenant + timedelta(minutes=OTP_TTL_MINUTES),
     ))
     db.session.commit()
+    _alerter_plafond_global(fenetres)
 
     envoye = send_sms_otp(current_user.phone, code)
 
@@ -466,3 +650,222 @@ def niveaux():
     return jsonify({
         "niveaux": [{"niveau": n, **info} for n, info in sorted(TRUST_LEVELS.items())]
     }), 200
+
+
+# ─── Mot de passe oublié par SMS (lot 3.8) ───────────────────
+#
+# Deux étapes : POST /mot-de-passe-oublie {phone} envoie un code par SMS au
+# numéro vérifié d'un compte actif ; POST /mot-de-passe-oublie/confirmer
+# {phone, code, nouveau_mot_de_passe} le vérifie et remplace le mot de passe.
+# Pas de variante par e-mail : le projet n'a aucun service d'envoi d'e-mails.
+#
+# Les codes de réinitialisation sont des lignes `otp_codes` comme les codes
+# de vérification du téléphone : même durée, mêmes essais, mêmes quotas
+# (60 s entre deux codes, 5 par compte et 5 par numéro sur 24 h), comptés
+# sur les deux usages à la fois — les alterner ne double pas les SMS — et
+# soumis au plafond global des SMS (lot 1.21), qui les compte et peut les
+# refuser comme les autres. La table n'a pas de colonne
+# d'usage : les deux usages sont séparés par le domaine du HMAC
+# (`hacher_otp_reinitialisation`). Un code de vérification du téléphone ne
+# réinitialise jamais un mot de passe, ni l'inverse : son empreinte, calculée
+# dans l'autre domaine, ne correspond pas.
+#
+# Aucune réponse ne dit si le numéro est inscrit : la demande répond toujours
+# la même chose, et la confirmation refuse tout échec par le même 400.
+#
+# Les comptes administrateurs sont exclus de la récupération par SMS comme de
+# la connexion par téléphone (choix de sécurité par défaut, à confirmer) : un
+# détournement de carte SIM (« SIM swap ») ne doit pas livrer le back-office.
+# Ils se connectent par e-mail ; pour eux, le numéro se comporte comme un
+# numéro inconnu.
+
+
+def _recuperable_par_sms(user):
+    """Compte auquel le téléphone vérifié donne accès : actif, non admin."""
+    return user is not None and user.is_active and user.role != "admin"
+
+# Toutes les réponses comptent : elles sont identiques, compte ou non.
+LIMITE_OUBLI_PAR_IP = "10 per hour"
+LIMITE_OUBLI_PAR_TELEPHONE = "5 per hour"
+# Confirmation, sur les seuls échecs. Par numéro, en plus des 5 essais par
+# code ; par IP, contre qui devine les codes de nombreux numéros à la fois.
+LIMITE_CONFIRMATION_PAR_TELEPHONE = "10 per hour"
+LIMITE_CONFIRMATION_PAR_IP = "20 per hour"
+
+# Préfixe du message HMAC des codes de réinitialisation. Celui d'un code de
+# vérification est « <id>:<code> », l'id étant un UUID : aucun des deux
+# messages ne peut être l'autre.
+DOMAINE_OTP_REINITIALISATION = "reinitialisation"
+
+MESSAGE_OUBLI = ("Si ce numéro correspond à un compte dont le téléphone est vérifié, "
+                 "un code vient d'être envoyé par SMS.")
+REFUS_CONFIRMATION = "Code incorrect ou expiré. Vérifiez le code reçu ou demandez-en un nouveau."
+
+
+def hacher_otp_reinitialisation(otp_id, code):
+    """Empreinte d'un code de réinitialisation du mot de passe : `hacher_otp`
+    dans un domaine à part (même clé, message préfixé)."""
+    message = f"{DOMAINE_OTP_REINITIALISATION}:{otp_id}:{code}"
+    return hmac.new(_cle_otp(), message.encode(), hashlib.sha256).hexdigest()
+
+
+def _cle_telephone_oubli():
+    """Numéro normalisé du corps brut (le schéma n'est pas encore passé)."""
+    corps = request.get_json(silent=True)
+    brut = corps.get("phone") if isinstance(corps, dict) else None
+    return f"telephone:{_telephone_valide(brut) or ''}"
+
+
+def _telephone_ou_422(brut):
+    phone = _telephone_valide(brut)
+    if phone is None:
+        raise erreur_champ("phone", "telephone_invalide", "Numéro de téléphone invalide", brut)
+    return phone
+
+
+def _envoi_otp_refuse(user, phone, maintenant):
+    """Raison du refus d'un nouvel envoi de code au compte, ou None. Mêmes
+    règles que `send_otp` (anti-spam de 60 s, quotas par compte et par
+    numéro sur 24 h), comptées sur toutes les lignes `otp_codes`, quel que
+    soit leur usage."""
+    dernier = (OTPCode.query.filter_by(user_id=user.id)
+               .order_by(OTPCode.created_at.desc()).first())
+    if dernier and (maintenant - dernier.created_at) < timedelta(seconds=OTP_ANTISPAM_SECONDES):
+        return "anti-spam"
+    depuis = maintenant - timedelta(hours=24)
+    if (OTPCode.query.filter(OTPCode.user_id == user.id, OTPCode.created_at >= depuis).count()
+            >= OTP_MAX_PAR_COMPTE_PAR_JOUR):
+        return "quota du compte"
+    if (OTPCode.query.filter(OTPCode.phone == phone, OTPCode.created_at >= depuis).count()
+            >= OTP_MAX_PAR_JOUR):
+        return "quota du numéro"
+    return None
+
+
+@auth_bp.route("/mot-de-passe-oublie", methods=["POST"])
+@limiter.limit(LIMITE_OUBLI_PAR_IP)
+@limiter.limit(LIMITE_OUBLI_PAR_TELEPHONE, key_func=_cle_telephone_oubli)
+@valider_corps(DemandeReinitialisation)
+def mot_de_passe_oublie(corps):
+    phone = _telephone_ou_422(corps.phone)
+    # Même corps et même statut dans tous les cas, envoi ou non.
+    reponse = jsonify({"message": MESSAGE_OUBLI, "expire_dans": OTP_TTL_MINUTES * 60})
+
+    # Verrou sur la ligne du compte, comme `send_otp` : deux demandes
+    # simultanées sont traitées l'une après l'autre, les quotas restent exacts.
+    user = (User.query.filter_by(phone=phone, phone_verified=True)
+            .with_for_update().populate_existing().first())
+    if not _recuperable_par_sms(user):
+        return reponse, 200
+
+    maintenant = datetime.utcnow()
+    # Quota ou plafond global atteint : rien n'est envoyé, sans le dire (un
+    # 429 révélerait que le numéro est inscrit). Les limites par IP et par
+    # numéro ci-dessus, identiques pour tous les numéros, répondent, elles,
+    # en 429. Le plafond global vient après les quotas, comme dans `send_otp`.
+    refus = _envoi_otp_refuse(user, phone, maintenant)
+    fenetres = []
+    if not refus:
+        plafond_atteint, fenetres = _plafond_global(maintenant)
+        refus = "plafond global" if plafond_atteint else None
+    if refus:
+        current_app.logger.info("Mot de passe oublié : code non envoyé (%s)", refus)
+        return reponse, 200
+
+    # Un seul code en attente par compte : les précédents, de tout usage,
+    # ne valent plus.
+    OTPCode.query.filter_by(user_id=user.id, is_used=False).update({"is_used": True})
+    code = generate_otp()
+    otp_id = generate_uuid()
+    db.session.add(OTPCode(
+        id=otp_id,
+        user_id=user.id,
+        code_hash=hacher_otp_reinitialisation(otp_id, code),
+        phone=phone,
+        attempts=0,
+        created_at=maintenant,
+        expires_at=maintenant + timedelta(minutes=OTP_TTL_MINUTES),
+    ))
+    db.session.commit()
+    _alerter_plafond_global(fenetres)
+
+    # Le SMS part une fois la réponse transmise : la durée de l'appel à
+    # Africa's Talking ne trahit pas, au chronomètre, qu'un compte existe.
+    # Jamais de `debug_code` ici : en mode debug, il livrerait n'importe quel
+    # compte à qui connaît son numéro.
+    application = current_app._get_current_object()
+    texte = (f"[Tcheyna] Code de reinitialisation de votre mot de passe : {code}. "
+             f"Valable {OTP_TTL_MINUTES} minutes. Ne le communiquez a personne.")
+
+    def envoyer():
+        with application.app_context():
+            send_sms_otp(phone, code, texte=texte)
+
+    reponse.call_on_close(envoyer)
+    return reponse, 200
+
+
+def _echec_confirmation(reponse):
+    return reponse.status_code == 400
+
+
+@auth_bp.route("/mot-de-passe-oublie/confirmer", methods=["POST"])
+@limiter.limit(LIMITE_CONFIRMATION_PAR_IP, deduct_when=_echec_confirmation)
+@limiter.limit(LIMITE_CONFIRMATION_PAR_TELEPHONE, key_func=_cle_telephone_oubli,
+               deduct_when=_echec_confirmation)
+@valider_corps(ConfirmationReinitialisation)
+def confirmer_mot_de_passe_oublie(corps):
+    phone = _telephone_ou_422(corps.phone)
+    # Un seul refus pour tous les échecs (numéro inconnu ou non vérifié,
+    # compte désactivé ou administrateur, aucun code, code expiré, déjà utilisé, incorrect,
+    # essais épuisés) : un message plus précis dirait qu'un code est en
+    # attente, donc que le numéro est inscrit.
+    refus = jsonify({"error": REFUS_CONFIRMATION, "details": []}), 400
+
+    user = User.query.filter_by(phone=phone, phone_verified=True).first()
+    if not _recuperable_par_sms(user):
+        return refus
+
+    maintenant = datetime.utcnow()
+    # Le code doit avoir été envoyé au numéro actuel du compte.
+    otp = (OTPCode.query.filter_by(user_id=user.id, phone=phone, is_used=False)
+           .order_by(OTPCode.created_at.desc()).first())
+    if not otp or not otp.code_hash or otp.expires_at <= maintenant:
+        return refus
+
+    # Essai décompté avant la comparaison, par un UPDATE conditionnel, comme
+    # dans `verify_otp` : deux requêtes simultanées ne dépassent pas
+    # OTP_MAX_ATTEMPTS comparaisons.
+    reserve = (OTPCode.query
+               .filter(OTPCode.id == otp.id, OTPCode.attempts < OTP_MAX_ATTEMPTS,
+                       OTPCode.is_used.is_(False), OTPCode.expires_at > maintenant)
+               .update({OTPCode.attempts: OTPCode.attempts + 1}, synchronize_session=False))
+    if not reserve:
+        # Essais épuisés : le code est grillé.
+        OTPCode.query.filter(OTPCode.id == otp.id, OTPCode.attempts >= OTP_MAX_ATTEMPTS).update(
+            {OTPCode.is_used: True}, synchronize_session=False)
+        db.session.commit()
+        return refus
+    db.session.commit()
+
+    if not hmac.compare_digest(otp.code_hash, hacher_otp_reinitialisation(otp.id, corps.code)):
+        return refus
+
+    # Consommation atomique : un même code ne sert qu'une fois, même reçu
+    # deux fois en parallèle.
+    consomme = (OTPCode.query.filter(OTPCode.id == otp.id, OTPCode.is_used.is_(False))
+                .update({OTPCode.is_used: True}, synchronize_session=False))
+    if consomme != 1:
+        db.session.rollback()
+        return refus
+
+    user.password_hash = generate_password_hash(corps.nouveau_mot_de_passe)
+    # Le mot de passe a pu être oublié… ou changé par un tiers : toutes les
+    # sessions ouvertes, sur tous les appareils, sont fermées.
+    user.revoquer_jetons()
+    # Aucun autre code du compte ne reste utilisable.
+    OTPCode.query.filter_by(user_id=user.id, is_used=False).update(
+        {"is_used": True}, synchronize_session=False)
+    db.session.commit()
+    return jsonify({"message": "Mot de passe réinitialisé. Connectez-vous avec le nouveau "
+                               "mot de passe."}), 200
