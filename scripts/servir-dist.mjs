@@ -32,6 +32,13 @@ const port = Number(option("port", "4173"));
 const dist = path.resolve(option("dist", path.join(RACINE, "frontend", "dist")));
 const apiLocale = option("api", null);
 
+try {
+  statSync(path.join(dist, "index.html"));
+} catch {
+  console.error(`${path.join(dist, "index.html")} introuvable : lancer d'abord npm run build (ou passer --dist).`);
+  process.exit(1);
+}
+
 const { entetes, apiUrl } = lireRenderYaml(option("render", undefined));
 const apiProd = new URL(apiUrl).origin;
 const regles = entetes.map((e) => ({
@@ -63,7 +70,8 @@ const TYPES = {
 
 function fichier(chemin) {
   const cible = path.join(dist, path.normalize(chemin).replace(/^([/\\])+/, ""));
-  if (!cible.startsWith(dist)) return null;
+  // Séparateur compris : /dist-x n'est pas sous /dist.
+  if (cible !== dist && !cible.startsWith(dist + path.sep)) return null;
   try {
     return statSync(cible).isFile() ? cible : null;
   } catch {
@@ -72,7 +80,14 @@ function fichier(chemin) {
 }
 
 createServer((req, res) => {
-  const chemin = decodeURIComponent(new URL(req.url, "http://local").pathname);
+  let chemin;
+  try {
+    chemin = decodeURIComponent(new URL(req.url, "http://local").pathname);
+  } catch {
+    res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Chemin mal encodé");
+    return;
+  }
   // Réécriture monopage de render.yaml : /* → /index.html si aucun fichier.
   const cible = fichier(chemin) ?? fichier("/index.html");
   for (const r of regles) {
