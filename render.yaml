@@ -1,7 +1,8 @@
-# render.yaml — Déploiement Tcheyna (API Flask + frontend statique)
+# render.yaml — Déploiement Tcheyna (API Flask, purge nocturne des pièces,
+# frontend statique)
 #
 # Ce fichier décrit la configuration réellement en production. Il permet de
-# recréer les deux services à l'identique via un Blueprint Render, notamment
+# recréer les services à l'identique via un Blueprint Render, notamment
 # la règle de réécriture du frontend, qui ne peut pas être définie autrement
 # que par ce fichier ou par le tableau de bord.
 #
@@ -112,6 +113,104 @@ services:
         value: https://tcheyna-api.onrender.com/api/payments/callback
       - key: CINETPAY_RETURN_URL
         value: https://tcheyna.onrender.com/paiements
+
+  # ─── Purge nocturne des pièces (lot 1.19) ────────────────
+  # Décision D5 : une pièce d'identité ou de revenus est supprimée dès la
+  # décision, et au plus tard 12 mois après son dépôt si personne ne l'a
+  # examinée. D13 : cette purge tourne dans un Render Cron Job, l'offre
+  # gratuite de l'API n'ayant ni shell ni tâche planifiée.
+  #
+  # Facturation à la seconde d'exécution, minimum 1 $ par mois et par cron
+  # job (docs Render, « Cron Jobs › Compute plans and billing ») ; une
+  # exécution dure quelques secondes.
+  - type: cron
+    name: tcheyna-purge-pieces
+    runtime: python
+    region: frankfurt
+    # Plus petite instance proposée aux cron jobs (ancien nom : starter) ;
+    # ce type de service n'a pas d'offre gratuite.
+    plan: 0.5c-512mb
+    branch: main
+
+    # 03:00 UTC, soit 03:00 à Conakry (UTC+0, sans heure d'été) : heure
+    # creuse. Render interprète toujours l'expression en UTC.
+    schedule: "0 3 * * *"
+
+    # Même code que l'API : ne se reconstruit que si backend/ change.
+    buildFilter:
+      paths:
+        - backend/**
+    buildCommand: pip install -r backend/requirements.txt
+
+    # 1. Reprise des suppressions de fichiers restées en échec ;
+    # 2. purge des pièces sans décision depuis plus de
+    #    DUREE_CONSERVATION_PIECES_JOURS.
+    # La purge tourne MÊME si la reprise échoue (`;` et non `&&`) : il suffit
+    # d'un fichier que Supabase refuse durablement pour que la reprise sorte
+    # en erreur chaque nuit, et la purge, qui est l'engagement D5, ne
+    # tournerait alors plus jamais. Le code de sortie reste celui de la
+    # première commande en échec : Render marque l'exécution « Failed » et
+    # l'erreur se lit dans les journaux.
+    startCommand: >-
+      cd backend && flask donnees retenter-suppressions; reprise=$?;
+      flask donnees purger-pieces && exit $reprise
+
+    # Les secrets ne sont saisis qu'une fois, sur tcheyna-api : `fromService`
+    # en recopie la valeur à chaque synchronisation du Blueprint, et non en
+    # direct (après avoir changé une valeur sur l'API, relancer « Manual
+    # Sync » pour que le cron la reçoive). Un groupe d'environnement
+    # (`envVarGroups`) n'accepte pas `sync: false` : il aurait fallu y
+    # ressaisir DATABASE_URL et la clé Supabase.
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: FLASK_APP
+        value: run.py
+      # ProductionConfig refuse de démarrer sans DATABASE_URL ni secrets
+      # forts, y compris pour une commande `flask`.
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: "false"
+      # Les commandes de purge ne signent ni jeton ni code OTP : des clés
+      # propres au cron suffisent, et celles de l'API ne sont pas recopiées
+      # sur un service de plus.
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromService:
+          name: tcheyna-api
+          type: web
+          envVarKey: DATABASE_URL
+      # Sans ces deux valeurs, chaque suppression de fichier échoue (sans
+      # appel réseau) et reste en file pour la nuit suivante.
+      - key: SUPABASE_URL
+        fromService:
+          name: tcheyna-api
+          type: web
+          envVarKey: SUPABASE_URL
+      - key: SUPABASE_SERVICE_KEY
+        fromService:
+          name: tcheyna-api
+          type: web
+          envVarKey: SUPABASE_SERVICE_KEY
+      - key: SUPABASE_BUCKET_PUBLIC
+        fromService:
+          name: tcheyna-api
+          type: web
+          envVarKey: SUPABASE_BUCKET_PUBLIC
+      - key: SUPABASE_BUCKET_PRIVE
+        fromService:
+          name: tcheyna-api
+          type: web
+          envVarKey: SUPABASE_BUCKET_PRIVE
+      # D5 : 12 mois. Même valeur que le défaut de config.py, posée ici pour
+      # se lire sans ouvrir le code ; la purge refuse de tourner si elle
+      # n'est pas un entier strictement positif.
+      - key: DUREE_CONSERVATION_PIECES_JOURS
+        value: "365"
 
   # ─── Frontend React ──────────────────────────────────────
   - type: web
