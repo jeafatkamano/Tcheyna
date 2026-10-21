@@ -237,7 +237,8 @@ def register(corps):
 # Seul un numéro VÉRIFIÉ ouvre une session : un numéro saisi à l'inscription
 # n'est qu'une déclaration, il peut être celui d'un tiers. Un numéro non
 # vérifié se comporte comme un compte inconnu : même 401, même hachage
-# factice, mêmes limites.
+# factice, mêmes limites. Le numéro d'un administrateur aussi : il se
+# connecte par e-mail seulement (voir « Mot de passe oublié par SMS »).
 #
 # `users.phone` est unique sur toute la table : un numéro désigne au plus un
 # compte, donc au plus un compte vérifié. Le lot 1.14, s'il lève cette
@@ -291,7 +292,10 @@ def _compte_a_connecter(identifiant):
     phone = _telephone_valide(identifiant)
     if phone is None:
         return None
-    return User.query.filter_by(phone=phone, phone_verified=True).first()
+    # Un administrateur se connecte par e-mail seulement (voir « Mot de passe
+    # oublié par SMS ») : son numéro vaut ici un numéro inconnu.
+    return (User.query.filter_by(phone=phone, phone_verified=True)
+            .filter(User.role != "admin").first())
 
 
 # ─── POST /api/auth/login ─────────────────────────────────────
@@ -659,7 +663,8 @@ def niveaux():
 # de vérification du téléphone : même durée, mêmes essais, mêmes quotas
 # (60 s entre deux codes, 5 par compte et 5 par numéro sur 24 h), comptés
 # sur les deux usages à la fois — les alterner ne double pas les SMS — et
-# décomptés par le plafond global des SMS. La table n'a pas de colonne
+# soumis au plafond global des SMS (lot 1.21), qui les compte et peut les
+# refuser comme les autres. La table n'a pas de colonne
 # d'usage : les deux usages sont séparés par le domaine du HMAC
 # (`hacher_otp_reinitialisation`). Un code de vérification du téléphone ne
 # réinitialise jamais un mot de passe, ni l'inverse : son empreinte, calculée
@@ -667,6 +672,17 @@ def niveaux():
 #
 # Aucune réponse ne dit si le numéro est inscrit : la demande répond toujours
 # la même chose, et la confirmation refuse tout échec par le même 400.
+#
+# Les comptes administrateurs sont exclus de la récupération par SMS comme de
+# la connexion par téléphone (choix de sécurité par défaut, à confirmer) : un
+# détournement de carte SIM (« SIM swap ») ne doit pas livrer le back-office.
+# Ils se connectent par e-mail ; pour eux, le numéro se comporte comme un
+# numéro inconnu.
+
+
+def _recuperable_par_sms(user):
+    """Compte auquel le téléphone vérifié donne accès : actif, non admin."""
+    return user is not None and user.is_active and user.role != "admin"
 
 # Toutes les réponses comptent : elles sont identiques, compte ou non.
 LIMITE_OUBLI_PAR_IP = "10 per hour"
@@ -739,14 +755,19 @@ def mot_de_passe_oublie(corps):
     # simultanées sont traitées l'une après l'autre, les quotas restent exacts.
     user = (User.query.filter_by(phone=phone, phone_verified=True)
             .with_for_update().populate_existing().first())
-    if user is None or not user.is_active:
+    if not _recuperable_par_sms(user):
         return reponse, 200
 
     maintenant = datetime.utcnow()
-    # Quota atteint : rien n'est envoyé, sans le dire (un 429 révélerait que
-    # le numéro est inscrit). Les limites par IP et par numéro ci-dessus,
-    # identiques pour tous les numéros, répondent, elles, en 429.
+    # Quota ou plafond global atteint : rien n'est envoyé, sans le dire (un
+    # 429 révélerait que le numéro est inscrit). Les limites par IP et par
+    # numéro ci-dessus, identiques pour tous les numéros, répondent, elles,
+    # en 429. Le plafond global vient après les quotas, comme dans `send_otp`.
     refus = _envoi_otp_refuse(user, phone, maintenant)
+    fenetres = []
+    if not refus:
+        plafond_atteint, fenetres = _plafond_global(maintenant)
+        refus = "plafond global" if plafond_atteint else None
     if refus:
         current_app.logger.info("Mot de passe oublié : code non envoyé (%s)", refus)
         return reponse, 200
@@ -766,6 +787,7 @@ def mot_de_passe_oublie(corps):
         expires_at=maintenant + timedelta(minutes=OTP_TTL_MINUTES),
     ))
     db.session.commit()
+    _alerter_plafond_global(fenetres)
 
     # Le SMS part une fois la réponse transmise : la durée de l'appel à
     # Africa's Talking ne trahit pas, au chronomètre, qu'un compte existe.
@@ -795,13 +817,13 @@ def _echec_confirmation(reponse):
 def confirmer_mot_de_passe_oublie(corps):
     phone = _telephone_ou_422(corps.phone)
     # Un seul refus pour tous les échecs (numéro inconnu ou non vérifié,
-    # compte désactivé, aucun code, code expiré, déjà utilisé, incorrect,
+    # compte désactivé ou administrateur, aucun code, code expiré, déjà utilisé, incorrect,
     # essais épuisés) : un message plus précis dirait qu'un code est en
     # attente, donc que le numéro est inscrit.
     refus = jsonify({"error": REFUS_CONFIRMATION, "details": []}), 400
 
     user = User.query.filter_by(phone=phone, phone_verified=True).first()
-    if user is None or not user.is_active:
+    if not _recuperable_par_sms(user):
         return refus
 
     maintenant = datetime.utcnow()

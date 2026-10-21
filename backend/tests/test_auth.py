@@ -579,3 +579,77 @@ def test_confirmation_limitee_par_numero_toutes_ip(client, fabrique, avec_sms, s
     _demander(client, TELEPHONE, xff="5.5.5.5")
     assert _confirmer(client, TELEPHONE, _code(sms), xff="6.6.6.6").status_code == 429
     assert _mot_de_passe_est(user.id, MOT_DE_PASSE)
+
+
+def test_plafond_global_bloque_la_reinitialisation_en_silence(app, client, fabrique, avec_sms, sms):
+    # Plafond global des SMS (lot 1.21) ramené à un code par heure.
+    app.config["OTP_PLAFOND_GLOBAL_PAR_HEURE"] = 1
+    fabrique.locataire(niveau=1, phone=TELEPHONE)
+    autre = fabrique.locataire(niveau=1, phone="+224620000001")
+    premier = _demander(client, TELEPHONE)
+
+    reponse = _demander(client, autre.phone)
+
+    # Refus silencieux : même réponse, aucun code, aucun SMS.
+    assert reponse.status_code == 200
+    assert reponse.get_json() == premier.get_json()
+    assert len(sms) == 1
+    assert OTPCode.query.filter_by(user_id=autre.id).count() == 0
+
+
+def test_reinitialisation_comptee_par_le_plafond_global(app, client, fabrique, entetes,
+                                                        avec_sms, sms):
+    # Le code de réinitialisation occupe la place : la vérification d'un
+    # autre compte est refusée par le plafond.
+    app.config["OTP_PLAFOND_GLOBAL_PAR_HEURE"] = 1
+    fabrique.locataire(niveau=1, phone=TELEPHONE)
+    _demander(client, TELEPHONE)
+    autre = fabrique.locataire(niveau=0, phone="+224620000001")
+
+    reponse = client.post("/api/auth/send-otp", headers=entetes(autre), json={})
+
+    assert reponse.status_code == 429
+    assert "saturé" in reponse.get_json()["error"]
+
+
+# ─── Comptes administrateurs : ni connexion par téléphone, ni SMS ──
+
+def test_admin_pas_de_connexion_par_telephone(client, fabrique, monkeypatch):
+    admin = fabrique.admin(phone=TELEPHONE, phone_verified=True)
+
+    par_telephone = _connexion(client, TELEPHONE)
+    inconnu = _connexion(client, "+224620000999")
+    assert par_telephone.status_code == inconnu.status_code == 401
+    assert par_telephone.get_json() == inconnu.get_json()
+    # L'e-mail reste la voie de connexion de l'administrateur.
+    assert _connexion(client, admin.email).status_code == 200
+
+    appels = []
+    monkeypatch.setattr(auth, "check_password_hash", lambda h, mdp: appels.append(h) or True)
+    assert _connexion(client, TELEPHONE).status_code == 401
+    assert appels == [auth.HASH_FACTICE]
+
+
+def test_admin_pas_de_reinitialisation_par_sms(client, fabrique, avec_sms, sms):
+    admin = fabrique.admin(phone=TELEPHONE, phone_verified=True)
+
+    reponse = _demander(client, TELEPHONE)
+    inconnu = _demander(client, "+224620000999")
+
+    assert reponse.status_code == 200 and reponse.get_json() == inconnu.get_json()
+    assert sms == []
+    assert OTPCode.query.filter_by(user_id=admin.id).count() == 0
+
+    # Même un code de réinitialisation valide (émis avant la règle, par
+    # exemple) ne sert pas.
+    otp_id = "code-admin"
+    maintenant = datetime.utcnow()
+    db.session.add(OTPCode(id=otp_id, user_id=admin.id, phone=TELEPHONE, attempts=0,
+                           code_hash=auth.hacher_otp_reinitialisation(otp_id, "123456"),
+                           created_at=maintenant - timedelta(minutes=2),
+                           expires_at=maintenant + timedelta(minutes=5)))
+    db.session.commit()
+    refus = _confirmer(client, TELEPHONE, "123456")
+    assert refus.status_code == 400
+    assert refus.get_json() == {"error": auth.REFUS_CONFIRMATION, "details": []}
+    assert _mot_de_passe_est(admin.id, MOT_DE_PASSE)
