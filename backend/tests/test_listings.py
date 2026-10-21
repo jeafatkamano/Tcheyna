@@ -1,6 +1,9 @@
 """Blueprint listings : recherche, publication, photos et documents."""
 import os
 
+import pytest
+
+from app import db
 from app.models import Listing
 from tests.conftest import SUPABASE_URL_TEST
 
@@ -383,3 +386,231 @@ def test_tri_match_sur_30_annonces_en_nombre_de_requetes_borne(client, fabrique,
                        headers=en_tetes).get_json()
     assert (nul["page"], nul["per_page"], nul["total"], nul["pages"]) == (0, 0, 30, 2)
     assert nul["listings"] == vingt["listings"] and len(nul["listings"]) == 20
+
+
+# ─── Certification : le badge suit le contenu examiné (lot 1.20) ─
+
+def _certifiee(fabrique, bailleur, **champs):
+    from datetime import datetime
+
+    return fabrique.annonce(bailleur, certification_status="certified",
+                            certified_at=datetime(2026, 10, 1), **champs)
+
+
+def _assert_annulee(annonce_id, motif):
+    relue = Listing.query.get(annonce_id)
+    assert relue.certification_status == "none"
+    assert relue.certified_at is None
+    assert relue.certification_note == f"Certification annulée : {motif}."
+
+
+@pytest.mark.parametrize("champ, valeur", [
+    ("nb_pieces", 5), ("etage", 3), ("meuble", True), ("superficie", 120),
+    ("has_generator", True), ("has_water", True), ("has_wifi", True),
+    ("is_secured", True), ("has_parking", True), ("has_ac", True),
+])
+def test_changer_une_caracteristique_du_bien_annule_la_certification(
+        client, fabrique, bailleur, entetes, champ, valeur):
+    annonce = _certifiee(fabrique, bailleur, superficie=45.0)
+
+    reponse = client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur),
+                         json={champ: valeur})
+
+    assert reponse.status_code == 200
+    assert reponse.get_json()["listing"]["certification_status"] == "none"
+    _assert_annulee(annonce.id, "les caractéristiques du bien ont été modifiées")
+
+
+@pytest.mark.parametrize("corps", [
+    {"prix": 1_800_000}, {"charges": 50_000}, {"caution": 2_000_000},
+    {"title_fr": "Appartement rénové à Kipé"},
+    {"description_fr": "Trois pièces, repeintes en septembre."},
+    {"title_en": "Flat in Kipé", "description_en": "Three rooms."},
+    {"disponible_a_partir": "2026-12-01"},
+])
+def test_conditions_et_textes_hors_certification(client, fabrique, bailleur, entetes, corps):
+    annonce = _certifiee(fabrique, bailleur)
+
+    assert client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur),
+                      json=corps).status_code == 200
+
+    assert Listing.query.get(annonce.id).certification_status == "certified"
+
+
+def test_formulaire_complet_sans_changement_garde_la_certification(client, fabrique,
+                                                                   bailleur, entetes):
+    # Équipement nul en base (annonce ancienne) : le formulaire renvoie
+    # `false`, ce n'est pas un changement.
+    annonce = _certifiee(fabrique, bailleur, has_wifi=None, meuble=None, etage=2)
+    reponse = client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur), json={
+        "title_fr": annonce.title_fr, "description_fr": annonce.description_fr,
+        "pays": "Guinée", "ville": "Conakry", "quartier": "Kipé",
+        "adresse": annonce.adresse, "type_transaction": "location",
+        "type_bien": "appartement", "prix": 2_000_000, "charges": 100_000,
+        "caution": 4_000_000, "nb_pieces": 3, "etage": 2, "meuble": False,
+        "has_generator": False, "has_water": False, "has_wifi": False,
+        "is_secured": False, "has_parking": False, "has_ac": False,
+    })
+
+    assert reponse.status_code == 200
+    assert Listing.query.get(annonce.id).certification_status == "certified"
+
+
+def test_terrain_ancien_avec_pieces_en_base_garde_la_certification(client, fabrique,
+                                                                   bailleur, entetes):
+    # Saisi avant les contrôles : le serveur efface pièces et ameublement à
+    # la sauvegarde, sans que le bien ait changé.
+    annonce = _certifiee(fabrique, bailleur, type_bien="terrain", nb_pieces=2, meuble=True)
+
+    client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur),
+               json={"type_bien": "terrain", "prix": 2_500_000})
+
+    relue = Listing.query.get(annonce.id)
+    assert relue.certification_status == "certified" and relue.nb_pieces is None
+
+
+@pytest.mark.parametrize("statut", ["none", "pending", "rejected"])
+def test_annonce_non_certifiee_inchangee_par_une_modification(client, fabrique, bailleur,
+                                                              entetes, statut):
+    annonce = fabrique.annonce(bailleur, certification_status=statut,
+                               certification_note="Titre illisible")
+
+    client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur),
+               json={"nb_pieces": 6, "has_ac": True})
+
+    relue = Listing.query.get(annonce.id)
+    assert (relue.certification_status, relue.certification_note) == (statut, "Titre illisible")
+
+
+def test_ajout_de_photo_annule_la_certification(client, fabrique, bailleur, entetes,
+                                                fichier_image):
+    annonce = _certifiee(fabrique, bailleur)
+
+    reponse = _envoyer_photo(client, annonce, bailleur, entetes, fichier_image("autre.png"))
+
+    assert reponse.status_code == 201
+    _assert_annulee(annonce.id, "des photos ont été ajoutées")
+
+
+def test_photo_deja_enregistree_renvoyee_garde_la_certification(client, fabrique, bailleur,
+                                                                entetes, fichier_image):
+    annonce = fabrique.annonce(bailleur)
+    assert _envoyer_photo(client, annonce, bailleur, entetes,
+                          fichier_image("salon.png")).status_code == 201
+    annonce.certification_status = "certified"
+    db.session.commit()
+
+    # « Réessayer » après une réponse perdue : la photo est reconnue, rien
+    # ne s'ajoute.
+    reponse = _envoyer_photo(client, annonce, bailleur, entetes, fichier_image("salon.png"))
+
+    assert reponse.status_code == 200
+    assert Listing.query.get(annonce.id).certification_status == "certified"
+
+
+def test_retrait_de_photo_annule_la_certification(client, fabrique, bailleur, entetes):
+    annonce = _certifiee(fabrique, bailleur, images_urls="/uploads/a.jpg,/uploads/b.jpg")
+
+    reponse = client.delete(f"/api/listings/{annonce.id}/photos", headers=entetes(bailleur),
+                            json={"url": "/uploads/b.jpg"})
+
+    assert reponse.status_code == 200
+    _assert_annulee(annonce.id, "une photo a été retirée")
+
+
+def test_reordonner_les_photos_garde_la_certification(client, fabrique, bailleur, entetes):
+    annonce = _certifiee(fabrique, bailleur, images_urls="/uploads/a.jpg,/uploads/b.jpg")
+
+    reponse = client.put(f"/api/listings/{annonce.id}/photos/ordre", headers=entetes(bailleur),
+                         json={"images": ["/uploads/b.jpg", "/uploads/a.jpg"]})
+
+    assert reponse.status_code == 200
+    assert Listing.query.get(annonce.id).certification_status == "certified"
+
+
+@pytest.mark.parametrize("statut", ["none", "pending", "rejected"])
+def test_photos_d_une_annonce_non_certifiee_sans_effet_sur_son_statut(
+        client, fabrique, bailleur, entetes, fichier_image, statut):
+    annonce = fabrique.annonce(bailleur, certification_status=statut,
+                               images_urls="/uploads/a.jpg")
+
+    assert _envoyer_photo(client, annonce, bailleur, entetes,
+                          fichier_image("b.png")).status_code == 201
+    assert client.delete(f"/api/listings/{annonce.id}/photos", headers=entetes(bailleur),
+                         json={"url": "/uploads/a.jpg"}).status_code == 200
+
+    assert Listing.query.get(annonce.id).certification_status == statut
+
+
+def test_retrait_de_piece_refuse_sur_une_annonce_certifiee(client, fabrique, bailleur, entetes):
+    pieces = "/uploads/titre-foncier.pdf,/uploads/quittance.pdf"
+    annonce = _certifiee(fabrique, bailleur, documents_urls=pieces)
+
+    reponse = client.delete(f"/api/listings/{annonce.id}/documents", headers=entetes(bailleur),
+                            json={"url": "/uploads/quittance.pdf"})
+
+    assert reponse.status_code == 409
+    assert "certifiée" in reponse.get_json()["error"]
+    relue = Listing.query.get(annonce.id)
+    assert relue.documents_urls == pieces and relue.certification_status == "certified"
+
+
+@pytest.mark.parametrize("statut", ["none", "rejected"])
+def test_retrait_de_piece_permis_hors_certification(client, fabrique, bailleur, entetes,
+                                                    statut):
+    annonce = fabrique.annonce(bailleur, certification_status=statut,
+                               documents_urls="/uploads/titre-foncier.pdf,/uploads/bail.pdf")
+
+    reponse = client.delete(f"/api/listings/{annonce.id}/documents", headers=entetes(bailleur),
+                            json={"url": "/uploads/bail.pdf"})
+
+    assert reponse.status_code == 200
+    assert Listing.query.get(annonce.id).documents == ["/uploads/titre-foncier.pdf"]
+
+
+def test_retrait_de_piece_toujours_refuse_pendant_l_examen(client, fabrique, bailleur, entetes):
+    annonce = fabrique.annonce(bailleur, certification_status="pending",
+                               documents_urls="/uploads/titre-foncier.pdf")
+
+    reponse = client.delete(f"/api/listings/{annonce.id}/documents", headers=entetes(bailleur),
+                            json={"url": "/uploads/titre-foncier.pdf"})
+
+    assert reponse.status_code == 409
+    assert Listing.query.get(annonce.id).documents == ["/uploads/titre-foncier.pdf"]
+
+
+def test_ajout_de_piece_garde_la_certification(client, fabrique, bailleur, entetes,
+                                               fichier_image):
+    annonce = _certifiee(fabrique, bailleur, documents_urls="/uploads/titre-foncier.pdf")
+
+    reponse = client.post(f"/api/listings/{annonce.id}/documents", headers=entetes(bailleur),
+                          data={"files": [fichier_image("quittance.png")]},
+                          content_type="multipart/form-data")
+
+    assert reponse.status_code == 201
+    relue = Listing.query.get(annonce.id)
+    assert relue.certification_status == "certified" and len(relue.documents) == 2
+
+
+def test_routes_de_certification_refusees_a_un_autre_bailleur(client, fabrique, bailleur,
+                                                              entetes, fichier_image):
+    annonce = _certifiee(fabrique, bailleur, images_urls="/uploads/a.jpg,/uploads/b.jpg",
+                         documents_urls="/uploads/titre-foncier.pdf")
+    intrus = entetes(fabrique.bailleur())
+    base = f"/api/listings/{annonce.id}"
+
+    assert client.put(base, headers=intrus, json={"nb_pieces": 9}).status_code == 403
+    assert client.post(f"{base}/photos", headers=intrus,
+                       data={"file": fichier_image("x.png")},
+                       content_type="multipart/form-data").status_code == 403
+    assert client.delete(f"{base}/photos", headers=intrus,
+                         json={"url": "/uploads/a.jpg"}).status_code == 403
+    assert client.put(f"{base}/photos/ordre", headers=intrus,
+                      json={"images": ["/uploads/b.jpg", "/uploads/a.jpg"]}).status_code == 403
+    assert client.delete(f"{base}/documents", headers=intrus,
+                         json={"url": "/uploads/titre-foncier.pdf"}).status_code == 403
+
+    relue = Listing.query.get(annonce.id)
+    assert relue.certification_status == "certified" and relue.nb_pieces == 3
+    assert relue.images_urls == "/uploads/a.jpg,/uploads/b.jpg"
+    assert relue.documents == ["/uploads/titre-foncier.pdf"]

@@ -3,7 +3,9 @@ routes/listings.py — Annonces immobilières.
 
 Inclut le parcours « Annonce Certifiée » : le propriétaire dépose un document de
 propriété, l'annonce passe en `pending`, un administrateur tranche. Une annonce
-certifiée remonte dans les résultats et affiche un badge visible.
+certifiée remonte dans les résultats et affiche un badge visible. Le badge
+suit le contenu examiné : changer le bien (`CHAMPS_CERTIFIES`) ou ses photos
+l'annule, et ses pièces de propriété ne peuvent plus être retirées.
 """
 import math
 from datetime import datetime
@@ -357,8 +359,61 @@ def create_listing(current_user, corps):
 # ─── PUT /api/listings/<id> ──────────────────────────────────
 
 # Modifier l'un de ces champs invalide la certification : elle portait sur
-# l'ancien état du bien.
-CHAMPS_CERTIFIES = ("adresse", "quartier", "ville", "type_bien", "type_transaction", "superficie")
+# l'ancien état du bien. Le vérificateur juge les pièces de propriété
+# « cohérentes avec l'annonce » (CGU §5) sur la fiche complète : ce qui se
+# vérifie sur pièces, sur photos ou en visite relève du badge.
+CHAMPS_CERTIFIES = (
+    # Où est le bien : ce que désigne le titre foncier ou le bail. `pays` en
+    # fait partie, une ville n'ayant de sens que dans son pays.
+    "pays", "ville", "quartier", "adresse",
+    # Ce qu'est le bien, et le droit exercé dessus : un bail ou un mandat de
+    # gestion ne prouve pas le droit de vendre.
+    "type_bien", "type_transaction",
+    # Sa consistance : gonfler le nombre de pièces d'un petit logement
+    # certifié est le cas relevé par l'audit.
+    "superficie", "nb_pieces", "etage", "meuble",
+    # Ses équipements : des colonnes du bien, et des critères de recherche
+    # (eau courante, groupe électrogène…) où le badge fait remonter l'annonce.
+    "has_generator", "has_water", "has_wifi", "is_secured", "has_parking", "has_ac",
+)
+# Hors certification, et pourquoi :
+# - `prix`, `charges`, `caution` : des conditions commerciales, que les pièces
+#   ne prouvent pas et qui bougent avec le marché (baisse, négociation) ;
+# - titres et descriptions : du texte libre, retouché souvent (coquille,
+#   traduction) ; les faits vérifiables sont dans les champs ci-dessus ;
+# - `disponible_a_partir` : une date qui change d'un locataire à l'autre ;
+# - `devise` : elle découle du pays.
+_BOOLEENS_CERTIFIES = ("meuble", "has_generator", "has_water", "has_wifi",
+                       "is_secured", "has_parking", "has_ac")
+
+
+def _etat_certifie(listing):
+    """Champs certifiés sous une forme comparable avant et après une
+    modification : espaces de bord retirés (une adresse saisie avant les
+    contrôles peut en garder), chaîne vide égale à l'absence, booléen nul
+    égal à faux, pièces, étage et ameublement ignorés pour un bien qui n'en
+    a pas (le serveur les efface). Sans quoi une sauvegarde sans changement
+    réel annulerait la certification."""
+    etat = {}
+    for champ in CHAMPS_CERTIFIES:
+        valeur = getattr(listing, champ)
+        if isinstance(valeur, str):
+            valeur = valeur.strip() or None
+        etat[champ] = bool(valeur) if champ in _BOOLEENS_CERTIFIES else valeur
+    if etat["type_bien"] in TYPES_BIEN_SANS_PIECES:
+        etat.update(nb_pieces=None, etage=None, meuble=False)
+    return etat
+
+
+def _annuler_certification(listing, motif):
+    """Retire le badge d'une annonce certifiée dont le contenu examiné vient
+    de changer : il portait sur l'état précédent. Sans effet sur une annonce
+    qui n'est pas certifiée. L'appelant valide la transaction."""
+    if not listing.is_certified:
+        return
+    listing.certification_status = "none"
+    listing.certified_at = None
+    listing.certification_note = f"Certification annulée : {motif}."
 
 
 @listings_bp.route("/<string:listing_id>", methods=["PUT"])
@@ -375,9 +430,8 @@ def update_listing(current_user, listing_id, corps):
         # Le front renvoie toujours le corps complet (pays, ville, prix…) :
         # seule une valeur qui diffère de la base compte. Sinon une annonce
         # antérieure aux contrôles (ville hors référentiel, gros loyer)
-        # deviendrait impossible à modifier, et chaque sauvegarde annulerait
-        # la certification. La valeur en base est comparée nettoyée, comme
-        # l'entrée (espaces de bord retirés par le schéma).
+        # deviendrait impossible à modifier. La valeur en base est comparée
+        # nettoyée, comme l'entrée (espaces de bord retirés par le schéma).
         if champ not in valeurs:
             return False
         actuelle = getattr(listing, champ)
@@ -398,7 +452,9 @@ def update_listing(current_user, listing_id, corps):
     devise = _devise(final["pays"]) or listing.devise
     _verifier_devise(devise_envoyee, devise)
 
-    modifie_le_bien = any(change(c) for c in CHAMPS_CERTIFIES)
+    # La certification se juge sur l'état enregistré, remises à zéro
+    # ci-dessous comprises : c'est lui que le badge garantit.
+    etat_examine = _etat_certifie(listing)
 
     if valeurs.get("charges", 0) is None:
         valeurs["charges"] = 0
@@ -416,12 +472,8 @@ def update_listing(current_user, listing_id, corps):
         listing.etage = None
         listing.meuble = False
 
-    if listing.is_certified and modifie_le_bien:
-        listing.certification_status = "none"
-        listing.certified_at = None
-        listing.certification_note = (
-            "Certification annulée : les caractéristiques du bien ont été modifiées."
-        )
+    if _etat_certifie(listing) != etat_examine:
+        _annuler_certification(listing, "les caractéristiques du bien ont été modifiées")
 
     db.session.commit()
     return jsonify({"message": "Annonce mise à jour",
@@ -596,6 +648,9 @@ def televerser_photos(current_user, listing_id):
                 stockage.supprimer(url)
             return refus_limite(len(existantes))
         listing.images_urls = ",".join(existantes + nouvelles)
+        # Le vérificateur n'a pas vu ces photos : elles pourraient montrer un
+        # autre bien. Un doublon reconnu n'ajoute rien et ne compte pas.
+        _annuler_certification(listing, "des photos ont été ajoutées")
         db.session.commit()
     else:
         db.session.rollback()
@@ -635,6 +690,9 @@ def supprimer_photo(current_user, listing_id, corps):
 
     restantes = [u for u in existantes if u != url]
     listing.images_urls = ",".join(restantes) if restantes else None
+    # Remplacer une photo, c'est en retirer une puis en ajouter une : chacune
+    # des deux étapes annule le badge.
+    _annuler_certification(listing, "une photo a été retirée")
     db.session.commit()
 
     stockage.supprimer(url)
@@ -661,6 +719,9 @@ def reordonner_photos(current_user, listing_id, corps):
         return jsonify({"error": "La liste doit contenir exactement les photos "
                                  "actuelles de l'annonce"}), 400
 
+    # Mêmes photos, autre ordre : rien de ce que le vérificateur a vu ne
+    # change, la certification reste. La vignette devient l'une des photos
+    # examinées.
     listing.images_urls = ",".join(ordre)
     db.session.commit()
     return jsonify({"message": "Ordre enregistré", "images": ordre}), 200
@@ -703,6 +764,8 @@ def televerser_documents(current_user, listing_id):
     listing.documents_urls = ",".join(existants + ajoutes)
 
     # Compléter les pièces après un refus permet de redemander la certification.
+    # Sur une annonce certifiée, une pièce de plus n'ôte rien aux pièces
+    # examinées, qui ne peuvent plus être retirées : le badge reste.
     if listing.certification_status == "rejected":
         listing.certification_status = "none"
 
@@ -750,6 +813,11 @@ def supprimer_document(current_user, listing_id, corps):
     if listing.certification_status == "pending":
         return jsonify({"error": "Impossible de retirer une pièce pendant "
                                  "l'examen de la certification"}), 409
+    # Le badge repose sur ces pièces : en retirer une le viderait de sa preuve.
+    if listing.is_certified:
+        return jsonify({"error": "Impossible de retirer une pièce d'une annonce "
+                                 "certifiée : le badge « Annonce Certifiée » "
+                                 "repose sur ces pièces"}), 409
 
     url = corps.url
     existants = listing.documents
