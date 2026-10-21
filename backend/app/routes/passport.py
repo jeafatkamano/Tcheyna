@@ -171,7 +171,9 @@ def upload_document(current_user, doc_type):
         url = stockage.televerser(request.files["file"], "documents",
                                   f"{doc_type}-{current_user.id}", stockage.DOCUMENTS)
     except stockage.ErreurStockage as exc:
-        return jsonify({"error": str(exc)}), 400
+        # 422 pour un contenu qui ne correspond pas à son type (faux PDF,
+        # image tronquée), 400 pour un format ou un poids refusé.
+        return jsonify({"error": str(exc), "details": []}), exc.statut
 
     setattr(passport, DOC_TYPES[doc_type], url)
     # Suppression planifiée : une panne du stockage ne laisse pas l'ancienne
