@@ -4,14 +4,21 @@ routes/matches.py — Mise en relation bidirectionnelle.
 Cycle de vie : le locataire candidate (`pending`) → le propriétaire accepte
 (`accepted`, ce qui ouvre la messagerie) ou refuse (`rejected`) → la location est
 conclue (`completed`, ce qui ouvre les avis croisés).
+
+Location (D1) : l'acceptation exige les frais de mise en relation. La
+candidature reste `pending` jusqu'à la confirmation du paiement, qui
+l'accepte (`routes.payments._confirmer` → `accepter_candidature`).
 """
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
+from sqlalchemy import select
 
 from app import db
 from app.models import Conversation, Listing, Match, User, abonnements_passeport
 from app.routes import current_user_required, role_required
+from app.routes.listings import _annonce_verrouillee
+from app.routes.payments import refus_acceptation_sans_frais
 from app.schemas import valider_corps
 from app.schemas.matches import Candidature, DecisionCandidature, Visite
 from app.services import notifications as notify
@@ -41,7 +48,11 @@ def create_match(current_user, corps):
             "action_requise": "verifier_telephone",
         }), 403
 
-    listing = Listing.query.get_or_404(listing_id)
+    Listing.query.get_or_404(listing_id)
+    # Annonce relue sous verrou (toujours l'annonce avant la candidature) :
+    # une candidature ne se glisse pas pendant un changement de type de
+    # transaction (`listings.update_listing`, D1).
+    listing = _annonce_verrouillee(listing_id)
 
     if listing.status != "active" or not listing.is_visible:
         return jsonify({"error": "Cette annonce n'est plus disponible"}), 400
@@ -227,36 +238,68 @@ def get_match(current_user, match_id):
 
 # ─── PUT /api/matches/<id>/statut ────────────────────────────
 
+def accepter_candidature(match):
+    """Accepte `match` : ouvre la conversation privée entre les deux parties
+    et prévient le locataire. Ne valide pas la transaction.
+
+    Appelée par la décision du bailleur quand rien n'est à payer (vente), et
+    par la confirmation des frais de mise en relation (location, D1).
+    """
+    match.status = "accepted"
+    if not match.conversation:
+        db.session.add(Conversation(
+            match_id=match.id,
+            tenant_id=match.tenant_id,
+            landlord_id=match.listing.landlord_id,
+        ))
+    notify.candidature_traitee(match.tenant_id, True, match.listing.title_fr, match.id)
+
+
+def _requete_candidature_verrouillee(match_id):
+    """Relecture de la candidature sous verrou de ligne (`FOR NO KEY UPDATE`),
+    comme `payments._verrouiller_service` : une décision du bailleur et la
+    confirmation des frais de mise en relation se sérialisent, et aucune
+    n'écrase l'autre sur la foi d'un statut périmé.
+
+    Ordre des verrous, partout : l'annonce (`FOR UPDATE`) PUIS la
+    candidature, sans quoi deux requêtes croisées s'interbloqueraient. En
+    PostgreSQL, `FOR UPDATE` et `FOR NO KEY UPDATE` sur une même ligne
+    s'excluent mutuellement : ces verrous sérialisent bien les routes entre
+    elles."""
+    return (select(Match).where(Match.id == match_id)
+            .with_for_update(key_share=True).execution_options(populate_existing=True))
+
+
 @matches_bp.route("/<string:match_id>/statut", methods=["PUT"])
 @role_required("landlord", "agency")
 @valider_corps(DecisionCandidature)
 def update_match_status(current_user, match_id, corps):
     """Le propriétaire accepte ou refuse une candidature.
 
-    Une acceptation ouvre la conversation privée entre les deux parties.
+    Une acceptation ouvre la conversation privée entre les deux parties. Sur
+    une location, elle attend les frais de mise en relation (402) : la
+    candidature reste en attente et le locataire n'est prévenu de rien.
     """
     match = Match.query.get_or_404(match_id)
     if not match.listing or match.listing.landlord_id != current_user.id:
         return jsonify({"error": "Non autorisé"}), 403
+    # L'annonce d'abord (son type décide des frais), puis la candidature.
+    _annonce_verrouillee(match.listing_id)
+    match = db.session.execute(_requete_candidature_verrouillee(match_id)).scalar_one()
 
     statut = corps.statut
 
     if match.status not in ("pending", "accepted"):
         return jsonify({"error": f"Candidature déjà « {match.status} »"}), 409
 
-    match.status = statut
-
-    if statut == "accepted" and not match.conversation:
-        conversation = Conversation(
-            match_id=match.id,
-            tenant_id=match.tenant_id,
-            landlord_id=current_user.id,
-        )
-        db.session.add(conversation)
-
-    notify.candidature_traitee(
-        match.tenant_id, statut == "accepted", match.listing.title_fr, match.id
-    )
+    if statut == "accepted":
+        refus = refus_acceptation_sans_frais(match)
+        if refus:
+            return jsonify(refus[0]), refus[1]
+        accepter_candidature(match)
+    else:
+        match.status = statut
+        notify.candidature_traitee(match.tenant_id, False, match.listing.title_fr, match.id)
     db.session.commit()
 
     return jsonify({

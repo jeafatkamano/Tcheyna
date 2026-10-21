@@ -597,7 +597,8 @@ def test_front_passeport(client, locataire, entetes):
     }).status_code == 200
 
 
-def test_front_mise_en_relation(client, fabrique, locataire, bailleur, annonce, admin, entetes):
+def test_front_mise_en_relation(client, fabrique, locataire, bailleur, annonce, admin, entetes,
+                                cinetpay):
     # ListingDetail : candidature (message éventuellement vide).
     reponse = client.post("/api/matches/", headers=entetes(locataire),
                           json={"listing_id": annonce.id, "message": "Bonjour, disponible ?"})
@@ -607,9 +608,16 @@ def test_front_mise_en_relation(client, fabrique, locataire, bailleur, annonce, 
     assert client.post("/api/matches/", headers=entetes(locataire),
                        json={"listing_id": autre.id, "message": ""}).status_code == 201
 
-    # OwnerMatches : décision puis visite (champ datetime-local, sans fuseau).
+    # OwnerMatches : décision, frais de mise en relation (D1, location), puis
+    # visite (champ datetime-local, sans fuseau).
     assert client.put(f"/api/matches/{match_id}/statut", headers=entetes(bailleur),
-                      json={"statut": "accepted"}).status_code == 200
+                      json={"statut": "accepted"}).status_code == 402
+    frais = client.post("/api/payments/initier", headers=entetes(bailleur), json={
+        "type_paiement": "frais_mise_en_relation", "match_id": match_id, "methode": "mtn_momo",
+    })
+    assert frais.status_code == 200
+    assert client.post("/api/payments/callback", json={
+        "cpm_trans_id": frais.get_json()["transaction_id"]}).status_code == 200
     assert client.put(f"/api/matches/{match_id}/visite", headers=entetes(bailleur),
                       json={"visite_date": "2026-11-15T14:30"}).status_code == 200
 
@@ -628,9 +636,10 @@ def test_front_mise_en_relation(client, fabrique, locataire, bailleur, annonce, 
     assert client.post("/api/payments/initier", headers=entetes(bailleur), json={
         "type_paiement": "certification", "listing_id": annonce.id, "methode": "orange_money",
     }).status_code == 200
+    # La commission de 6 % n'est plus initiable (D1).
     assert client.post("/api/payments/initier", headers=entetes(bailleur), json={
         "type_paiement": "commission", "match_id": match_id, "methode": "mtn_momo",
-    }).status_code == 200
+    }).status_code == 422
 
 
 def test_front_administration(client, fabrique, admin, entetes):

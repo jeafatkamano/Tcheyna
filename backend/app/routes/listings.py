@@ -361,6 +361,11 @@ def create_listing(current_user, corps):
 CHAMPS_CERTIFIES = ("adresse", "quartier", "ville", "type_bien", "type_transaction", "superficie")
 
 
+# Candidatures dont la décision dépend du type de transaction (frais de mise
+# en relation d'une location, D1) : tant qu'il en existe, il ne change pas.
+STATUTS_BLOQUANT_TYPE_TRANSACTION = ("pending", "accepted")
+
+
 @listings_bp.route("/<string:listing_id>", methods=["PUT"])
 @role_required("landlord", "agency")
 @valider_corps(MajAnnonce)
@@ -368,6 +373,11 @@ def update_listing(current_user, listing_id, corps):
     listing = Listing.query.get_or_404(listing_id)
     if listing.landlord_id != current_user.id:
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+    # Relue sous verrou, comme pour les photos : une modification simultanée
+    # (autre onglet, photo, décision de l'admin) ne peut ni écraser une
+    # annulation de la certification ni s'intercaler entre la lecture de
+    # l'état examiné et l'écriture.
+    listing = _annonce_verrouillee(listing_id)
 
     valeurs = corps.model_dump(exclude_unset=True)
     devise_envoyee = valeurs.pop("devise", None)
@@ -394,6 +404,17 @@ def update_listing(current_user, listing_id, corps):
             raise erreur_champ("ville", exc.type, exc.message(), final["ville"]) from None
     if change("prix") or change("type_transaction"):
         _verifier_loyer(final["type_transaction"], final["prix"])
+    # D1 (lot 2.4) : les frais de mise en relation ne portent que sur une
+    # location. Basculer en « vente » le temps d'accepter gratuitement des
+    # candidatures, puis revenir en location, les contournerait. Les
+    # candidatures sont lues après le verrou de l'annonce, que prennent aussi
+    # la candidature, la décision et la confirmation des frais : aucune ne
+    # s'intercale entre cette lecture et l'écriture du nouveau type.
+    if change("type_transaction") and any(
+            m.status in STATUTS_BLOQUANT_TYPE_TRANSACTION for m in listing.matches):
+        return jsonify({"error": "Le type de transaction ne peut pas changer tant que "
+                                 "des candidatures sont en attente ou acceptées sur "
+                                 "cette annonce : refusez-les d'abord."}), 409
     # Une annonce hors marché ouvert (créée avant ce contrôle) garde sa devise.
     devise = _devise(final["pays"]) or listing.devise
     _verifier_devise(devise_envoyee, devise)

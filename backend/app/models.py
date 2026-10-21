@@ -52,9 +52,6 @@ TRUST_LEVELS = {
     },
 }
 
-# Taux de commission prélevé sur le premier loyer (business plan §6 : 5 à 8 %)
-COMMISSION_RATE = 0.06
-
 
 # ─────────────────────────────────────────────────────────────
 # USER — Locataire, propriétaire, agence ou admin
@@ -442,15 +439,15 @@ class Match(db.Model):
 
     @property
     def commission(self):
-        """Commission Tcheyna sur le premier loyer (business plan §6).
+        """Commission due sur cette candidature : toujours zéro.
 
-        Le business plan ne chiffre que la location. Appliquer le même taux à un
-        prix de vente produirait une commission sans commune mesure, jamais
-        décidée : on renvoie zéro tant que ce barème n'est pas arrêté.
+        La commission de 6 % du premier loyer est remplacée par des frais
+        fixes de mise en relation, payés à l'acceptation (décision D1,
+        20/10/2026, `routes.payments`). Le champ reste servi pour les clients
+        qui le lisent encore ; les commissions déjà payées se lisent dans
+        les paiements.
         """
-        if not self.listing or self.listing.est_vente:
-            return 0
-        return int((self.listing.prix or 0) * COMMISSION_RATE)
+        return 0
 
     def to_dict(self, lang="fr", viewer=None):
         """`viewer` : l'utilisateur à qui la réponse est destinée. Il décide de
@@ -768,7 +765,9 @@ class Review(db.Model):
 PAYMENT_TYPES = {
     "caution":              "Dépôt de garantie",
     "premier_loyer":        "Premier loyer",
-    "commission":           "Commission de mise en relation",
+    # Plus initiable depuis D1 : conservée pour relire les paiements passés.
+    "commission":           "Commission de mise en relation (ancien barème, 6 %)",
+    "frais_mise_en_relation": "Frais de mise en relation",
     "certification":        "Certification d'annonce",
     "abonnement_passeport": "Abonnement Passeport Locataire",
     "mise_en_avant":        "Mise en avant d'annonce",
