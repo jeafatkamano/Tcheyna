@@ -5,7 +5,9 @@ Inclut le parcours « Annonce Certifiée » : le propriétaire dépose un docume
 propriété, l'annonce passe en `pending`, un administrateur tranche. Une annonce
 certifiée remonte dans les résultats et affiche un badge visible. Le badge
 suit le contenu examiné : changer le bien (`CHAMPS_CERTIFIES`) ou ses photos
-l'annule, et ses pièces de propriété ne peuvent plus être retirées.
+l'annule, et ses pièces de propriété ne peuvent plus être retirées. Pendant
+l'examen, ces changements sont refusés : l'administrateur approuve l'état
+qu'il a ouvert.
 """
 import math
 from datetime import datetime
@@ -405,6 +407,13 @@ def _etat_certifie(listing):
     return etat
 
 
+def _refus_pendant_examen(action):
+    """409 renvoyé quand une modification du contenu examiné arrive pendant
+    l'examen : l'administrateur approuverait sinon un autre état que celui
+    qu'il a ouvert. Même règle que pour les pièces de propriété."""
+    return jsonify({"error": f"Impossible {action} pendant l'examen de la certification"}), 409
+
+
 def _annuler_certification(listing, motif):
     """Retire le badge d'une annonce certifiée dont le contenu examiné vient
     de changer : il portait sur l'état précédent. Sans effet sur une annonce
@@ -423,6 +432,11 @@ def update_listing(current_user, listing_id, corps):
     listing = Listing.query.get_or_404(listing_id)
     if listing.landlord_id != current_user.id:
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+    # Relue sous verrou, comme pour les photos : une modification simultanée
+    # (autre onglet, photo, décision de l'admin) ne peut ni écraser une
+    # annulation de la certification ni s'intercaler entre la lecture de
+    # l'état examiné et l'écriture.
+    listing = _annonce_verrouillee(listing_id)
 
     valeurs = corps.model_dump(exclude_unset=True)
     devise_envoyee = valeurs.pop("devise", None)
@@ -473,6 +487,11 @@ def update_listing(current_user, listing_id, corps):
         listing.meuble = False
 
     if _etat_certifie(listing) != etat_examine:
+        # Prix, description… restent modifiables pendant l'examen ; le bien,
+        # non.
+        if listing.certification_status == "pending":
+            db.session.rollback()
+            return _refus_pendant_examen("de modifier les caractéristiques du bien")
         _annuler_certification(listing, "les caractéristiques du bien ont été modifiées")
 
     db.session.commit()
@@ -584,6 +603,9 @@ def televerser_photos(current_user, listing_id):
     if listing.landlord_id != current_user.id:
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
 
+    if listing.certification_status == "pending":
+        return _refus_pendant_examen("d'ajouter une photo")
+
     fichiers = request.files.getlist("files") or request.files.getlist("file")
     if not fichiers:
         return jsonify({"error": "Aucune photo fournie"}), 400
@@ -641,6 +663,12 @@ def televerser_photos(current_user, listing_id):
     listing = _annonce_verrouillee(listing_id)
     existantes = _photos(listing)
     nouvelles = [u for u in ajoutees if u not in existantes]
+    # L'examen a pu commencer pendant le stockage (paiement confirmé).
+    if nouvelles and listing.certification_status == "pending":
+        db.session.rollback()
+        for url in nouvelles:
+            stockage.supprimer(url)
+        return _refus_pendant_examen("d'ajouter une photo")
     if nouvelles:
         if len(existantes) + len(nouvelles) > MAX_IMAGES:
             db.session.rollback()
@@ -684,6 +712,9 @@ def supprimer_photo(current_user, listing_id, corps):
     url = corps.url
 
     listing = _annonce_verrouillee(listing_id)
+    if listing.certification_status == "pending":
+        db.session.rollback()
+        return _refus_pendant_examen("de retirer une photo")
     existantes = _photos(listing)
     if url not in existantes:
         return jsonify({"error": "Cette photo n'appartient pas à l'annonce"}), 404
@@ -720,8 +751,8 @@ def reordonner_photos(current_user, listing_id, corps):
                                  "actuelles de l'annonce"}), 400
 
     # Mêmes photos, autre ordre : rien de ce que le vérificateur a vu ne
-    # change, la certification reste. La vignette devient l'une des photos
-    # examinées.
+    # change, la certification reste, et l'ordre peut changer pendant
+    # l'examen. La vignette devient l'une des photos examinées.
     listing.images_urls = ",".join(ordre)
     db.session.commit()
     return jsonify({"message": "Ordre enregistré", "images": ordre}), 200
@@ -811,8 +842,7 @@ def supprimer_document(current_user, listing_id, corps):
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
 
     if listing.certification_status == "pending":
-        return jsonify({"error": "Impossible de retirer une pièce pendant "
-                                 "l'examen de la certification"}), 409
+        return _refus_pendant_examen("de retirer une pièce")
     # Le badge repose sur ces pièces : en retirer une le viderait de sa preuve.
     if listing.is_certified:
         return jsonify({"error": "Impossible de retirer une pièce d'une annonce "

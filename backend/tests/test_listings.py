@@ -469,7 +469,7 @@ def test_terrain_ancien_avec_pieces_en_base_garde_la_certification(client, fabri
     assert relue.certification_status == "certified" and relue.nb_pieces is None
 
 
-@pytest.mark.parametrize("statut", ["none", "pending", "rejected"])
+@pytest.mark.parametrize("statut", ["none", "rejected"])
 def test_annonce_non_certifiee_inchangee_par_une_modification(client, fabrique, bailleur,
                                                               entetes, statut):
     annonce = fabrique.annonce(bailleur, certification_status=statut,
@@ -528,7 +528,7 @@ def test_reordonner_les_photos_garde_la_certification(client, fabrique, bailleur
     assert Listing.query.get(annonce.id).certification_status == "certified"
 
 
-@pytest.mark.parametrize("statut", ["none", "pending", "rejected"])
+@pytest.mark.parametrize("statut", ["none", "rejected"])
 def test_photos_d_une_annonce_non_certifiee_sans_effet_sur_son_statut(
         client, fabrique, bailleur, entetes, fichier_image, statut):
     annonce = fabrique.annonce(bailleur, certification_status=statut,
@@ -614,3 +614,127 @@ def test_routes_de_certification_refusees_a_un_autre_bailleur(client, fabrique, 
     assert relue.certification_status == "certified" and relue.nb_pieces == 3
     assert relue.images_urls == "/uploads/a.jpg,/uploads/b.jpg"
     assert relue.documents == ["/uploads/titre-foncier.pdf"]
+
+
+# ─── Pendant l'examen : l'admin approuve l'état qu'il a ouvert ─
+
+def _en_examen(fabrique, bailleur, **champs):
+    return fabrique.annonce(bailleur, certification_status="pending", **champs)
+
+
+@pytest.mark.parametrize("corps", [
+    {"nb_pieces": 6}, {"has_ac": True}, {"quartier": "Nongo"}, {"superficie": 200},
+    # Un champ certifié suffit à refuser tout le corps, prix compris.
+    {"prix": 1_500_000, "meuble": True},
+])
+def test_modifier_le_bien_refuse_pendant_l_examen(client, fabrique, bailleur, entetes, corps):
+    annonce = _en_examen(fabrique, bailleur)
+
+    reponse = client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur), json=corps)
+
+    assert reponse.status_code == 409
+    assert reponse.get_json()["error"] == (
+        "Impossible de modifier les caractéristiques du bien pendant l'examen "
+        "de la certification")
+    relue = Listing.query.get(annonce.id)
+    assert relue.certification_status == "pending"
+    assert (relue.nb_pieces, relue.prix, relue.quartier) == (3, 2_000_000, "Kipé")
+    assert not relue.has_ac and not relue.meuble
+
+
+def test_prix_et_textes_modifiables_pendant_l_examen(client, fabrique, bailleur, entetes):
+    annonce = _en_examen(fabrique, bailleur)
+
+    # Corps complet renvoyé par le formulaire : le bien est inchangé.
+    reponse = client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur), json={
+        "prix": 1_800_000, "description_fr": "Trois pièces, repeintes.",
+        "ville": "Conakry", "quartier": "Kipé", "type_bien": "appartement", "nb_pieces": 3,
+    })
+
+    assert reponse.status_code == 200
+    relue = Listing.query.get(annonce.id)
+    assert (relue.prix, relue.certification_status) == (1_800_000, "pending")
+
+
+def test_ajout_de_photo_refuse_pendant_l_examen(client, fabrique, bailleur, entetes,
+                                               fichier_image):
+    annonce = _en_examen(fabrique, bailleur)
+
+    reponse = _envoyer_photo(client, annonce, bailleur, entetes, fichier_image("autre.png"))
+
+    assert reponse.status_code == 409
+    assert reponse.get_json()["error"] == (
+        "Impossible d'ajouter une photo pendant l'examen de la certification")
+    assert Listing.query.get(annonce.id).images_urls == "/uploads/photo-1.jpg"
+
+
+def test_examen_ouvert_pendant_le_stockage_refuse_la_photo(app, client, fabrique, bailleur,
+                                                          entetes, fichier_image, monkeypatch):
+    # Le paiement est confirmé pendant que la photo part vers le stockage :
+    # la relecture sous verrou voit l'examen, la photo est refusée et effacée.
+    from app.services import stockage
+
+    annonce = fabrique.annonce(bailleur)
+    enregistrer = stockage.enregistrer_image
+    stockees = []
+
+    def enregistrer_puis_examen(*args, **kwargs):
+        url = enregistrer(*args, **kwargs)
+        stockees.append(url)
+        Listing.query.filter_by(id=annonce.id).update({"certification_status": "pending"})
+        db.session.commit()
+        return url
+
+    monkeypatch.setattr(stockage, "enregistrer_image", enregistrer_puis_examen)
+
+    reponse = _envoyer_photo(client, annonce, bailleur, entetes, fichier_image("autre.png"))
+
+    assert reponse.status_code == 409
+    assert Listing.query.get(annonce.id).images_urls == "/uploads/photo-1.jpg"
+    (url,) = stockees
+    assert not os.path.exists(os.path.join(app.config["UPLOAD_FOLDER"], os.path.basename(url)))
+
+
+def test_retrait_de_photo_refuse_pendant_l_examen(client, fabrique, bailleur, entetes):
+    annonce = _en_examen(fabrique, bailleur, images_urls="/uploads/a.jpg,/uploads/b.jpg")
+
+    reponse = client.delete(f"/api/listings/{annonce.id}/photos", headers=entetes(bailleur),
+                            json={"url": "/uploads/b.jpg"})
+
+    assert reponse.status_code == 409
+    assert reponse.get_json()["error"] == (
+        "Impossible de retirer une photo pendant l'examen de la certification")
+    assert Listing.query.get(annonce.id).images_urls == "/uploads/a.jpg,/uploads/b.jpg"
+
+
+def test_reordonner_les_photos_permis_pendant_l_examen(client, fabrique, bailleur, entetes):
+    annonce = _en_examen(fabrique, bailleur, images_urls="/uploads/a.jpg,/uploads/b.jpg")
+
+    reponse = client.put(f"/api/listings/{annonce.id}/photos/ordre", headers=entetes(bailleur),
+                         json={"images": ["/uploads/b.jpg", "/uploads/a.jpg"]})
+
+    assert reponse.status_code == 200
+    relue = Listing.query.get(annonce.id)
+    assert (relue.images_urls, relue.certification_status) == (
+        "/uploads/b.jpg,/uploads/a.jpg", "pending")
+
+
+def test_modification_relit_l_annonce_sous_verrou(client, annonce, bailleur, entetes):
+    # Même contrôle que pour les photos : SQLite ignore FOR UPDATE, on
+    # vérifie que la requête le demande.
+    from sqlalchemy import event
+
+    verrous = []
+
+    def observer(etat):
+        if etat.is_select and etat.statement._for_update_arg is not None:
+            verrous.append(etat.statement)
+
+    event.listen(db.session, "do_orm_execute", observer)
+    try:
+        assert client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur),
+                          json={"prix": 1_900_000}).status_code == 200
+    finally:
+        event.remove(db.session, "do_orm_execute", observer)
+
+    assert len(verrous) == 1
