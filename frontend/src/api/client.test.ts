@@ -396,6 +396,24 @@ describe("identifiants et motif de déconnexion", () => {
     expect(tokens.access()).toBeNull();
   });
 
+  it("une session refusée sur /mot-de-passe-oublie ne renvoie pas vers /login", async () => {
+    // Page publique : un jeton périmé vérifié au démarrage (/auth/me) ne doit
+    // pas chasser l'utilisateur venu récupérer son compte.
+    tokens.set("acces", "refresh");
+    const lieu = { pathname: "/mot-de-passe-oublie", href: "http://localhost/mot-de-passe-oublie" };
+    vi.stubGlobal("location", lieu);
+    fetchSimule
+      .mockResolvedValueOnce(json({ error: "Session expirée" }, 401))
+      .mockResolvedValueOnce(json({ error: "Session révoquée" }, 401));
+
+    const r = await jusquauBout(authAPI.moi());
+
+    expect((r as { erreur: ApiError }).erreur.statut).toBe(401);
+    expect(lieu.href).toBe("http://localhost/mot-de-passe-oublie");
+    expect(sessionStorage.getItem(CLE_MOTIF_DECONNEXION)).toBeNull();
+    expect(tokens.access()).toBeNull();
+  });
+
   it("un 401 sans jeton de rafraîchissement transmet aussi le message", async () => {
     tokens.set("acces");
     surPagePrivee();

@@ -11,6 +11,7 @@ const locataire = () => import("./tenant/espace-locataire");
 const proprietaire = () => import("./owner/espace-proprietaire");
 const admin = () => import("./admin/espace-admin");
 const legal = () => import("./legal/espace-legal");
+const motDePasseOublie = () => import("./MotDePasseOubliePage");
 
 export const TenantDashboard = lazy(() => locataire().then((m) => ({ default: m.TenantDashboard })));
 export const ListingsPage = lazy(() => locataire().then((m) => ({ default: m.ListingsPage })));
@@ -32,3 +33,8 @@ export const AdminUsers = lazy(() => admin().then((m) => ({ default: m.AdminUser
 export const CGU = lazy(() => legal().then((m) => ({ default: m.CGU })));
 export const Confidentialite = lazy(() => legal().then((m) => ({ default: m.Confidentialite })));
 export const MentionsLegales = lazy(() => legal().then((m) => ({ default: m.MentionsLegales })));
+
+// Rarement utile : hors du premier chargement, comme les espaces.
+export const MotDePasseOubliePage = lazy(() =>
+  motDePasseOublie().then((m) => ({ default: m.MotDePasseOubliePage })),
+);
