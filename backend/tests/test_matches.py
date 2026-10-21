@@ -1,4 +1,5 @@
 """Blueprint matches : candidature, décision du bailleur, conclusion."""
+import pytest
 from sqlalchemy.dialects import postgresql
 
 from app import db
@@ -220,3 +221,82 @@ def test_decision_relit_le_statut_en_base(app, client, fabrique, locataire, anno
 
     # Acceptée entre-temps : plus de frais à demander.
     assert reponse.status_code == 200
+
+
+# Ordre des verrous : l'annonce PUIS la candidature, dans chaque route qui
+# lit le type de transaction pour décider. SQLite ignore `FOR UPDATE` : on
+# compile en PostgreSQL chaque requête ORM émise pendant la route.
+
+@pytest.fixture
+def requetes_pg(app):
+    """Requêtes ORM émises pendant le test, compilées en dialecte PostgreSQL."""
+    from sqlalchemy import event
+
+    emises = []
+
+    def capturer(etat):
+        emises.append(str(etat.statement.compile(dialect=postgresql.dialect())))
+
+    event.listen(db.session, "do_orm_execute", capturer)
+    yield emises
+    event.remove(db.session, "do_orm_execute", capturer)
+
+
+def _rang(requetes, table, verrou):
+    rangs = [i for i, sql in enumerate(requetes)
+             if f"FROM {table}" in sql and sql.rstrip().endswith(verrou)]
+    assert rangs, f"aucun verrou {verrou} sur {table}"
+    return rangs[0]
+
+
+def test_verrous_de_la_decision(client, fabrique, locataire, annonce, bailleur, entetes,
+                                requetes_pg):
+    candidature = fabrique.match(locataire, annonce)
+    requetes_pg.clear()
+
+    client.put(f"/api/matches/{candidature.id}/statut", headers=entetes(bailleur),
+               json={"statut": "accepted"})
+
+    assert (_rang(requetes_pg, "listings", "FOR UPDATE")
+            < _rang(requetes_pg, "matches", "FOR NO KEY UPDATE"))
+
+
+def test_verrou_de_la_candidature(client, locataire, annonce, entetes, requetes_pg):
+    reponse = client.post("/api/matches/", headers=entetes(locataire),
+                          json={"listing_id": annonce.id})
+
+    assert reponse.status_code == 201
+    rang_annonce = _rang(requetes_pg, "listings", "FOR UPDATE")
+    # Le contrôle « déjà candidaté » se fait sous ce verrou.
+    assert any(i > rang_annonce and "FROM matches" in sql
+               for i, sql in enumerate(requetes_pg))
+
+
+def test_verrou_du_changement_de_type(client, fabrique, locataire, annonce, bailleur, entetes,
+                                      requetes_pg):
+    fabrique.match(locataire, annonce)
+    requetes_pg.clear()
+
+    client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur),
+               json={"type_transaction": "vente"})
+
+    rang_annonce = _rang(requetes_pg, "listings", "FOR UPDATE")
+    # Les candidatures sont lues après le verrou, pas avant.
+    lectures = [i for i, sql in enumerate(requetes_pg) if "FROM matches" in sql]
+    assert lectures and min(lectures) > rang_annonce
+
+
+def test_verrous_de_la_confirmation_des_frais(client, fabrique, locataire, annonce, bailleur,
+                                              cinetpay, requetes_pg):
+    candidature = fabrique.match(locataire, annonce)
+    paiement = fabrique.paiement(bailleur, type_paiement="frais_mise_en_relation",
+                                 match_id=candidature.id, listing_id=annonce.id)
+    requetes_pg.clear()
+
+    client.post("/api/payments/callback", json={"cpm_trans_id": paiement.cinetpay_transaction_id})
+
+    rang_paiement = _rang(requetes_pg, "payments", "FOR UPDATE")
+    rang_annonce = _rang(requetes_pg, "listings", "FOR UPDATE")
+    rang_candidature = _rang(requetes_pg, "matches", "FOR NO KEY UPDATE")
+    assert rang_paiement < rang_annonce < rang_candidature
+    assert Match.query.get(candidature.id).status == "accepted"

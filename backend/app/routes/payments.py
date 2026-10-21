@@ -589,6 +589,14 @@ def _verrouiller_service(paiement):
     compte) : deux paiements distincts du même service confirmés en même temps
     se sérialisent, et le second se voit en doublon."""
     if paiement.type_paiement in SERVICES_PAR_CANDIDATURE and paiement.match_id:
+        # L'annonce d'abord, comme les routes de candidature et d'annonce
+        # (ordre des verrous, voir `matches._requete_candidature_verrouillee`) :
+        # son type de transaction ne change pas pendant la confirmation.
+        candidature = db.session.get(Match, paiement.match_id)
+        if candidature is not None:
+            db.session.execute(
+                select(Listing).where(Listing.id == candidature.listing_id)
+                .with_for_update().execution_options(populate_existing=True))
         modele, cle = Match, paiement.match_id
     elif paiement.type_paiement in ("certification", "mise_en_avant") and paiement.listing_id:
         modele, cle = Listing, paiement.listing_id

@@ -373,6 +373,11 @@ def update_listing(current_user, listing_id, corps):
     listing = Listing.query.get_or_404(listing_id)
     if listing.landlord_id != current_user.id:
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+    # Relue sous verrou, comme pour les photos : une modification simultanée
+    # (autre onglet, photo, décision de l'admin) ne peut ni écraser une
+    # annulation de la certification ni s'intercaler entre la lecture de
+    # l'état examiné et l'écriture.
+    listing = _annonce_verrouillee(listing_id)
 
     valeurs = corps.model_dump(exclude_unset=True)
     devise_envoyee = valeurs.pop("devise", None)
@@ -401,7 +406,10 @@ def update_listing(current_user, listing_id, corps):
         _verifier_loyer(final["type_transaction"], final["prix"])
     # D1 (lot 2.4) : les frais de mise en relation ne portent que sur une
     # location. Basculer en « vente » le temps d'accepter gratuitement des
-    # candidatures, puis revenir en location, les contournerait.
+    # candidatures, puis revenir en location, les contournerait. Les
+    # candidatures sont lues après le verrou de l'annonce, que prennent aussi
+    # la candidature, la décision et la confirmation des frais : aucune ne
+    # s'intercale entre cette lecture et l'écriture du nouveau type.
     if change("type_transaction") and any(
             m.status in STATUTS_BLOQUANT_TYPE_TRANSACTION for m in listing.matches):
         return jsonify({"error": "Le type de transaction ne peut pas changer tant que "

@@ -11,12 +11,13 @@ l'accepte (`routes.payments._confirmer` → `accepter_candidature`).
 """
 from datetime import datetime
 
-from flask import Blueprint, abort, jsonify, request
+from flask import Blueprint, jsonify, request
 from sqlalchemy import select
 
 from app import db
 from app.models import Conversation, Listing, Match, User, abonnements_passeport
 from app.routes import current_user_required, role_required
+from app.routes.listings import _annonce_verrouillee
 from app.routes.payments import refus_acceptation_sans_frais
 from app.schemas import valider_corps
 from app.schemas.matches import Candidature, DecisionCandidature, Visite
@@ -47,7 +48,11 @@ def create_match(current_user, corps):
             "action_requise": "verifier_telephone",
         }), 403
 
-    listing = Listing.query.get_or_404(listing_id)
+    Listing.query.get_or_404(listing_id)
+    # Annonce relue sous verrou (toujours l'annonce avant la candidature) :
+    # une candidature ne se glisse pas pendant un changement de type de
+    # transaction (`listings.update_listing`, D1).
+    listing = _annonce_verrouillee(listing_id)
 
     if listing.status != "active" or not listing.is_visible:
         return jsonify({"error": "Cette annonce n'est plus disponible"}), 400
@@ -254,7 +259,13 @@ def _requete_candidature_verrouillee(match_id):
     """Relecture de la candidature sous verrou de ligne (`FOR NO KEY UPDATE`),
     comme `payments._verrouiller_service` : une décision du bailleur et la
     confirmation des frais de mise en relation se sérialisent, et aucune
-    n'écrase l'autre sur la foi d'un statut périmé."""
+    n'écrase l'autre sur la foi d'un statut périmé.
+
+    Ordre des verrous, partout : l'annonce (`FOR UPDATE`) PUIS la
+    candidature, sans quoi deux requêtes croisées s'interbloqueraient. En
+    PostgreSQL, `FOR UPDATE` et `FOR NO KEY UPDATE` sur une même ligne
+    s'excluent mutuellement : ces verrous sérialisent bien les routes entre
+    elles."""
     return (select(Match).where(Match.id == match_id)
             .with_for_update(key_share=True).execution_options(populate_existing=True))
 
@@ -269,11 +280,12 @@ def update_match_status(current_user, match_id, corps):
     une location, elle attend les frais de mise en relation (402) : la
     candidature reste en attente et le locataire n'est prévenu de rien.
     """
-    match = db.session.execute(_requete_candidature_verrouillee(match_id)).scalar_one_or_none()
-    if match is None:
-        abort(404)
+    match = Match.query.get_or_404(match_id)
     if not match.listing or match.listing.landlord_id != current_user.id:
         return jsonify({"error": "Non autorisé"}), 403
+    # L'annonce d'abord (son type décide des frais), puis la candidature.
+    _annonce_verrouillee(match.listing_id)
+    match = db.session.execute(_requete_candidature_verrouillee(match_id)).scalar_one()
 
     statut = corps.statut
 
