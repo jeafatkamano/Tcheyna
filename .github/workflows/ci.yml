@@ -115,3 +115,9 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: CSP de render.yaml
+        # Lot 1.17 : tout contenu inline du build (hors-ligne.html) doit avoir
+        # son empreinte dans la CSP du site, sinon il serait bloqué en
+        # production sans autre signe qu'un message dans la console.
+        run: node ../scripts/verifier-csp.mjs dist
