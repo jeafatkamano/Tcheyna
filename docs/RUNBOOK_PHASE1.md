@@ -262,3 +262,56 @@ Le service gratuit s'endort après 15 minutes sans requête ; le réveil prend
 - Pour les prochaines révisions : `flask db upgrade` depuis ton poste avant
   chaque merge qui en contient une (le corps de la PR le signale), ou ajoute-le
   en tête de `startCommand` dans `render.yaml`.
+
+## 11. Purge nocturne des pièces (lot 1.19, D5 et D13)
+
+D5 : une pièce d'identité ou de revenus est supprimée dès la décision, et au
+plus tard 12 mois après son dépôt si personne ne l'a examinée. Ce délai est
+tenu par le cron job Render `tcheyna-purge-pieces` (D13), décrit dans
+`render.yaml` : chaque nuit à 03:00 UTC (03:00 à Conakry), il lance
+
+```bash
+cd backend && flask donnees retenter-suppressions; reprise=$?;
+flask donnees purger-pieces && exit $reprise
+```
+
+- `retenter-suppressions` reprend les fichiers dont la suppression a échoué
+  (Supabase injoignable) ; elle sort en erreur s'il en reste.
+- `purger-pieces` supprime les pièces sans décision depuis plus de
+  `DUREE_CONSERVATION_PIECES_JOURS` jours (365). Elle tourne même si la
+  reprise a échoué ; ses propres échecs sont repris la nuit suivante.
+- Une exécution « Failed » signale l'un ou l'autre échec : lire ses journaux.
+
+Coût : facturation à la seconde, **1 $ minimum par mois** (plus petite
+instance, `0.5c-512mb`). Aucune offre gratuite pour les cron jobs.
+
+**Mise en place, une fois, après le merge :**
+
+1. Render → Blueprints → le Blueprint du dépôt → « Manual Sync » (ou
+   automatique si Auto Sync est actif). S'il n'existe pas de Blueprint, les
+   services ayant été créés autrement : crée le cron job à la main
+   (New → Cron Job) avec les valeurs de `render.yaml`, plutôt que de lier un
+   Blueprint qui réappliquerait toute la configuration aux services existants.
+2. Render → `tcheyna-purge-pieces` → Environment : vérifie que
+   `DATABASE_URL`, `SUPABASE_URL` et `SUPABASE_SERVICE_KEY` sont remplis
+   (recopiés de `tcheyna-api`), ainsi que `SECRET_KEY` et `JWT_SECRET_KEY`
+   (générés). Sans `DATABASE_URL`, l'exécution échoue au démarrage par un
+   `RuntimeError` explicite ; sans Supabase, les fichiers restent en file.
+3. « Trigger Run » sur la page Runs du cron, puis ouvre l'exécution : les
+   journaux doivent afficher `… suppression(s) reprise(s), 0 encore en échec.`
+   puis `… fichier(s) purgé(s).`, et l'exécution finir « Succeeded ».
+
+Les variables recopiées de `tcheyna-api` (`fromService`) ne suivent pas en
+direct : après avoir changé `DATABASE_URL` ou la clé Supabase sur l'API,
+relance « Manual Sync » (ou corrige aussi la valeur sur le cron).
+
+Contrôle en lecture seule, dans le SQL Editor de Supabase, des fichiers
+restés en file :
+
+```sql
+SELECT origine, count(*) AS fichiers, max(tentatives) AS tentatives_max,
+       min(created_at) AS plus_ancien
+FROM fichiers_a_supprimer
+GROUP BY origine
+ORDER BY plus_ancien;
+```
