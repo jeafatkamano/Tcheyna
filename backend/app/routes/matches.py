@@ -11,7 +11,8 @@ l'accepte (`routes.payments._confirmer` → `accepter_candidature`).
 """
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, abort, jsonify, request
+from sqlalchemy import select
 
 from app import db
 from app.models import Conversation, Listing, Match, User, abonnements_passeport
@@ -249,6 +250,15 @@ def accepter_candidature(match):
     notify.candidature_traitee(match.tenant_id, True, match.listing.title_fr, match.id)
 
 
+def _requete_candidature_verrouillee(match_id):
+    """Relecture de la candidature sous verrou de ligne (`FOR NO KEY UPDATE`),
+    comme `payments._verrouiller_service` : une décision du bailleur et la
+    confirmation des frais de mise en relation se sérialisent, et aucune
+    n'écrase l'autre sur la foi d'un statut périmé."""
+    return (select(Match).where(Match.id == match_id)
+            .with_for_update(key_share=True).execution_options(populate_existing=True))
+
+
 @matches_bp.route("/<string:match_id>/statut", methods=["PUT"])
 @role_required("landlord", "agency")
 @valider_corps(DecisionCandidature)
@@ -259,7 +269,9 @@ def update_match_status(current_user, match_id, corps):
     une location, elle attend les frais de mise en relation (402) : la
     candidature reste en attente et le locataire n'est prévenu de rien.
     """
-    match = Match.query.get_or_404(match_id)
+    match = db.session.execute(_requete_candidature_verrouillee(match_id)).scalar_one_or_none()
+    if match is None:
+        abort(404)
     if not match.listing or match.listing.landlord_id != current_user.id:
         return jsonify({"error": "Non autorisé"}), 403
 

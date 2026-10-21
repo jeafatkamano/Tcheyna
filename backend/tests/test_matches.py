@@ -1,5 +1,9 @@
 """Blueprint matches : candidature, décision du bailleur, conclusion."""
-from app.models import Conversation, Match, Notification
+from sqlalchemy.dialects import postgresql
+
+from app import db
+from app.models import Conversation, Listing, Match, Notification
+from app.routes import matches
 
 
 def test_candidature_d_un_locataire_basique(client, locataire, annonce, entetes):
@@ -112,3 +116,107 @@ def test_mes_demandes_cote_bailleur(client, match, bailleur, entetes):
     reponse = client.get("/api/matches/mes-demandes", headers=entetes(bailleur))
     assert reponse.status_code == 200
     assert reponse.get_json()["stats"]["acceptees"] == 1
+
+
+# ─── Lot 2.4 · Frais de mise en relation (D1) ────────────────
+
+def test_bascule_en_vente_refusee_pour_contourner_les_frais(client, fabrique, locataire,
+                                                            annonce, bailleur, entetes):
+    # Scénario de contournement : passer l'annonce en « vente », accepter
+    # gratuitement, puis revenir en location.
+    candidature = fabrique.match(locataire, annonce)
+
+    bascule = client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur),
+                         json={"type_transaction": "vente"})
+    acceptation = client.put(f"/api/matches/{candidature.id}/statut", headers=entetes(bailleur),
+                             json={"statut": "accepted"})
+
+    assert bascule.status_code == 409
+    assert "type de transaction" in bascule.get_json()["error"]
+    assert Listing.query.get(annonce.id).type_transaction == "location"
+    assert acceptation.status_code == 402
+    assert Match.query.get(candidature.id).status == "pending"
+    assert Conversation.query.filter_by(match_id=candidature.id).count() == 0
+
+
+def test_retour_en_location_refuse_avec_une_candidature_acceptee(client, fabrique, locataire,
+                                                                 bailleur, entetes):
+    vente = fabrique.annonce(bailleur, type_transaction="vente", caution=None, charges=0)
+    candidature = fabrique.match(locataire, vente)
+    assert client.put(f"/api/matches/{candidature.id}/statut", headers=entetes(bailleur),
+                      json={"statut": "accepted"}).status_code == 200
+
+    reponse = client.put(f"/api/listings/{vente.id}", headers=entetes(bailleur),
+                         json={"type_transaction": "location"})
+
+    assert reponse.status_code == 409
+    assert Listing.query.get(vente.id).type_transaction == "vente"
+
+
+def test_type_de_transaction_modifiable_sans_candidature_en_cours(client, fabrique, locataire,
+                                                                  annonce, bailleur, entetes):
+    fabrique.match(locataire, annonce, status="rejected")
+    fabrique.match(fabrique.locataire(), annonce, status="cancelled")
+
+    reponse = client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur),
+                         json={"type_transaction": "vente"})
+
+    assert reponse.status_code == 200
+    assert Listing.query.get(annonce.id).type_transaction == "vente"
+
+
+def test_meme_type_de_transaction_renvoye_reste_accepte(client, fabrique, locataire, annonce,
+                                                        bailleur, entetes):
+    # Le front renvoie le corps complet : un type inchangé ne bloque rien.
+    fabrique.match(locataire, annonce)
+
+    reponse = client.put(f"/api/listings/{annonce.id}", headers=entetes(bailleur),
+                         json={"type_transaction": "location", "prix": 2_100_000})
+
+    assert reponse.status_code == 200
+    assert Listing.query.get(annonce.id).prix == 2_100_000
+
+
+def test_decision_relit_la_candidature_sous_verrou():
+    requete = matches._requete_candidature_verrouillee("id-quelconque")
+    sql = str(requete.compile(dialect=postgresql.dialect()))
+    assert "FOR NO KEY UPDATE" in sql
+    assert requete.get_execution_options()["populate_existing"] is True
+
+
+def test_decision_passe_par_la_relecture_verrouillee(client, fabrique, locataire, annonce,
+                                                     bailleur, entetes, monkeypatch):
+    candidature = fabrique.match(locataire, annonce)
+    lues = []
+    origine = matches._requete_candidature_verrouillee
+
+    def espion(match_id):
+        lues.append(match_id)
+        return origine(match_id)
+
+    monkeypatch.setattr(matches, "_requete_candidature_verrouillee", espion)
+    client.put(f"/api/matches/{candidature.id}/statut", headers=entetes(bailleur),
+               json={"statut": "rejected"})
+
+    assert lues == [candidature.id]
+
+
+def test_decision_sur_une_candidature_inexistante(client, bailleur, entetes):
+    reponse = client.put("/api/matches/inexistante/statut", headers=entetes(bailleur),
+                         json={"statut": "accepted"})
+    assert reponse.status_code == 404
+
+
+def test_decision_relit_le_statut_en_base(app, client, fabrique, locataire, annonce, bailleur,
+                                          entetes):
+    """Confirmation des frais écrite par un autre processus : la décision
+    du bailleur lit l'état en base, pas un objet périmé de la session."""
+    candidature = fabrique.match(locataire, annonce)
+    db.session.connection().exec_driver_sql(
+        "UPDATE matches SET status = 'accepted' WHERE id = ?", (candidature.id,))
+
+    reponse = client.put(f"/api/matches/{candidature.id}/statut", headers=entetes(bailleur),
+                         json={"statut": "accepted"})
+
+    # Acceptée entre-temps : plus de frais à demander.
+    assert reponse.status_code == 200
