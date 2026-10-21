@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   Calendar,
   Check,
   ChevronRight,
@@ -6,28 +7,31 @@ import {
   Handshake,
   MapPin,
   MessageSquare,
+  RefreshCw,
   Sparkles,
   Star,
   X,
 } from "lucide-react";
-import { CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
 import {
+  ApiError,
   listingsAPI,
   matchesAPI,
   paiementsAPI,
   urlFichier,
+  type FraisMiseEnRelationRequis,
   type Match,
   type MatchStatus,
+  type Payment,
 } from "../../api";
 import { Avatar } from "../../components/Avatar";
 import { BadgeVerification, ScoreCircle, ScoreMatch } from "../../components/BadgeVerification";
 import { Erreur, ListeVide, MessageErreur, SqueletteCartes } from "../../components/Etats";
-import { BoutonPaiement, ModalePaiement } from "../../components/ModalePaiement";
+import { ModalePaiement } from "../../components/ModalePaiement";
 import { useAction, useApi } from "../../hooks/useApi";
-import { formatDateHeure, formatMontantCourt, formatRelatif } from "../../lib/format";
+import { formatDateHeure, formatMontant, formatMontantCourt, formatRelatif } from "../../lib/format";
 import { ModaleAvis } from "../tenant/TenantMatches";
 
 const STATUTS: Record<MatchStatus, { label: string; couleur: string; fond: string }> = {
@@ -47,31 +51,77 @@ const FILTRES = [
 
 type Onglet = "candidatures" | "suggestions";
 
+/** Le 402 de l'acceptation d'une location (D1), reconnu à son `action_requise`. */
+function fraisRequis(err: unknown): FraisMiseEnRelationRequis | null {
+  if (!(err instanceof ApiError) || err.statut !== 402) return null;
+  const corps = err.details as Partial<FraisMiseEnRelationRequis> | undefined;
+  return corps?.action_requise === "payer_frais_mise_en_relation" && corps.paiement
+    ? (corps as FraisMiseEnRelationRequis)
+    : null;
+}
+
+/**
+ * Décision du bailleur. Sur une location, le serveur répond 402 : rien n'est
+ * accepté tant que les frais de mise en relation ne sont pas payés, et la
+ * réponse dit lesquels. Toute autre erreur (hors GNF, candidature close…)
+ * remonte telle quelle, avec le message du serveur.
+ */
+async function decider(id: string, statut: "accepted" | "rejected") {
+  try {
+    return { decision: await matchesAPI.repondre(id, statut), frais: null };
+  } catch (err) {
+    const frais = fraisRequis(err);
+    if (frais) return { decision: null, frais };
+    throw err;
+  }
+}
+
+/**
+ * État du paiement des frais d'une candidature, déduit de l'historique : un
+ * paiement en attente peut encore aboutir (on n'en lance pas un second), un
+ * échec sans paiement en cours se réessaie.
+ */
+function etatFrais(paiements: Payment[], matchId: string) {
+  const frais = paiements.filter(
+    (p) => p.match_id === matchId && p.type_paiement === "frais_mise_en_relation",
+  );
+  const enAttente = frais.find((p) => p.statut === "pending");
+  if (enAttente) return { etat: "en_attente" as const, paiement: enAttente };
+  if (frais.some((p) => p.statut === "success")) return null;
+  const echec = frais.find((p) => p.statut === "failed");
+  return echec ? { etat: "echec" as const, paiement: echec } : null;
+}
+
 export function OwnerMatches() {
   const [onglet, setOnglet] = useState<Onglet>("candidatures");
   const [filtre, setFiltre] = useState<MatchStatus | undefined>(undefined);
   const [visiteOuverte, setVisiteOuverte] = useState<string | null>(null);
   const [avisOuvert, setAvisOuvert] = useState<{ matchId: string; cible: string } | null>(null);
-  const [commissionOuverte, setCommissionOuverte] = useState<Match | null>(null);
+  const [fraisOuverts, setFraisOuverts] = useState<FraisMiseEnRelationRequis["paiement"] | null>(
+    null,
+  );
 
   const demandes = useApi(() => matchesAPI.mesDemandes({ statut: filtre }), [filtre]);
   const paiements = useApi(() => paiementsAPI.mesPaiements(), []);
-  const reponse = useAction(matchesAPI.repondre);
+  const reponse = useAction(decider);
   const conclusion = useAction(matchesAPI.conclure);
-
-  // « Réglée » seulement une fois confirmée : un paiement en attente peut encore échouer.
-  function etatCommission(matchId: string): "reglee" | "en_attente" | null {
-    const commissions = (paiements.data?.paiements ?? []).filter(
-      (p) => p.match_id === matchId && p.type_paiement === "commission",
-    );
-    if (commissions.some((p) => p.statut === "success")) return "reglee";
-    if (commissions.some((p) => p.statut === "pending")) return "en_attente";
-    return null;
-  }
+  const verification = useAction(paiementsAPI.verifier);
 
   async function repondre(match: Match, statut: "accepted" | "rejected") {
-    const ok = await reponse.executer(match.id, statut);
-    if (ok) void demandes.recharger();
+    const resultat = await reponse.executer(match.id, statut);
+    if (!resultat) return;
+    // Location : l'acceptation passe par le paiement des frais.
+    if (resultat.frais) setFraisOuverts(resultat.frais.paiement);
+    else void demandes.recharger();
+  }
+
+  /** Paiement des frais resté en attente : on le revérifie auprès de l'opérateur. */
+  async function verifierFrais(paiement: Payment) {
+    const ok = await verification.executer(paiement.id);
+    if (!ok) return;
+    // Confirmé, il vient d'accepter la candidature : les deux listes changent.
+    void paiements.recharger();
+    void demandes.recharger();
   }
 
   async function conclure(match: Match) {
@@ -165,7 +215,7 @@ export function OwnerMatches() {
           </div>
 
           <div className="px-4 space-y-4">
-            <MessageErreur message={reponse.erreur ?? conclusion.erreur} />
+            <MessageErreur message={reponse.erreur ?? conclusion.erreur ?? verification.erreur} />
 
             {demandes.chargement ? (
               <SqueletteCartes nombre={2} />
@@ -180,6 +230,15 @@ export function OwnerMatches() {
             ) : (
               demandes.data.matches.map((match) => {
                 const statut = STATUTS[match.status];
+                const frais =
+                  match.status === "pending"
+                    ? etatFrais(paiements.data?.paiements ?? [], match.id)
+                    : null;
+                // Location dont on ignore encore l'état des frais (paiements en
+                // chargement ou en erreur) : pas d'acceptation possible, elle
+                // pourrait relancer un paiement déjà en cours.
+                const fraisInconnus =
+                  match.status === "pending" && !match.listing?.est_vente && !paiements.data;
                 return (
                   <div
                     key={match.id}
@@ -266,26 +325,101 @@ export function OwnerMatches() {
                       </p>
 
                       {/* Actions selon le statut */}
-                      {match.status === "pending" && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => repondre(match, "rejected")}
-                            disabled={reponse.enCours}
-                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50"
-                            style={{ background: "#F1F5F9", color: "#64748B" }}
+                      {frais?.etat === "en_attente" && (
+                        <div className="space-y-2">
+                          {/* Un paiement peut encore aboutir : pas de second paiement. */}
+                          <div
+                            className="px-3.5 py-3 rounded-xl"
+                            style={{ background: "#FEF3C7", border: "1px solid #FDE68A" }}
                           >
-                            <X size={15} />
-                            Refuser
-                          </button>
-                          <button
-                            onClick={() => repondre(match, "accepted")}
-                            disabled={reponse.enCours}
-                            className="flex-[2] flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-                            style={{ background: "#F97316" }}
-                          >
-                            <Check size={15} />
-                            Accepter et discuter
-                          </button>
+                            <p
+                              className="flex items-center gap-1.5 text-xs font-semibold"
+                              style={{ color: "#92400E" }}
+                            >
+                              <Clock size={14} />
+                              Acceptation en attente du paiement
+                            </p>
+                            <p className="text-xs mt-1 leading-relaxed" style={{ color: "#B45309" }}>
+                              Frais de mise en relation :{" "}
+                              {formatMontant(frais.paiement.montant, frais.paiement.devise)}. La
+                              candidature sera acceptée dès la confirmation du paiement.
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Link
+                              to={`/paiements/${frais.paiement.id}`}
+                              className="flex-1 flex items-center justify-center py-2.5 rounded-xl text-sm font-semibold"
+                              style={{ background: "#F1F5F9", color: "#64748B" }}
+                            >
+                              Voir le reçu
+                            </Link>
+                            <button
+                              onClick={() => verifierFrais(frais.paiement)}
+                              disabled={verification.enCours}
+                              className="flex-[2] flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                              style={{ background: "#1E3A5F" }}
+                            >
+                              <RefreshCw size={15} />
+                              {verification.enCours ? "Vérification…" : "Vérifier le paiement"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {match.status === "pending" && frais?.etat !== "en_attente" && (
+                        <div className="space-y-2">
+                          {frais?.etat === "echec" && (
+                            <p
+                              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold"
+                              style={{ background: "#FEE2E2", color: "#B91C1C" }}
+                            >
+                              <AlertCircle size={14} className="flex-shrink-0" />
+                              Le paiement des frais de mise en relation n'a pas abouti : la
+                              candidature n'est pas encore acceptée.
+                            </p>
+                          )}
+                          {fraisInconnus &&
+                            (paiements.erreur ? (
+                              <div className="space-y-2">
+                                <MessageErreur
+                                  message={`${paiements.erreur} L'acceptation reste indisponible tant que l'état des frais de mise en relation n'est pas connu.`}
+                                />
+                                <button
+                                  onClick={() => void paiements.recharger()}
+                                  className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold"
+                                  style={{ background: "#F1F5F9", color: "#1E3A5F" }}
+                                >
+                                  <RefreshCw size={15} />
+                                  Recharger les paiements
+                                </button>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-gray-500 px-1">
+                                Vérification des frais de mise en relation…
+                              </p>
+                            ))}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => repondre(match, "rejected")}
+                              disabled={reponse.enCours}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50"
+                              style={{ background: "#F1F5F9", color: "#64748B" }}
+                            >
+                              <X size={15} />
+                              Refuser
+                            </button>
+                            {!fraisInconnus && (
+                              <button
+                                onClick={() => repondre(match, "accepted")}
+                                disabled={reponse.enCours}
+                                className="flex-[2] flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                                style={{ background: "#F97316" }}
+                              >
+                                {frais?.etat === "echec" ? <RefreshCw size={15} /> : <Check size={15} />}
+                                {frais?.etat === "echec" ? "Réessayer" : "Accepter et discuter"}
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
 
@@ -323,44 +457,6 @@ export function OwnerMatches() {
 
                       {match.status === "completed" && (
                         <div className="space-y-2">
-                          <div
-                            className="px-3.5 py-3 rounded-xl"
-                            style={{ background: "#EFF6FF", border: "1px solid #BFDBFE" }}
-                          >
-                            <p className="text-xs font-semibold" style={{ color: "#1E3070" }}>
-                              Commission Tcheyna :{" "}
-                              {formatMontantCourt(match.commission, match.listing?.devise)}
-                            </p>
-                            <p className="text-xs mt-0.5" style={{ color: "#1D4ED8" }}>
-                              6 % du premier loyer, sur une location conclue via la plateforme.
-                            </p>
-                          </div>
-
-                          {etatCommission(match.id) === "reglee" ? (
-                            <div
-                              className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold"
-                              style={{ background: "#ECFDF5", color: "#047857" }}
-                            >
-                              <CheckCircle2 size={14} />
-                              Commission réglée
-                            </div>
-                          ) : etatCommission(match.id) === "en_attente" ? (
-                            <Link
-                              to="/paiements"
-                              className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold"
-                              style={{ background: "#FEF3C7", color: "#B45309" }}
-                            >
-                              <Clock size={14} />
-                              Paiement de la commission en attente de confirmation
-                            </Link>
-                          ) : match.commission > 0 && !match.listing?.est_vente ? (
-                            <BoutonPaiement
-                              label="Régler la commission"
-                              montant={match.commission}
-                              devise={match.listing?.devise}
-                              onClick={() => setCommissionOuverte(match)}
-                            />
-                          ) : null}
                           <button
                             onClick={() =>
                               setAvisOuvert({
@@ -385,15 +481,16 @@ export function OwnerMatches() {
         </>
       )}
 
-      {commissionOuverte && (
+      {/* Montant et devise viennent du 402 : le serveur les impose de toute façon. */}
+      {fraisOuverts && (
         <ModalePaiement
-          type="commission"
-          titre="Commission de mise en relation"
-          description="6 % du premier loyer, dus une fois la location effectivement conclue par Tcheyna. C'est la seule commission prélevée : aucun frais n'est facturé tant qu'aucun locataire n'est trouvé."
-          montant={commissionOuverte.commission}
-          devise={commissionOuverte.listing?.devise}
-          matchId={commissionOuverte.id}
-          onFerme={() => setCommissionOuverte(null)}
+          type="frais_mise_en_relation"
+          titre="Frais de mise en relation"
+          description="Payés par vous à l'acceptation de cette candidature de location. L'acceptation prend effet au paiement confirmé : le candidat en est alors prévenu et la discussion s'ouvre. Aucun frais n'est dû sur une vente."
+          montant={fraisOuverts.montant}
+          devise={fraisOuverts.devise}
+          matchId={fraisOuverts.match_id}
+          onFerme={() => setFraisOuverts(null)}
           onPaye={() => void paiements.recharger()}
         />
       )}

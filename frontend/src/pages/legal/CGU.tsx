@@ -103,16 +103,23 @@ export function CGU() {
         <p>Les services payants sont facturés en francs guinéens (GNF) :</p>
         <Liste
           items={[
+            "Frais de mise en relation : 250 000 GNF par candidature de location acceptée, à la charge du propriétaire ou de l'agence qui publie l'annonce, payés au moment où il accepte la candidature.",
             "Certification d'une annonce : 250 000 GNF, à la charge du propriétaire.",
             "Mise en avant d'une annonce pendant 30 jours : 200 000 GNF, à la charge du propriétaire.",
             "Abonnement Passeport Locataire, valable un an : 150 000 GNF, à la charge du locataire.",
-            "Commission de mise en relation : 6 % du premier loyer, due par le propriétaire uniquement lorsqu'une location est effectivement conclue via la plateforme.",
           ]}
         />
         <p>
-          <strong>Aucune commission n'est prélevée sur une vente.</strong> La mise en relation
-          entre un vendeur et un acquéreur est gratuite ; seules la certification et la mise en
-          avant de l'annonce restent payantes. La cession elle-même se conclut devant notaire,
+          L'acceptation d'une candidature de location ne prend effet qu'à la confirmation du
+          paiement des frais de mise en relation. Si, avant cette confirmation, la candidature
+          est retirée par le locataire, refusée, ou si une autre location a été conclue sur
+          l'annonce, elle n'est pas acceptée : les frais déjà encaissés sont signalés comme à
+          rembourser et remboursés par l'équipe Tcheyna.
+        </p>
+        <p>
+          <strong>Aucun frais de mise en relation n'est dû sur une vente.</strong> La mise en
+          relation entre un vendeur et un acquéreur est gratuite ; seules la certification et la
+          mise en avant de l'annonce restent payantes. La cession elle-même se conclut devant notaire,
           hors plateforme : Tcheyna n'y est pas partie et n'en perçoit rien.
         </p>
         <p>
@@ -142,7 +149,7 @@ export function CGU() {
         <Liste
           items={[
             "Transmettre des documents falsifiés ou appartenant à autrui.",
-            "Demander ou exiger un paiement hors plateforme dans le but d'échapper à la commission due.",
+            "Chercher à se soustraire aux frais de mise en relation dus, par exemple en présentant comme une vente un bien proposé à la location.",
             "Solliciter un versement avant toute visite ou tout accord, ou solliciter des frais de dossier non prévus par les présentes.",
             "Publier des propos injurieux, diffamatoires, ou des avis mensongers.",
             "Refuser un candidat sur un motif discriminatoire prohibé par la loi.",

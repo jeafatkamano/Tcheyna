@@ -169,6 +169,17 @@ export function RecuPage() {
           </div>
         )}
 
+        {/* Frais confirmés : la candidature vient d'être acceptée (D1). */}
+        {paiement.type_paiement === "frais_mise_en_relation" && paiement.statut === "success" && (
+          <Link
+            to="/owner/matches"
+            className="block w-full py-3.5 rounded-2xl font-semibold text-center text-white"
+            style={{ background: "#F97316" }}
+          >
+            Candidature acceptée : voir mes candidats
+          </Link>
+        )}
+
         <p className="text-xs text-center text-gray-400 leading-relaxed px-4">
           Ce reçu est conservé par Tcheyna et consultable par les deux parties de la transaction.
         </p>
