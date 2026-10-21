@@ -6,11 +6,10 @@ plateforme : c'est ce qui rend l'historique de réputation crédible, et donc
 difficile à répliquer pour un concurrent.
 """
 from flask import Blueprint, jsonify
-from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from app import db
-from app.models import TRUST_LEVELS, Match, Review, User
+from app.models import TRUST_LEVELS, Match, Review, User, moyenne_par_auteur
 from app.routes import current_user_required
 from app.schemas import valider_corps
 from app.schemas.reviews import Avis
@@ -27,15 +26,22 @@ def get_user_reviews(user_id):
     reviews = (Review.query.filter_by(target_id=user_id)
                .order_by(Review.created_at.desc()).all())
 
-    moyenne = db.session.query(func.avg(Review.note)).filter_by(target_id=user_id).scalar()
+    # Une voix par auteur dans la moyenne (lot 1.15) : plusieurs locations
+    # conclues avec la même personne ne multiplient pas son poids. `total`
+    # et `repartition` comptent toujours les avis, tous affichés.
+    par_auteur = {}
     repartition = {n: 0 for n in range(1, 6)}
     for review in reviews:
         repartition[review.note] = repartition.get(review.note, 0) + 1
+        nombre, somme = par_auteur.get(review.reviewer_id, (0, 0))
+        par_auteur[review.reviewer_id] = (nombre + 1, somme + review.note)
+    moyenne = moyenne_par_auteur(par_auteur.values())
 
     return jsonify({
         "reviews":     [r.to_dict() for r in reviews],
-        "moyenne":     round(float(moyenne), 2) if moyenne else 0,
+        "moyenne":     round(moyenne, 2) if moyenne else 0,
         "total":       len(reviews),
+        "auteurs":     len(par_auteur),
         "positifs":    sum(1 for r in reviews if r.is_positive),
         "repartition": repartition,
     }), 200
@@ -114,7 +120,8 @@ def create_review(current_user, corps):
     db.session.add(review)
     db.session.flush()
 
-    # Un troisième avis positif fait passer au niveau « Recommandé ».
+    # Un avis positif d'un troisième auteur distinct fait passer au niveau
+    # « Recommandé » (voir `User.update_trust_level`).
     from app.services import notifications as notify
 
     cible = User.query.get(target_id)
