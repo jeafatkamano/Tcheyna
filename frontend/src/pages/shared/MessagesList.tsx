@@ -1,16 +1,72 @@
-import { MessageSquare } from "lucide-react";
+/**
+ * MessagesList.tsx — Liste des discussions.
+ *
+ * Lot 2.8 : la liste se charge par pages de 20 (« Afficher plus ») quand le
+ * serveur la pagine ; un serveur antérieur ignore `page` et renvoie tout, sans
+ * bouton. Une discussion fermée à l'écriture porte la mention « Fermée ».
+ */
+import { Loader2, Lock, MessageSquare } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router";
 
-import { messagesAPI } from "../../api";
+import { ApiError, messagesAPI, type Conversation, type PageConversations } from "../../api";
 import { Avatar } from "../../components/Avatar";
-import { Erreur, ListeVide, SqueletteCartes } from "../../components/Etats";
+import { Erreur, ListeVide, MessageErreur, SqueletteCartes } from "../../components/Etats";
 import { useAuth } from "../../context/AuthContext";
 import { useApi } from "../../hooks/useApi";
 import { formatMontantCourt, formatRelatif } from "../../lib/format";
 
+const PAR_PAGE = 20;
+
+/** Ajoute `suivantes` sans doublon : une conversation remontée en tête par un
+ * nouveau message entre deux pages n'apparaît qu'une fois. */
+function ajouterSansDoublon(liste: Conversation[], suivantes: Conversation[]) {
+  const vues = new Set(liste.map((c) => c.id));
+  return [...liste, ...suivantes.filter((c) => !vues.has(c.id))];
+}
+
+interface Suite {
+  /** Première page à laquelle cette suite s'ajoute. */
+  source: PageConversations;
+  page: number;
+  liste: Conversation[];
+}
+
 export function MessagesList() {
   const { user } = useAuth();
-  const conversations = useApi(() => messagesAPI.conversations(), []);
+  const conversations = useApi(
+    (signal) => messagesAPI.conversations({ page: 1, per_page: PAR_PAGE }, signal),
+    [],
+  );
+
+  // Pages suivantes, ajoutées à la première à chaque « Afficher plus ». Un
+  // rechargement de la première page (« Réessayer ») repart de zéro.
+  const [suite, setSuite] = useState<Suite | null>(null);
+  const [suiteEnCours, setSuiteEnCours] = useState(false);
+  const [erreurSuite, setErreurSuite] = useState<string | null>(null);
+  const suiteValide = suite && suite.source === conversations.data ? suite : null;
+
+  const liste = suiteValide?.liste ?? conversations.data?.conversations ?? [];
+  const pageCourante = suiteValide?.page ?? conversations.data?.page ?? 1;
+  // Sans `pages`, le serveur a tout renvoyé : pas de bouton.
+  const pages = conversations.data?.pages;
+  const encoreDesPages = pages !== undefined && pageCourante < pages;
+
+  async function afficherPlus() {
+    const source = conversations.data;
+    if (!source || suiteEnCours) return;
+    setSuiteEnCours(true);
+    setErreurSuite(null);
+    try {
+      const page = pageCourante + 1;
+      const reponse = await messagesAPI.conversations({ page, per_page: PAR_PAGE });
+      setSuite({ source, page, liste: ajouterSansDoublon(liste, reponse.conversations) });
+    } catch (err) {
+      setErreurSuite(err instanceof ApiError ? err.message : "Impossible de charger la suite");
+    } finally {
+      setSuiteEnCours(false);
+    }
+  }
 
   return (
     <div className="pb-8">
@@ -46,7 +102,7 @@ export function MessagesList() {
             }
           />
         ) : (
-          conversations.data.conversations.map((conversation) => {
+          liste.map((conversation) => {
             const nonLus = conversation.nb_non_lus > 0;
             return (
               <Link
@@ -95,6 +151,16 @@ export function MessagesList() {
                     >
                       {conversation.dernier_message?.contenu ?? "Démarrez la discussion"}
                     </p>
+                    {conversation.ecriture_fermee && (
+                      <span
+                        className="inline-flex items-center gap-1 h-5 px-2 rounded-full font-semibold flex-shrink-0"
+                        style={{ background: "#F1F5F9", color: "#475569", fontSize: "11px" }}
+                        title="Discussion fermée : l'historique reste consultable"
+                      >
+                        <Lock size={10} aria-hidden="true" />
+                        Fermée
+                      </span>
+                    )}
                     {nonLus && (
                       <span
                         className="min-w-[20px] h-5 px-1.5 rounded-full text-white flex items-center justify-center font-bold flex-shrink-0"
@@ -108,6 +174,21 @@ export function MessagesList() {
               </Link>
             );
           })
+        )}
+
+        <MessageErreur message={erreurSuite} />
+        {encoreDesPages && !conversations.erreur && (
+          <button
+            type="button"
+            onClick={afficherPlus}
+            disabled={suiteEnCours}
+            aria-busy={suiteEnCours}
+            className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold disabled:opacity-60"
+            style={{ background: "white", color: "#1E3A5F", border: "1.5px solid #E2E8F0" }}
+          >
+            {suiteEnCours && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
+            {suiteEnCours ? "Chargement…" : "Afficher plus"}
+          </button>
         )}
       </div>
     </div>
