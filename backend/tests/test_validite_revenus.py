@@ -9,7 +9,8 @@ from app.services import donnees_personnelles as dp
 from tests.conftest import SUPABASE_URL_TEST
 
 PRIVE = f"{SUPABASE_URL_TEST}/storage/v1/object/tcheyna-documents/"
-MAINTENANT = datetime(2026, 10, 21, 3, 0)
+# Dans le passé : un dépôt fait pendant un test (heure réelle) est toujours après.
+MAINTENANT = datetime(2026, 6, 15, 3, 0)
 
 
 def _solvable(fabrique, depose_il_y_a=None, **champs):
@@ -20,6 +21,13 @@ def _solvable(fabrique, depose_il_y_a=None, **champs):
         champs["revenus_deposes_le"] = MAINTENANT - timedelta(days=depose_il_y_a)
     fabrique.passeport(user, income_verified=True, **champs)
     return user
+
+
+def _deja_relance(user, il_y_a):
+    """Relance inscrite au journal il y a `il_y_a` jours (avant MAINTENANT)."""
+    ligne = dp.consigner(None, user.id, "revenus", "relancee")
+    ligne.created_at = MAINTENANT - timedelta(days=il_y_a)
+    db.session.commit()
 
 
 def _journal(user, decision):
@@ -43,6 +51,7 @@ RELANCE = "Justificatif de revenus à renouveler"
 
 def test_justificatif_de_plus_de_3_mois_expire(fabrique):
     user = _solvable(fabrique, depose_il_y_a=91)
+    _deja_relance(user, il_y_a=8)                  # relancé à J-7
     score_avant = user.passport.score
 
     assert _appliquer() == (1, 0)
@@ -61,9 +70,28 @@ def test_justificatif_de_plus_de_3_mois_expire(fabrique):
     assert TenantPassport.query.filter(TenantPassport.income_doc_url.isnot(None)).count() == 0
 
 
+def test_locataire_recommande_redescend_au_niveau_identifie(fabrique, bailleur):
+    # Niveaux cumulatifs : sans revenus vérifiés, les avis ne suffisent plus.
+    user = _solvable(fabrique, depose_il_y_a=91)
+    for _ in range(3):
+        fabrique.avis(bailleur, user, note=5, type_avis="landlord_to_tenant")
+    user.update_trust_level()
+    db.session.commit()
+    assert user.trust_level == 4
+    _deja_relance(user, il_y_a=8)
+    score_avant = user.passport.score
+
+    assert _appliquer() == (1, 0)
+
+    user = User.query.get(user.id)
+    assert user.trust_level == 2
+    assert user.passport.score == score_avant - 25
+
+
 @pytest.mark.parametrize("jours, expire", [(89, False), (90, True), (91, True)])
 def test_echeance_au_90e_jour(fabrique, jours, expire):
     user = _solvable(fabrique, depose_il_y_a=jours)
+    _deja_relance(user, il_y_a=jours - 83)         # relancé à J-7
 
     expires, _ = _appliquer()
 
@@ -89,6 +117,9 @@ def test_justificatif_de_moins_de_3_mois_inchange(fabrique):
 def test_commande_idempotente(app, fabrique):
     # La commande prend l'heure courante.
     user = _solvable(fabrique, revenus_deposes_le=datetime.utcnow() - timedelta(days=120))
+    ligne = dp.consigner(None, user.id, "revenus", "relancee")
+    ligne.created_at = datetime.utcnow() - timedelta(days=37)
+    db.session.commit()
     runner = app.test_cli_runner()
 
     premier = runner.invoke(args=["donnees", "expirer-revenus"])
@@ -101,6 +132,41 @@ def test_commande_idempotente(app, fabrique):
     assert len(_journal(user, "expiree")) == 1
     assert len(_notifications(user, EXPIRE)) == 1
     assert User.query.get(user.id).trust_level == 2
+
+
+# ─── Justificatif déjà échu sans relance (premier passage) ───
+
+def test_echu_sans_relance_preavis_de_7_jours(fabrique):
+    # Au premier passage de la commande, un justificatif peut être échu sans
+    # que le locataire ait été prévenu : il l'est, et garde ses revenus
+    # vérifiés pendant 7 jours.
+    user = _solvable(fabrique, depose_il_y_a=120)
+
+    assert _appliquer() == (0, 1)
+    assert _appliquer() == (0, 0)                  # rejouée : pas de seconde relance
+    assert _appliquer(jours_apres=6) == (0, 0)
+    assert User.query.get(user.id).trust_level == 3
+
+    [notif] = _notifications(user, RELANCE)
+    assert "sous 7 jours" in notif.contenu
+    assert "/20" not in notif.contenu              # aucune date, a fortiori passée
+    [ligne] = _journal(user, "relancee")
+    assert ligne.created_at == MAINTENANT
+
+    assert _appliquer(jours_apres=7) == (1, 0)
+    assert User.query.get(user.id).trust_level == 2
+    assert _appliquer(jours_apres=8) == (0, 0)
+    assert len(_journal(user, "relancee")) == 1
+
+
+def test_relance_tardive_avant_echeance_expire_a_l_echeance(fabrique):
+    # Relancé à J-3 (commande arrêtée plusieurs jours) : l'échéance reste.
+    user = _solvable(fabrique, depose_il_y_a=87)
+
+    assert _appliquer() == (0, 1)
+    assert _appliquer(jours_apres=2) == (0, 0)
+    assert _appliquer(jours_apres=3) == (1, 0)
+    assert User.query.get(user.id).income_verified is False
 
 
 # ─── Relance à J-7 ───────────────────────────────────────────
@@ -176,6 +242,7 @@ def test_validation_garde_la_date_de_depot(client, fabrique, admin, entetes, sup
     assert user.passport.income_doc_url is None       # supprimé à la décision (lot 1.5)
     assert user.passport.revenus_deposes_le == depot  # mais la date reste
     # Validé à J+5 du dépôt : la validité court quand même depuis le dépôt.
+    assert dp.appliquer_validite_revenus(depot + timedelta(days=83)) == (0, 1)
     assert dp.appliquer_validite_revenus(depot + timedelta(days=90)) == (1, 0)
 
 
@@ -190,9 +257,9 @@ def test_refus_efface_la_date_de_depot(client, fabrique, admin, entetes, supabas
     assert user.passport.revenus_deposes_le is None
 
 
-@pytest.mark.parametrize("valide_il_y_a, expire", [(30, False), (91, True)])
+@pytest.mark.parametrize("valide_il_y_a, relance", [(30, False), (85, True), (91, True)])
 def test_validation_anterieure_comptee_depuis_le_journal(fabrique, admin, valide_il_y_a,
-                                                         expire):
+                                                         relance):
     # Validé entre les lots 1.5 et 2.10 : la date de dépôt a été effacée à la
     # décision, la date de validation au journal la remplace.
     user = _solvable(fabrique)
@@ -200,33 +267,49 @@ def test_validation_anterieure_comptee_depuis_le_journal(fabrique, admin, valide
     ligne.created_at = MAINTENANT - timedelta(days=valide_il_y_a)
     db.session.commit()
 
-    assert _appliquer()[0] == int(expire)
-    assert User.query.get(user.id).income_verified is not expire
+    assert _appliquer() == (0, int(relance))
+    # Échéance (ou fin du préavis si elle est déjà passée) dans 7 jours au plus.
+    assert _appliquer(jours_apres=7)[0] == int(relance)
+    assert User.query.get(user.id).income_verified is not relance
 
 
-def test_validation_sans_date_connue_consideree_echue(fabrique, supabase):
-    # Validé avant le lot 1.5 et jamais rattrapé : ni date de dépôt ni ligne
-    # au journal ; le fichier est encore là.
-    user = _solvable(fabrique, income_doc_url="supabase://documents/ancien-paie.pdf")
+@pytest.mark.parametrize("date_migration", [None, 2], ids=["sans_date", "date_de_migration"])
+def test_validation_d_avant_le_lot_1_5_consideree_echue(fabrique, supabase, date_migration):
+    # Validé avant le lot 1.5 et jamais rattrapé : aucune ligne au journal, le
+    # fichier est encore là. La migration du lot 1.5 a pu lui donner pour
+    # date de dépôt le `updated_at` du passeport, parfois récent : ignorée.
+    champs = {"income_doc_url": "supabase://documents/ancien-paie.pdf"}
+    if date_migration is not None:
+        champs["revenus_deposes_le"] = MAINTENANT - timedelta(days=date_migration)
+    user = _solvable(fabrique, **champs)
 
-    assert _appliquer() == (1, 0)
+    assert _appliquer() == (0, 1)                  # prévenu d'abord
+    assert "sous 7 jours" in _notifications(user, RELANCE)[0].contenu
+    assert _appliquer(jours_apres=6) == (0, 0)
+    assert User.query.get(user.id).income_verified is True
+    assert _appliquer(jours_apres=7) == (1, 0)
 
     user = User.query.get(user.id)
     assert user.income_verified is False and user.trust_level == 2
     [ligne] = _journal(user, "expiree")
     assert "inconnue" in ligne.motif
     # Supprimé, il ne revient pas dans la file d'attente de l'admin.
-    assert user.passport.income_doc_url is None
+    assert user.passport.income_doc_url is None and user.passport.revenus_deposes_le is None
     assert [a["url"] for a in supabase.suppressions] == [f"{PRIVE}documents/ancien-paie.pdf"]
 
 
-def test_rattrapage_garde_la_date_des_justificatifs_valides(app, fabrique):
-    user = _solvable(fabrique, depose_il_y_a=10)
+def test_rattrapage_garde_seulement_les_dates_fiables(app, fabrique, supabase):
+    recent = _solvable(fabrique, depose_il_y_a=10)
+    ancien = _solvable(fabrique, income_doc_url="supabase://documents/ancien-paie.pdf",
+                       revenus_deposes_le=MAINTENANT - timedelta(days=2))
 
     resultat = app.test_cli_runner().invoke(args=["donnees", "rattraper-pieces-decidees"])
 
     assert resultat.exit_code == 0, resultat.output
-    assert user.passport.revenus_deposes_le == MAINTENANT - timedelta(days=10)
+    assert recent.passport.revenus_deposes_le == MAINTENANT - timedelta(days=10)
+    # Date recopiée par la migration du lot 1.5 : effacée avec le fichier.
+    assert ancien.passport.income_doc_url is None
+    assert ancien.passport.revenus_deposes_le is None
 
 
 # ─── Re-dépôt ────────────────────────────────────────────────
