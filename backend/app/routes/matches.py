@@ -308,6 +308,13 @@ def conclure_location(current_user, match_id):
     match = Match.query.get_or_404(match_id)
     if not match.listing or match.listing.landlord_id != current_user.id:
         return jsonify({"error": "Non autorisé"}), 403
+    # Lot 2.2 : l'annonce sous verrou, PUIS la candidature (même ordre que
+    # partout ailleurs, sans quoi deux requêtes croisées s'interbloqueraient).
+    # Une remise en ligne simultanée (`listings.reactiver_annonce`, qui prend
+    # le même verrou) ne peut ni s'intercaler ni écraser « matched ».
+    Listing.query.filter_by(id=match.listing_id).with_for_update().populate_existing().one()
+    match = (Match.query.filter_by(id=match_id).with_for_update(key_share=True)
+             .populate_existing().one())
 
     if match.status != "accepted":
         return jsonify({"error": "Seule une candidature acceptée peut être conclue"}), 400

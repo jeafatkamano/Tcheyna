@@ -6,10 +6,11 @@ propriété, l'annonce passe en `pending`, un administrateur tranche. Une annonc
 certifiée remonte dans les résultats et affiche un badge visible.
 """
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Blueprint, current_app, jsonify, request
 from pydantic_core import PydanticCustomError
+from sqlalchemy import event, inspect
 from sqlalchemy.orm import selectinload
 
 from app import db
@@ -17,7 +18,9 @@ from app.models import (
     TYPES_BIEN_SANS_PIECES,
     Favorite,
     Listing,
+    Match,
     Payment,
+    Verification,
     agregats_annonces,
 )
 from app.routes import current_user_required, role_required, utilisateur_optionnel
@@ -32,8 +35,10 @@ from app.schemas.listings import (
     UrlFichier,
     verifier_lieu,
 )
+from app.services import donnees_personnelles as dp
+from app.services import notifications as notify
 from app.services import stockage
-from app.services.acces import peut_voir_annonce, visibilite_adresse
+from app.services.acces import peut_voir_annonce, publication_autorisee, visibilite_adresse
 from app.services.matching import score_compatibilite, trier_par_compatibilite
 
 listings_bp = Blueprint("listings", __name__)
@@ -264,15 +269,20 @@ def recommandations(current_user):
 @listings_bp.route("/mes-annonces", methods=["GET"])
 @role_required("landlord", "agency")
 def mes_annonces(current_user):
+    """Annonces en ligne du propriétaire. `?inclure_retirees=1` y ajoute ses
+    annonces retirées, pour qu'il puisse les remettre en ligne (lot 2.2) ; les
+    statistiques portent toujours sur les seules annonces en ligne."""
     lang = request.args.get("lang", "fr")
-    annonces = (current_user.listings
-                .filter(Listing.is_visible.is_(True))
-                .order_by(Listing.created_at.desc()).all())
+    requete = current_user.listings.order_by(Listing.created_at.desc())
+    annonces = requete.filter(Listing.is_visible.is_(True)).all()
+    listees = requete.all() if _bool_arg("inclure_retirees") else annonces
+    etats = etats_certification(listees)
 
     return jsonify({
-        "listings": [a.to_dict(lang=lang, include_landlord=False, avec_adresse=True)
-                     for a in annonces],
-        "total": len(annonces),
+        "listings": [{**a.to_dict(lang=lang, include_landlord=False, avec_adresse=True),
+                      **_vue_proprietaire(a, etats[a.id])}
+                     for a in listees],
+        "total": len(listees),
         "stats": {
             "actives":    sum(1 for a in annonces if a.status == "active"),
             "certifiees": sum(1 for a in annonces if a.is_certified),
@@ -309,6 +319,8 @@ def get_listing(listing_id):
             Favorite.query.filter_by(user_id=user.id, listing_id=listing.id).first()
         )
         data["is_owner"] = user.id == listing.landlord_id
+        if data["is_owner"]:
+            data.update(_vue_proprietaire(listing, etats_certification([listing])[listing.id]))
         if user.role == "tenant":
             score, details = score_compatibilite(user.passport, listing, user)
             data["score_compatibilite"] = score
@@ -325,6 +337,7 @@ def get_listing(listing_id):
 
 @listings_bp.route("/", methods=["POST"])
 @role_required("landlord", "agency")
+@publication_autorisee  # D3 : téléphone vérifié (services/acces.py)
 @valider_corps(CreationAnnonce)
 def create_listing(current_user, corps):
     valeurs = corps.model_dump()
@@ -405,6 +418,10 @@ def update_listing(current_user, listing_id, corps):
     for champ, valeur in valeurs.items():
         setattr(listing, champ, valeur)
     listing.devise = devise
+    # D6 (lot 2.3) : enregistrer le formulaire compte comme une activité, même
+    # sans changement réel. C'est la confirmation « toujours d'actualité » que
+    # le client actuel sait déjà faire, en plus de PUT /<id>/confirmer.
+    listing.updated_at = datetime.utcnow()
 
     # Basculer de la location vers la vente laisserait sinon traîner une caution
     # et des charges qui n'ont plus d'objet.
@@ -438,10 +455,361 @@ def delete_listing(current_user, listing_id):
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
 
     # Retrait logique : les candidatures et paiements passés restent traçables.
-    listing.is_visible = False
-    listing.status = "closed"
+    # Même effet que PUT /<id>/retirer (lot 2.2), dont cette route est
+    # l'alias historique : elle garde sa réponse.
+    _retirer(listing)
     db.session.commit()
     return jsonify({"message": "Annonce retirée"}), 200
+
+
+# ─── Cycle de vie : retirer, remettre en ligne (lot 2.2) ─────
+#
+# États d'une annonce, portés par `status` et `is_visible` :
+#   en ligne : status « active », is_visible vrai. La création publie
+#              directement (D3 : téléphone vérifié) ; il n'y a pas de brouillon.
+#   retirée  : is_visible faux, status « closed ». Par son propriétaire
+#              (retrait, DELETE), ou avec tout son compte (désactivation,
+#              suppression). Invisible hors propriétaire, admin et candidats
+#              (`services.acces.peut_voir_annonce`).
+#   conclue  : status « matched », posé par PUT /matches/<id>/conclure. Le
+#              bien est loué ou vendu : il ne revient pas sur le marché.
+# Aucun administrateur ne retire d'annonce aujourd'hui (routes/admin.py).
+#
+# Le retrait ne touche pas aux candidatures : en attente ou acceptées, elles
+# le restent, comme avec DELETE depuis toujours (question posée dans la PR).
+
+def _retirer(listing):
+    """Retrait logique, réversible par `reactiver_annonce`. L'appelant valide."""
+    listing.is_visible = False
+    listing.status = "closed"
+
+
+def _conclue(listing):
+    """Le bien a-t-il été loué ou vendu par Tcheyna ? Une annonce conclue puis
+    retirée passe en « closed » : la candidature conclue en garde la trace."""
+    return listing.status == "matched" or listing.matches.filter(
+        Match.status == "completed").first() is not None
+
+
+def _vue_proprietaire(listing, etat_certification):
+    """Champs que seul le propriétaire lit : l'état de publication, et ce
+    qu'une nouvelle demande de certification lui coûterait (D4)."""
+    return {"retiree": not listing.is_visible, "certification_resoumission": etat_certification}
+
+
+def _refus_annonce(message, code, statut):
+    return jsonify({"error": message,
+                    "details": [{"champ": "__root__", "code": code, "message": message}]}), statut
+
+
+@listings_bp.route("/<string:listing_id>/retirer", methods=["PUT"])
+@role_required("landlord", "agency")
+def retirer_annonce(current_user, listing_id):
+    """Masque une annonce sans la supprimer. Idempotent."""
+    listing = Listing.query.get_or_404(listing_id)
+    if listing.landlord_id != current_user.id:
+        return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+
+    listing = _annonce_verrouillee(listing_id)
+    deja = not listing.is_visible
+    if not deja:
+        _retirer(listing)
+    db.session.commit()
+    return jsonify({
+        "message": "Annonce déjà retirée" if deja else "Annonce retirée",
+        "listing": {**listing.to_dict(include_landlord=False, avec_adresse=True),
+                    **_vue_proprietaire(listing, etats_certification([listing])[listing.id])},
+    }), 200
+
+
+@listings_bp.route("/<string:listing_id>/reactiver", methods=["PUT"])
+@role_required("landlord", "agency")
+@publication_autorisee  # D3 : remettre en ligne, c'est publier (services/acces.py)
+def reactiver_annonce(current_user, listing_id):
+    """Remet en ligne une annonce retirée. Idempotent.
+
+    Un compte désactivé n'arrive pas jusqu'ici (`role_required` : 403) ; un
+    compte réactivé par l'admin retrouve ses annonces retirées et peut les
+    remettre en ligne, comme celles qu'il avait retirées lui-même.
+    """
+    listing = Listing.query.get_or_404(listing_id)
+    if listing.landlord_id != current_user.id:
+        return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+
+    listing = _annonce_verrouillee(listing_id)
+    if _conclue(listing):
+        db.session.rollback()
+        return _refus_annonce("Ce bien a été loué ou vendu : son annonce ne peut pas être "
+                              "remise en ligne. Publiez une nouvelle annonce.",
+                              "annonce_conclue", 409)
+
+    deja = listing.is_visible and listing.status == "active"
+    listing.is_visible = True
+    listing.status = "active"
+    db.session.commit()
+    return jsonify({
+        "message": "Annonce déjà en ligne" if deja else "Annonce remise en ligne",
+        "listing": {**listing.to_dict(include_landlord=False, avec_adresse=True),
+                    **_vue_proprietaire(listing, etats_certification([listing])[listing.id])},
+    }), 200
+
+
+# ─── Expiration sans activité (D6, lot 2.3) ──────────────────
+#
+# Décision D6 (20/10/2026) : une annonce sans activité expire après 30 jours,
+# avec une relance au propriétaire à J-7. Expirer, c'est retirer (`_retirer`) :
+# l'annonce quitte les résultats, ses candidatures restent en l'état (règle du
+# retrait, question posée dans la PR #37), et son propriétaire la remet en
+# ligne par PUT /<id>/reactiver (téléphone vérifié, D3).
+#
+# Activité, sans colonne dédiée (aucune migration) : la plus récente de
+#   • la publication (`created_at`) ;
+#   • la dernière écriture du propriétaire sur l'annonce (`updated_at`) :
+#     modification (même sans changement), photos, pièces, demande de
+#     certification, remise en ligne, confirmation (PUT /<id>/confirmer) ;
+#   • la dernière candidature reçue (`Match.created_at`).
+# `updated_at` suit toute écriture (`onupdate`), y compris celles du système,
+# qui ne disent rien de l'annonce : une écriture qui ne touche que
+# COLONNES_SYSTEME garde l'ancienne date (`_garder_date_d_activite`).
+DUREE_SANS_ACTIVITE = timedelta(days=30)
+DELAI_RELANCE = timedelta(days=7)
+
+# Compteur de vues (chaque visite), décision de certification par l'admin
+# (routes/admin.py) et mise en avant payée (routes/payments.py). Une demande
+# de certification par le propriétaire écrit aussi `certification_requested_at`
+# et compte ; ses pièces et ses photos aussi.
+COLONNES_SYSTEME = frozenset({
+    "views_count",
+    "certification_status", "certified_at", "certification_note",
+    "is_premium", "premium_until",
+})
+
+
+@event.listens_for(Listing, "before_update")
+def _garder_date_d_activite(_mapper, _connexion, annonce):
+    """Une écriture qui ne touche que des colonnes du système laisse
+    `updated_at` tel quel : `SET updated_at = updated_at` remplace le
+    `onupdate`. Posé ici une fois pour toutes plutôt qu'à chaque écriture
+    système : l'admin, les paiements et le compteur de vues n'ont rien à
+    savoir de l'expiration."""
+    etat = inspect(annonce)
+    modifiees = {colonne.key for colonne in etat.mapper.column_attrs
+                 if etat.attrs[colonne.key].history.has_changes()}
+    if modifiees and modifiees <= COLONNES_SYSTEME:
+        annonce.updated_at = Listing.updated_at
+
+
+def dernieres_activites(annonces):
+    """Date de la dernière activité de chaque annonce, en une requête pour
+    toute la liste : {id: datetime, ou None si aucune date n'est connue}."""
+    ids = [a.id for a in annonces]
+    candidatures = {}
+    if ids:
+        candidatures = dict(db.session.query(Match.listing_id, db.func.max(Match.created_at))
+                            .filter(Match.listing_id.in_(ids)).group_by(Match.listing_id))
+    return {a.id: max((d for d in (a.created_at, a.updated_at, candidatures.get(a.id))
+                       if d is not None), default=None)
+            for a in annonces}
+
+
+def _en_ligne(listing):
+    return listing.is_visible and listing.status == "active"
+
+
+def _mise_en_avant_en_cours(listing, maintenant):
+    return bool(listing.is_premium and listing.premium_until
+                and listing.premium_until > maintenant)
+
+
+def expirer_annonces(maintenant=None):
+    """Relance, puis retire, les annonces en ligne sans activité (D6).
+    Retourne (relances envoyées, annonces retirées).
+
+    Faite pour un cron quotidien (`flask annonces expirer`), à heure fixe :
+      • relance : dès J-7 (échéance moins 7 jours), une seule par échéance.
+        Le lien de la notification porte la date d'échéance : rejouer la
+        commande ne relance pas deux fois, et une nouvelle activité, qui
+        déplace l'échéance, ouvre droit à une nouvelle relance ;
+      • retrait : à l'échéance, et jamais moins de 7 jours (en dates) après
+        la relance de cette échéance. Un cron manqué pendant toute la fenêtre
+        de relance, ou la première exécution sur des annonces déjà anciennes,
+        relance d'abord et retire 7 jours plus tard : aucun propriétaire
+        n'est retiré sans préavis ;
+      • une annonce en mise en avant payée en cours n'est ni relancée ni
+        retirée (question posée dans la PR) ; à la fin de la mise en avant,
+        elle est relancée puis retirée comme les autres ;
+      • une annonce conclue (`matched`) ou déjà retirée n'est pas en ligne :
+        elle n'est pas concernée.
+    """
+    maintenant = maintenant or datetime.utcnow()
+    debut_relance = maintenant - (DUREE_SANS_ACTIVITE - DELAI_RELANCE)
+    # Condition nécessaire, lue en SQL : publiée et écrite avant le début de
+    # la fenêtre de relance. Les candidatures se vérifient ensuite.
+    annonces = (Listing.query
+                .filter(Listing.status == "active", Listing.is_visible.is_(True),
+                        Listing.created_at <= debut_relance,
+                        db.or_(Listing.updated_at.is_(None), Listing.updated_at <= debut_relance))
+                .order_by(Listing.created_at, Listing.id)
+                .all())
+    annonces = [a for a in annonces if not _mise_en_avant_en_cours(a, maintenant)]
+    activites = dernieres_activites(annonces)
+
+    relances = retraits = 0
+    for annonce in annonces:
+        derniere = activites[annonce.id]
+        if derniere is None or maintenant < derniere + DUREE_SANS_ACTIVITE - DELAI_RELANCE:
+            continue
+        echeance = derniere + DUREE_SANS_ACTIVITE
+        relance = notify.relance_expiration(annonce.landlord_id, annonce.id, echeance)
+        if relance is None:
+            notif = notify.annonce_bientot_expiree(
+                annonce.landlord_id, annonce.title_fr, annonce.id, echeance,
+                retrait_le=max(echeance, maintenant + DELAI_RELANCE))
+            # Date simulée par les tests ; en production, c'est maintenant.
+            notif.created_at = maintenant
+            db.session.commit()
+            relances += 1
+        elif (maintenant >= echeance
+              and relance.created_at.date() + DELAI_RELANCE <= maintenant.date()
+              and _expirer(annonce.id, maintenant)):
+            retraits += 1
+    return relances, retraits
+
+
+def _expirer(listing_id, maintenant):
+    """Retire une annonce arrivée à échéance, sous verrou : une confirmation,
+    une modification ou une candidature arrivée depuis la lecture (toutes
+    écrivent l'annonce ou la verrouillent) la garde en ligne. Retourne vrai
+    si l'annonce a été retirée."""
+    listing = _annonce_verrouillee(listing_id)
+    derniere = dernieres_activites([listing])[listing.id]
+    if (not _en_ligne(listing) or _mise_en_avant_en_cours(listing, maintenant)
+            or derniere is None or maintenant < derniere + DUREE_SANS_ACTIVITE):
+        db.session.rollback()
+        return False
+    _retirer(listing)
+    # Trace de la raison : le journal des décisions accueille déjà les
+    # traitements automatiques, sans décideur (purge des pièces).
+    dp.consigner(None, listing.id, "annonce", "expiree",
+                 f"Aucune activité depuis le {derniere:%d/%m/%Y} (D6 : 30 jours)")
+    notify.annonce_expiree(listing.landlord_id, listing.title_fr, listing.id, derniere)
+    db.session.commit()
+    return True
+
+
+@listings_bp.route("/<string:listing_id>/confirmer", methods=["PUT"])
+@role_required("landlord", "agency")
+def confirmer_annonce(current_user, listing_id):
+    """Le propriétaire confirme que son annonce en ligne est toujours
+    d'actualité. Ne change rien d'autre : compte comme une activité (D6) et
+    repousse l'expiration de 30 jours. Idempotent.
+
+    Une annonce retirée (par son propriétaire ou faute d'activité) se remet
+    en ligne par PUT /<id>/reactiver, qui exige le téléphone vérifié (D3) ;
+    confirmer ne la republie pas. Une annonce conclue ne se confirme pas.
+    """
+    listing = Listing.query.get_or_404(listing_id)
+    if listing.landlord_id != current_user.id:
+        return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+
+    listing = _annonce_verrouillee(listing_id)
+    if not _en_ligne(listing):
+        conclue = _conclue(listing)
+        db.session.rollback()
+        if conclue:
+            return _refus_annonce("Ce bien a été loué ou vendu : son annonce n'est plus "
+                                  "en ligne.", "annonce_conclue", 409)
+        return _refus_annonce("Cette annonce n'est pas en ligne : remettez-la en ligne "
+                              "pour la publier de nouveau.", "annonce_retiree", 409)
+
+    listing.updated_at = datetime.utcnow()
+    db.session.commit()
+    echeance = dernieres_activites([listing])[listing.id] + DUREE_SANS_ACTIVITE
+    return jsonify({
+        "message": "Annonce confirmée : elle reste en ligne",
+        "expiration_prevue": echeance.isoformat(),
+        "listing": {**listing.to_dict(include_landlord=False, avec_adresse=True),
+                    **_vue_proprietaire(listing, etats_certification([listing])[listing.id])},
+    }), 200
+
+
+# ─── Re-soumission de certification (D4, lot 2.2) ────────────
+#
+# Décision D4 (20/10/2026) : la re-soumission d'une certification refusée est
+# gratuite une fois, payante ensuite au tarif de la certification. Le premier
+# paiement couvre donc deux examens (le premier et une re-soumission), chaque
+# paiement suivant un seul.
+#
+# Sans colonne dédiée (aucune migration) : les refus se lisent dans le journal
+# `verifications` (objet « certification_annonce », décision « refusee »,
+# écrit par PUT /admin/certifier depuis le lot 1.5, jamais purgé) et les
+# paiements dans `payments`. Les deux sont rejoués dans l'ordre : un paiement
+# ouvre des examens, un refus en consomme un. Un refus sans examen payé
+# (passerelle non configurée, refus antérieur au journal) ne consomme rien.
+# Seuls les refus comptent : une certification accordée puis annulée par une
+# modification du bien se redemande comme avant ce lot (question ouverte de
+# la PR #20). Retirer, compléter les pièces ou réactiver n'efface aucun refus.
+RESOUMISSIONS_GRATUITES = 1
+
+
+def etats_certification(annonces, exclure_paiement_id=None):
+    """État de la re-soumission de chaque annonce, en deux requêtes pour
+    toute la liste : {id: {"nb_refus", "nb_paiements", "paiement_requis",
+    "resoumission_gratuite"}}. Il vaut hors examen en cours : pendant un
+    examen, le crédit qu'il consommera n'est pas encore décompté.
+
+    `paiement_requis` : une nouvelle demande exige un nouveau paiement (dès
+    que la passerelle est configurée, voir `demander_certification`).
+    `resoumission_gratuite` : la prochaine demande est la re-soumission
+    gratuite. `exclure_paiement_id` : paiement en cours de confirmation, qui
+    ne compte pas encore (`routes.payments._motif_remboursement`).
+    """
+    ids = [a.id for a in annonces]
+    evenements = {i: [] for i in ids}
+    if ids:
+        paiements = Payment.query.with_entities(
+            Payment.listing_id, Payment.paid_at, Payment.created_at
+        ).filter(Payment.listing_id.in_(ids), Payment.type_paiement == "certification",
+                 Payment.statut == "success")
+        if exclure_paiement_id:
+            paiements = paiements.filter(Payment.id != exclure_paiement_id)
+        for listing_id, paye_le, cree_le in paiements:
+            # À date égale, le paiement passe avant le refus (0 < 1).
+            evenements[listing_id].append((paye_le or cree_le, 0))
+        refus = Verification.query.with_entities(
+            Verification.cible_id, Verification.created_at
+        ).filter(Verification.cible_id.in_(ids), Verification.objet == "certification_annonce",
+                 Verification.decision == "refusee")
+        for listing_id, le in refus:
+            evenements[listing_id].append((le, 1))
+
+    etats = {}
+    for listing_id, liste in evenements.items():
+        couverts = consommes = nb_refus = nb_paiements = 0
+        for _, est_refus in sorted(liste, key=lambda e: (e[0] or datetime.min, e[1])):
+            if not est_refus:
+                # Seul le premier paiement porte la re-soumission gratuite.
+                couverts += 1 if nb_paiements else 1 + RESOUMISSIONS_GRATUITES
+                nb_paiements += 1
+                continue
+            nb_refus += 1
+            if couverts:
+                couverts -= 1
+                consommes += 1
+        etats[listing_id] = {
+            "nb_refus": nb_refus,
+            "nb_paiements": nb_paiements,
+            "paiement_requis": couverts == 0,
+            "resoumission_gratuite": couverts > 0 and 1 <= consommes <= RESOUMISSIONS_GRATUITES,
+        }
+    return etats
+
+
+def certification_a_payer(listing, exclure_paiement_id=None):
+    """Une nouvelle demande de certification de `listing` exige-t-elle un
+    nouveau paiement ? Lue aussi par `routes.payments`, qui n'admet un
+    paiement de certification que dans ce cas."""
+    return etats_certification([listing], exclure_paiement_id)[listing.id]["paiement_requis"]
 
 
 # ─── POST /api/listings/<id>/certification ───────────────────
@@ -471,16 +839,18 @@ def demander_certification(current_user, listing_id):
     # passerelle Mobile Money n'est pas configurée, aucun propriétaire ne peut
     # payer : on laisse alors passer la demande plutôt que de bloquer le
     # parcours, et la contrainte s'applique d'elle-même dès l'activation.
-    if current_app.config.get("CINETPAY_API_KEY"):
-        regle = Payment.query.filter_by(
-            listing_id=listing.id, type_paiement="certification", statut="success"
-        ).first()
-        if not regle:
-            return jsonify({
-                "error": "La certification est un service payant. Réglez les frais "
-                         "de certification pour soumettre votre dossier.",
-                "paiement_requis": "certification",
-            }), 402
+    # Après un refus, la re-soumission gratuite (D4) passe sans paiement.
+    etat = etats_certification([listing])[listing.id]
+    if current_app.config.get("CINETPAY_API_KEY") and etat["paiement_requis"]:
+        return jsonify({
+            "error": ("Vous avez déjà utilisé la re-soumission gratuite de cette annonce. "
+                      "Réglez de nouveau les frais de certification pour soumettre "
+                      "votre dossier." if etat["nb_paiements"] else
+                      "La certification est un service payant. Réglez les frais "
+                      "de certification pour soumettre votre dossier."),
+            "paiement_requis": "certification",
+            "certification_resoumission": etat,
+        }), 402
 
     listing.certification_status = "pending"
     listing.certification_requested_at = datetime.utcnow()
