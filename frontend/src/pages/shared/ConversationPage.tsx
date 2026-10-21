@@ -95,9 +95,12 @@ export function ConversationPage() {
     zone.scrollTop += zone.scrollHeight - avant;
   }, [premierId]);
 
-  function chargerPlusAnciens() {
+  async function chargerPlusAnciens() {
     hauteurAvantAnciens.current = zoneFil.current?.scrollHeight ?? null;
-    void chargerAnciens();
+    // Échec : aucune page ajoutée. Une hauteur restée en mémoire décalerait
+    // le défilement au prochain changement du premier message (fil reparti
+    // d'une nouvelle page, par exemple).
+    if (!(await chargerAnciens())) hauteurAvantAnciens.current = null;
   }
 
   async function envoyer() {

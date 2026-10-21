@@ -218,6 +218,62 @@ describe("ConversationPage — messages plus anciens", () => {
   });
 });
 
+describe("ConversationPage — position de lecture", () => {
+  // happy-dom ne calcule pas de mise en page : la hauteur du fil est simulée.
+  let hauteur = 1000;
+  const descripteur = Object.getOwnPropertyDescriptor(Element.prototype, "scrollHeight");
+  beforeEach(() => {
+    hauteur = 1000;
+    Object.defineProperty(Element.prototype, "scrollHeight", {
+      configurable: true,
+      get: () => hauteur,
+    });
+  });
+  afterEach(() => {
+    if (descripteur) Object.defineProperty(Element.prototype, "scrollHeight", descripteur);
+    else delete (Element.prototype as { scrollHeight?: number }).scrollHeight;
+  });
+
+  const zone = (c: HTMLElement) => c.querySelector<HTMLDivElement>(".overflow-y-auto")!;
+
+  it("page ancienne ajoutée en tête : le défilement compense la hauteur ajoutée", async () => {
+    filParMatch.mockImplementation((_id: string, _signal: AbortSignal, p: PageFil = {}) =>
+      Promise.resolve(p.avant ? page(plage(1, 20), false) : page(plage(21, 50), true)),
+    );
+    const c = await ouvrir();
+    zone(c).scrollTop = 0;
+
+    act(() => bouton(c, "Charger les messages plus anciens")!.click());
+    hauteur = 1600; // la page ancienne ajoute 600 px en tête
+    await attendreUnPeu();
+
+    expect(bulles(c)).toHaveLength(50);
+    expect(zone(c).scrollTop).toBe(600);
+  });
+
+  it("échec du chargement : aucune hauteur périmée n'est réappliquée ensuite", async () => {
+    let dernierePage = page(plage(21, 50), true);
+    filParMatch.mockImplementation((_id: string, _signal: AbortSignal, p: PageFil = {}) =>
+      p.avant ? Promise.reject(new ApiError("Erreur 500", 500)) : Promise.resolve(dernierePage),
+    );
+    const c = await ouvrir();
+    zone(c).scrollTop = 0;
+
+    act(() => bouton(c, "Charger les messages plus anciens")!.click());
+    await attendreUnPeu();
+    expect(c.querySelector('[role="alert"]')!.textContent).toContain("Erreur 500");
+
+    // Trou (onglet caché) : le fil repart d'une nouvelle page, le premier
+    // message change, et la hauteur a grandi entre-temps.
+    hauteur = 3000;
+    dernierePage = page(plage(81, 110), true);
+    await sonder();
+
+    expect(bulles(c)[0]).toBe("Message 81");
+    expect(zone(c).scrollTop).toBe(0);
+  });
+});
+
 describe("ConversationPage — serveur antérieur au lot 2.8", () => {
   it("fil complet sans pagination ni modèles : comportement actuel", async () => {
     let fil = conversation();

@@ -98,8 +98,9 @@ export function useFilConversation(matchId: string | undefined) {
   useEffect(() => () => controleurRef.current?.abort(), []);
 
   const curseur = fil.curseur;
-  const chargerAnciens = useCallback(async () => {
-    if (!matchId || !curseur || controleurRef.current) return;
+  /** Vrai si une page ancienne a été reçue (faux : rien lancé, échec, annulation). */
+  const chargerAnciens = useCallback(async (): Promise<boolean> => {
+    if (!matchId || !curseur || controleurRef.current) return false;
     const controleur = new AbortController();
     controleurRef.current = controleur;
     setAnciensEnCours(true);
@@ -112,11 +113,13 @@ export function useFilConversation(matchId: string | undefined) {
       // Le fil a pu repartir de zéro entre-temps (autre discussion, trou) :
       // cette page ne le prolonge plus.
       setFil((etat) => (etat.curseur === curseur ? integrerPageAncienne(etat, reponse) : etat));
+      return true;
     } catch (err) {
-      if (controleur.signal.aborted || estAnnulation(err)) return;
+      if (controleur.signal.aborted || estAnnulation(err)) return false;
       setErreurAnciens(
         err instanceof ApiError ? err.message : "Impossible de charger les messages plus anciens",
       );
+      return false;
     } finally {
       if (controleurRef.current === controleur) controleurRef.current = null;
       if (!controleur.signal.aborted) setAnciensEnCours(false);
