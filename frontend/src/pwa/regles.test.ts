@@ -48,6 +48,12 @@ describe("cachePublic — jamais de cache", () => {
     expect(lire("https://tcheyna-api.onrender.com/api/listings/", { method })).toBeNull();
   });
 
+  it("la déconnexion (jamais gardée ni rejouée hors ligne)", () => {
+    expect(
+      lire("https://tcheyna-api.onrender.com/api/auth/logout", { method: "POST", jeton: true }),
+    ).toBeNull();
+  });
+
   it.each([
     // Routes authentifiées ou personnelles
     "https://tcheyna-api.onrender.com/api/listings/recommandations?limite=6",
