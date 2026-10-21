@@ -50,6 +50,17 @@ OTP_MAX_PAR_JOUR = 5
 # enverrait un SMS par minute (~1 440 par jour). Même valeur que par numéro,
 # à ajuster selon l'usage réel (numéro mal saisi puis corrigé, etc.).
 OTP_MAX_PAR_COMPTE_PAR_JOUR = 5
+# Plafond global : codes envoyés tous comptes et numéros confondus, sur une
+# heure et sur 24 h glissantes. Les quotas ci-dessus ne bornent pas une
+# attaque menée avec des comptes jetables vers des numéros surtaxés (« SMS
+# pumping ») : ce plafond borne la perte sur le solde Africa's Talking.
+# Compté en base, comme les quotas. Surchargeable par `app.config` sous le
+# même nom ; valeurs justifiées dans la PR du lot 1.21.
+OTP_PLAFOND_GLOBAL_PAR_HEURE = 100
+OTP_PLAFOND_GLOBAL_PAR_JOUR = 500
+# Part du plafond à partir de laquelle chaque envoi accepté laisse un
+# avertissement dans les logs.
+OTP_PLAFOND_GLOBAL_SEUIL_ALERTE = 0.8
 OTP_ANTISPAM_SECONDES = 60
 
 # Limites de débit (R7). Connexion : seuls les échecs comptent, par couple
@@ -117,6 +128,16 @@ def _cle_connexion():
     return f"{get_remote_address()}|{email}"
 
 
+def masquer_numero(phone):
+    """« +224…52 » : quatre premiers caractères (l'indicatif, pour repérer
+    une destination anormale) et deux derniers chiffres. Le numéro complet,
+    donnée personnelle, n'a rien à faire dans les logs."""
+    phone = phone or ""
+    if len(phone) <= 6:
+        return "…"
+    return f"{phone[:4]}…{phone[-2:]}"
+
+
 def send_sms_otp(phone, code, texte=None):
     """Envoie l'OTP via Africa's Talking. Retourne False si l'envoi échoue —
     en développement, le code reste consultable dans la réponse de l'API.
@@ -137,7 +158,14 @@ def send_sms_otp(phone, code, texte=None):
         )
         return True
     except Exception as exc:  # noqa: BLE001 — un échec SMS ne doit pas bloquer l'inscription
-        current_app.logger.error("Échec envoi OTP à %s : %s", phone, exc)
+        # Le message d'erreur du fournisseur peut reprendre le destinataire,
+        # voire le texte du SMS : numéro et code y sont masqués aussi.
+        masque = masquer_numero(phone)
+        detail = str(exc)
+        for secret, remplacement in ((phone, masque), (code, "******")):
+            if secret:
+                detail = detail.replace(secret, remplacement)
+        current_app.logger.error("Échec envoi OTP à %s : %s", masque, detail)
         return False
 
 
@@ -355,6 +383,72 @@ def change_password(current_user, corps):
 
 # ─── POST /api/auth/send-otp ─────────────────────────────────
 
+def _plafond_global(maintenant):
+    """Compte les codes envoyés, tous comptes et numéros confondus, dans
+    chaque fenêtre du plafond global. Retourne `(refus, fenetres)` : `refus`
+    est le 429 à renvoyer si une fenêtre est pleine, sinon None ; `fenetres`
+    sert ensuite à `_alerter_plafond_global`.
+
+    Concurrence : le verrou de `send_otp` porte sur la ligne du compte et
+    n'ordonne que les envois d'un même compte. Deux comptes servis au même
+    instant par deux workers peuvent lire le même total, juste sous le
+    plafond, et envoyer tous les deux. Le total d'une fenêtre reste donc
+    inférieur à plafond + (demandes traitées simultanément - 1) : avec les
+    2 workers gunicorn synchrones de render.yaml, un code de trop au plus par
+    instance, le temps entre ce comptage et le commit n'étant que de quelques
+    millisecondes. Un plafond exact demanderait un verrou global
+    (`pg_advisory_xact_lock`) qui sérialiserait tous les envois du site : ce
+    léger dépassement, borné, est préféré.
+    """
+    fenetres = []
+    attentes = []
+    for libelle, duree, nom, defaut in (
+        ("sur une heure", timedelta(hours=1), "OTP_PLAFOND_GLOBAL_PAR_HEURE",
+         OTP_PLAFOND_GLOBAL_PAR_HEURE),
+        ("sur 24 h", timedelta(hours=24), "OTP_PLAFOND_GLOBAL_PAR_JOUR",
+         OTP_PLAFOND_GLOBAL_PAR_JOUR),
+    ):
+        plafond = int(current_app.config.get(nom, defaut))
+        recents = OTPCode.query.filter(OTPCode.created_at >= maintenant - duree)
+        envois = recents.count()
+        fenetres.append((libelle, plafond, envois))
+        if envois >= plafond:
+            # Comme pour les quotas, une place se libère quand l'envoi de
+            # rang `envois - plafond` (du plus ancien) sort de la fenêtre.
+            libere = (recents.order_by(OTPCode.created_at.asc())
+                      .offset(envois - plafond).first()) if plafond > 0 else None
+            fin = libere.created_at + duree if libere else maintenant + duree
+            attentes.append((fin - maintenant).total_seconds())
+    if attentes:
+        # Toutes les fenêtres pleines doivent se libérer : la plus longue
+        # attente fait foi. Le message ne dit rien du mécanisme.
+        attente = max(attentes)
+        return reponse_trop_de_requetes(
+            "Le service d'envoi de codes est momentanément saturé. "
+            f"Réessayez dans {formater_delai(attente)}.", attente), fenetres
+    return None, fenetres
+
+
+def _alerter_plafond_global(fenetres):
+    """Journalise l'approche puis l'atteinte du plafond global, une fois un
+    envoi enregistré (d'où `envois + 1`). Un log par envoi accepté au-delà du
+    seuil : le volume reste borné par le plafond lui-même, et aucun
+    franchissement n'est manqué sous concurrence. Rien sur les refus, qu'un
+    attaquant peut répéter sans limite. Aucun numéro, seulement des totaux."""
+    for libelle, plafond, envois in fenetres:
+        total = envois + 1
+        if total >= plafond:
+            current_app.logger.error(
+                "Plafond global des SMS d'OTP atteint : %d codes envoyés %s (plafond %d). "
+                "Les demandes suivantes sont refusées (429) jusqu'à ce que la fenêtre "
+                "se libère. Vérifiez les destinations et le solde dans le tableau de "
+                "bord Africa's Talking.", total, libelle, plafond)
+        elif total >= plafond * OTP_PLAFOND_GLOBAL_SEUIL_ALERTE:
+            current_app.logger.warning(
+                "Plafond global des SMS d'OTP bientôt atteint : %d codes envoyés %s "
+                "(plafond %d).", total, libelle, plafond)
+
+
 @auth_bp.route("/send-otp", methods=["POST"])
 @current_user_required
 @valider_corps(EnvoiOTP)
@@ -411,6 +505,12 @@ def send_otp(current_user, corps):
     if refus:
         return refus
 
+    # Plafond global, après les quotas : un refus propre au compte ou au
+    # numéro garde son message précis. Avant toute écriture et tout envoi.
+    refus, fenetres = _plafond_global(maintenant)
+    if refus:
+        return refus
+
     # Après l'anti-spam et les quotas : tester si un numéro est inscrit
     # (énumération) est ainsi borné par le quota du compte.
     if phone != current_user.phone:
@@ -434,6 +534,7 @@ def send_otp(current_user, corps):
         expires_at=maintenant + timedelta(minutes=OTP_TTL_MINUTES),
     ))
     db.session.commit()
+    _alerter_plafond_global(fenetres)
 
     envoye = send_sms_otp(current_user.phone, code)
 
