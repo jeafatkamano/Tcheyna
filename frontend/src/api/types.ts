@@ -221,16 +221,19 @@ export type TypePaiement =
   | "caution"
   | "premier_loyer"
   | "commission"
+  | "frais_mise_en_relation"
   | "certification"
   | "abonnement_passeport"
   | "mise_en_avant";
 
 /**
  * Caution et premier loyer se règlent directement entre bailleur et locataire
- * (décision D2 = A) : l'API refuse de les initier. Ils restent dans
- * `TypePaiement` pour afficher les paiements déjà enregistrés.
+ * (décision D2 = A) : l'API refuse de les initier. La commission de 6 % est
+ * remplacée par les frais de mise en relation (décision D1) : l'API la refuse
+ * aussi (422 `type_retire`). Ces types restent dans `TypePaiement` pour
+ * afficher les paiements déjà enregistrés.
  */
-export type TypePaiementPayable = Exclude<TypePaiement, "caution" | "premier_loyer">;
+export type TypePaiementPayable = Exclude<TypePaiement, "caution" | "premier_loyer" | "commission">;
 
 export interface Payment {
   id: string;
@@ -255,7 +258,25 @@ export interface Tarif {
   libelle: string;
   montant: number;
   payeur: string;
+  /** Quand le service est dû (frais de mise en relation seulement). */
+  moment?: string;
   description: string;
+}
+
+/**
+ * Corps du 402 de `PUT /matches/<id>/statut` quand le bailleur accepte une
+ * candidature de location (D1) : la candidature reste en attente, et
+ * l'acceptation prend effet à la confirmation de ce paiement.
+ */
+export interface FraisMiseEnRelationRequis {
+  error: string;
+  action_requise: "payer_frais_mise_en_relation";
+  paiement: {
+    type_paiement: "frais_mise_en_relation";
+    match_id: string;
+    montant: number;
+    devise: string;
+  };
 }
 
 export interface DocumentPiece {
