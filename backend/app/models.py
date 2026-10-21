@@ -52,6 +52,11 @@ TRUST_LEVELS = {
     },
 }
 
+# Niveau 4 « Recommandé » : avis positifs d'auteurs DISTINCTS (lot 1.15). Trois
+# locations conclues avec la même personne ne valent qu'un avis : sinon un seul
+# bailleur complaisant, avec trois annonces, suffirait à fabriquer le badge.
+AUTEURS_POSITIFS_NIVEAU_4 = 3
+
 # Taux de commission prélevé sur le premier loyer (business plan §6 : 5 à 8 %)
 COMMISSION_RATE = 0.06
 
@@ -135,15 +140,20 @@ class User(db.Model):
             level = 2
         if level == 2 and self.income_verified:
             level = 3
-        if level == 3 and self.reviews_received.filter_by(is_positive=True).count() >= 3:
+        if level == 3 and self.nb_auteurs_positifs() >= AUTEURS_POSITIFS_NIVEAU_4:
             level = 4
         self.trust_level = level
         return level
 
+    def nb_auteurs_positifs(self):
+        """Nombre d'auteurs DISTINCTS d'au moins un avis positif reçu."""
+        return (db.session.query(db.func.count(db.distinct(Review.reviewer_id)))
+                .filter(Review.target_id == self.id, Review.is_positive.is_(True))
+                .scalar()) or 0
+
     @property
     def note_moyenne(self):
-        notes = [r.note for r in self.reviews_received]
-        return moyenne_des_notes(sum(notes), len(notes))
+        return moyenne_des_notes(notes_par_auteur([self.id]).get(self.id, []))
 
     def revoquer_jetons(self):
         """Invalide tous les jetons déjà émis pour ce compte (tous appareils).
@@ -155,12 +165,17 @@ class User(db.Model):
         self.token_version = type(self).token_version + 1
 
     def to_dict(self, public=True, avis=None):
-        """`avis` : couple (nombre d'avis reçus, somme de leurs notes) déjà lu
-        par l'appelant (voir `agregats_annonces`). Sans lui, deux requêtes."""
+        """`avis` : couple (nombre d'avis reçus, note moyenne) déjà lu par
+        l'appelant (voir `agregats_annonces`). Sans lui, une requête.
+
+        `nb_avis` compte les AVIS (chacun est une location conclue, et la
+        liste les montre tous) ; `note_moyenne` donne une voix par AUTEUR
+        (voir `moyenne_par_auteur`)."""
         if avis is None:
-            nb_avis, note_moyenne = self.reviews_received.count(), self.note_moyenne
+            groupes = notes_par_auteur([self.id]).get(self.id, [])
+            nb_avis, note_moyenne = sum(n for n, _ in groupes), moyenne_des_notes(groupes)
         else:
-            nb_avis, note_moyenne = avis[0], moyenne_des_notes(avis[1], avis[0])
+            nb_avis, note_moyenne = avis
         data = {
             "id":             self.id,
             "full_name":      self.full_name,
@@ -191,10 +206,44 @@ class User(db.Model):
         return f"<User {self.full_name} [{self.role}] — Niveau {self.trust_level}>"
 
 
-def moyenne_des_notes(somme, nombre):
-    """Note moyenne arrondie au dixième, `None` sans avis. Seule formule de
-    `note_moyenne`, qu'elle soit lue avis par avis ou agrégée en SQL."""
-    return round(somme / nombre, 1) if nombre else None
+def moyenne_par_auteur(groupes):
+    """Note moyenne où chaque auteur pèse UNE voix (lot 1.15), non arrondie,
+    `None` sans avis. Seule formule de la note d'un utilisateur.
+
+    `groupes` : un couple (nombre d'avis, somme de leurs notes) par auteur
+    (voir `notes_par_auteur`). On prend la moyenne de chaque auteur, puis la
+    moyenne de ces moyennes : un auteur qui a noté la même personne après
+    trois locations ne pèse pas trois fois, et ses trois notes comptent
+    toutes. Avec un avis par auteur, c'est exactement l'ancienne moyenne des
+    avis. Moyennes triées avant la somme : le résultat ne dépend pas de
+    l'ordre de lecture des lignes, au dernier bit près.
+    """
+    moyennes = sorted(somme / nombre for nombre, somme in groupes if nombre)
+    return sum(moyennes) / len(moyennes) if moyennes else None
+
+
+def moyenne_des_notes(groupes):
+    """`moyenne_par_auteur` arrondie au dixième (champ `note_moyenne`)."""
+    moyenne = moyenne_par_auteur(groupes)
+    return round(moyenne, 1) if moyenne is not None else None
+
+
+def notes_par_auteur(cible_ids):
+    """{id de cible: [(nombre d'avis, somme des notes), un couple par auteur]}
+    pour les utilisateurs de `cible_ids`, en UNE requête groupée. Une cible
+    sans avis est absente du résultat."""
+    ids = {cible_id for cible_id in cible_ids if cible_id}
+    if not ids:
+        return {}
+    lignes = (db.session.query(Review.target_id, db.func.count(Review.id),
+                               db.func.sum(Review.note))
+              .filter(Review.target_id.in_(ids))
+              .group_by(Review.target_id, Review.reviewer_id))
+    groupes = {}
+    for cible_id, nombre, somme in lignes:
+        # int() : SUM d'un INTEGER est un BIGINT, voire un NUMERIC, selon le moteur.
+        groupes.setdefault(cible_id, []).append((int(nombre), int(somme)))
+    return groupes
 
 
 # ─────────────────────────────────────────────────────────────
@@ -398,7 +447,7 @@ class Listing(db.Model):
             "created_at":    self.created_at.isoformat() if self.created_at else None,
         }
         if include_landlord:
-            avis = (agregats.nb_avis_bailleur, agregats.somme_notes_bailleur) if agregats else None
+            avis = (agregats.nb_avis_bailleur, agregats.note_moyenne_bailleur) if agregats else None
             data["landlord"] = self.landlord.to_dict(avis=avis) if self.landlord else None
         return data
 
@@ -750,15 +799,43 @@ class Review(db.Model):
     target   = db.relationship("User", foreign_keys=[target_id], back_populates="reviews_received")
 
     def to_dict(self):
+        """Vue publique de l'avis, la seule servie (avis d'un utilisateur,
+        profil public, avis publié) : l'auteur passe par `auteur_public`."""
         return {
             "id":          self.id,
-            "reviewer":    self.reviewer.to_dict() if self.reviewer else None,
+            "reviewer":    auteur_public(self.reviewer) if self.reviewer else None,
             "target_id":   self.target_id,
             "note":        self.note,
             "commentaire": self.commentaire,
             "type_avis":   self.type_avis,
             "created_at":  self.created_at.isoformat() if self.created_at else None,
         }
+
+
+# Champs d'identité d'un locataire auteur d'avis, publiés à `null` : les clés
+# restent (même forme que `User.to_dict`), les valeurs non. Mêmes champs que
+# `CHAMPS_IDENTITE_LOCATAIRE` du profil public (routes/users.py).
+CHAMPS_IDENTITE_AUTEUR = ("avatar_url", "bio", "quartier")
+
+
+def auteur_public(auteur):
+    """L'auteur d'un avis tel que le voit n'importe quel lecteur (lot 1.15).
+
+    Un locataire est réduit à « Prénom I. » (`services.acces.nom_reduit`),
+    sans photo, bio ni quartier : un avis public ne doit pas suffire à le
+    retrouver hors de Tcheyna. Un bailleur ou une agence reste en clair,
+    comme sur son profil public et sur chacune de ses annonces. Un compte
+    supprimé garde son nom anonymisé (« Compte supprimé ») tel quel.
+    """
+    from app.services.acces import nom_reduit
+
+    data = auteur.to_dict(public=True)
+    if auteur.role == "tenant":
+        if not auteur.supprime_le:
+            data["full_name"] = nom_reduit(auteur.full_name)
+        for champ in CHAMPS_IDENTITE_AUTEUR:
+            data[champ] = None
+    return data
 
 
 # ─────────────────────────────────────────────────────────────
@@ -926,17 +1003,17 @@ class FichierASupprimer(db.Model):
 # ─────────────────────────────────────────────────────────────
 
 AgregatsAnnonce = namedtuple(
-    "AgregatsAnnonce", "nb_candidatures nb_avis_bailleur somme_notes_bailleur")
+    "AgregatsAnnonce", "nb_candidatures nb_avis_bailleur note_moyenne_bailleur")
 
 
 def agregats_annonces(annonces):
-    """Compteurs de `Listing.to_dict` pour toute une liste, en UNE requête.
+    """Compteurs de `Listing.to_dict` pour toute une liste, en DEUX requêtes.
 
     Pour chaque annonce : nombre de candidatures (tous statuts, comme
-    `matches.count()`), nombre d'avis reçus par son bailleur et somme de
-    leurs notes (comme `reviews_received`). Sous-requêtes corrélées : la
-    base ne compte que pour les annonces demandées. La moyenne se calcule
-    ensuite en Python (`moyenne_des_notes`), à l'identique de `note_moyenne`.
+    `matches.count()` ; sous-requête corrélée, la base ne compte que pour
+    les annonces demandées), puis nombre d'avis reçus par son bailleur et
+    note moyenne, lus par `notes_par_auteur` pour tous les bailleurs de la
+    liste à la fois et calculés comme dans `User.to_dict`.
 
     Renvoie {id d'annonce: AgregatsAnnonce}.
     """
@@ -944,16 +1021,17 @@ def agregats_annonces(annonces):
     if not ids:
         return {}
 
-    avis_du_bailleur = Review.target_id == Listing.landlord_id
-    lignes = db.session.query(
+    candidatures = dict(db.session.query(
         Listing.id,
         db.select(db.func.count(Match.id))
           .where(Match.listing_id == Listing.id).scalar_subquery(),
-        db.select(db.func.count(Review.id)).where(avis_du_bailleur).scalar_subquery(),
-        # Entier sur toutes les bases (SUM d'un INTEGER est un BIGINT, voire
-        # un NUMERIC, selon le moteur).
-        db.select(db.cast(db.func.coalesce(db.func.sum(Review.note), 0), db.Integer))
-          .where(avis_du_bailleur).scalar_subquery(),
-    ).filter(Listing.id.in_(ids))
+    ).filter(Listing.id.in_(ids)).all())
+    notes = notes_par_auteur(annonce.landlord_id for annonce in annonces)
 
-    return {listing_id: AgregatsAnnonce(*compteurs) for listing_id, *compteurs in lignes}
+    agregats = {}
+    for annonce in annonces:
+        groupes = notes.get(annonce.landlord_id, [])
+        agregats[annonce.id] = AgregatsAnnonce(candidatures.get(annonce.id, 0),
+                                               sum(n for n, _ in groupes),
+                                               moyenne_des_notes(groupes))
+    return agregats
