@@ -4,6 +4,10 @@ routes/matches.py — Mise en relation bidirectionnelle.
 Cycle de vie : le locataire candidate (`pending`) → le propriétaire accepte
 (`accepted`, ce qui ouvre la messagerie) ou refuse (`rejected`) → la location est
 conclue (`completed`, ce qui ouvre les avis croisés).
+
+Location (D1) : l'acceptation exige les frais de mise en relation. La
+candidature reste `pending` jusqu'à la confirmation du paiement, qui
+l'accepte (`routes.payments._confirmer` → `accepter_candidature`).
 """
 from datetime import datetime
 
@@ -12,6 +16,7 @@ from flask import Blueprint, jsonify, request
 from app import db
 from app.models import Conversation, Listing, Match, User, abonnements_passeport
 from app.routes import current_user_required, role_required
+from app.routes.payments import refus_acceptation_sans_frais
 from app.schemas import valider_corps
 from app.schemas.matches import Candidature, DecisionCandidature, Visite
 from app.services import notifications as notify
@@ -227,13 +232,32 @@ def get_match(current_user, match_id):
 
 # ─── PUT /api/matches/<id>/statut ────────────────────────────
 
+def accepter_candidature(match):
+    """Accepte `match` : ouvre la conversation privée entre les deux parties
+    et prévient le locataire. Ne valide pas la transaction.
+
+    Appelée par la décision du bailleur quand rien n'est à payer (vente), et
+    par la confirmation des frais de mise en relation (location, D1).
+    """
+    match.status = "accepted"
+    if not match.conversation:
+        db.session.add(Conversation(
+            match_id=match.id,
+            tenant_id=match.tenant_id,
+            landlord_id=match.listing.landlord_id,
+        ))
+    notify.candidature_traitee(match.tenant_id, True, match.listing.title_fr, match.id)
+
+
 @matches_bp.route("/<string:match_id>/statut", methods=["PUT"])
 @role_required("landlord", "agency")
 @valider_corps(DecisionCandidature)
 def update_match_status(current_user, match_id, corps):
     """Le propriétaire accepte ou refuse une candidature.
 
-    Une acceptation ouvre la conversation privée entre les deux parties.
+    Une acceptation ouvre la conversation privée entre les deux parties. Sur
+    une location, elle attend les frais de mise en relation (402) : la
+    candidature reste en attente et le locataire n'est prévenu de rien.
     """
     match = Match.query.get_or_404(match_id)
     if not match.listing or match.listing.landlord_id != current_user.id:
@@ -244,19 +268,14 @@ def update_match_status(current_user, match_id, corps):
     if match.status not in ("pending", "accepted"):
         return jsonify({"error": f"Candidature déjà « {match.status} »"}), 409
 
-    match.status = statut
-
-    if statut == "accepted" and not match.conversation:
-        conversation = Conversation(
-            match_id=match.id,
-            tenant_id=match.tenant_id,
-            landlord_id=current_user.id,
-        )
-        db.session.add(conversation)
-
-    notify.candidature_traitee(
-        match.tenant_id, statut == "accepted", match.listing.title_fr, match.id
-    )
+    if statut == "accepted":
+        refus = refus_acceptation_sans_frais(match)
+        if refus:
+            return jsonify(refus[0]), refus[1]
+        accepter_candidature(match)
+    else:
+        match.status = statut
+        notify.candidature_traitee(match.tenant_id, False, match.listing.title_fr, match.id)
     db.session.commit()
 
     return jsonify({

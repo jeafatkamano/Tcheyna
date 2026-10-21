@@ -168,7 +168,7 @@ def _message(erreur):
 # rédigé pour être affiché tel quel.
 CODES_LIBRES = {"email_invalide", "code_invalide", "lieu_invalide", "montant_trop_eleve",
                 "devise_incoherente", "budget_incoherent", "mot_de_passe_incorrect",
-                "piece_absente", "hors_plateforme"}
+                "piece_absente", "hors_plateforme", "type_retire"}
 
 
 def reponse_422(exc):

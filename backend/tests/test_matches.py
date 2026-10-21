@@ -28,14 +28,56 @@ def test_candidature_annonce_certifiee_exige_le_niveau_2(client, fabrique, locat
     assert reponse.status_code == 403
 
 
-def test_acceptation_ouvre_la_conversation(client, fabrique, locataire, annonce, bailleur, entetes):
-    candidature = fabrique.match(locataire, annonce)
+def test_acceptation_ouvre_la_conversation(client, fabrique, locataire, bailleur, entetes):
+    # Une vente s'accepte sans frais (D1) : l'acceptation prend effet tout de suite.
+    candidature = fabrique.match(locataire, fabrique.annonce(bailleur, type_transaction="vente"))
 
     reponse = client.put(f"/api/matches/{candidature.id}/statut", headers=entetes(bailleur),
                          json={"statut": "accepted"})
 
     assert reponse.status_code == 200
+    assert reponse.get_json()["match"]["status"] == "accepted"
     assert Conversation.query.filter_by(match_id=candidature.id).count() == 1
+    assert Notification.query.filter_by(user_id=locataire.id,
+                                        type="candidature_acceptee").count() == 1
+
+
+def test_acceptation_d_une_location_attend_les_frais(client, fabrique, locataire, annonce,
+                                                     bailleur, entetes):
+    # D1 : la décision du bailleur ne prend effet qu'au paiement confirmé des
+    # frais de mise en relation (parcours complet dans test_payments.py).
+    candidature = fabrique.match(locataire, annonce)
+
+    reponse = client.put(f"/api/matches/{candidature.id}/statut", headers=entetes(bailleur),
+                         json={"statut": "accepted"})
+
+    assert reponse.status_code == 402
+    assert reponse.get_json()["action_requise"] == "payer_frais_mise_en_relation"
+    assert Match.query.get(candidature.id).status == "pending"
+    assert Conversation.query.filter_by(match_id=candidature.id).count() == 0
+    assert Notification.query.filter_by(user_id=locataire.id).count() == 0
+
+
+def test_refus_d_une_location_reste_libre(client, fabrique, locataire, annonce, bailleur,
+                                          entetes):
+    candidature = fabrique.match(locataire, annonce)
+
+    reponse = client.put(f"/api/matches/{candidature.id}/statut", headers=entetes(bailleur),
+                         json={"statut": "rejected"})
+
+    assert reponse.status_code == 200
+    assert Match.query.get(candidature.id).status == "rejected"
+    assert Notification.query.filter_by(user_id=locataire.id,
+                                        type="candidature_refusee").count() == 1
+
+
+def test_location_acceptee_avant_d1_reste_acceptee(client, match, bailleur, entetes):
+    # Candidature acceptée avant D1 : la décision est maintenue, sans frais.
+    reponse = client.put(f"/api/matches/{match.id}/statut", headers=entetes(bailleur),
+                         json={"statut": "accepted"})
+
+    assert reponse.status_code == 200
+    assert reponse.get_json()["match"]["commission"] == 0
 
 
 def test_decision_refusee_a_un_autre_bailleur(client, fabrique, locataire, annonce, entetes):

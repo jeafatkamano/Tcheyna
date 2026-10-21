@@ -1,9 +1,17 @@
 """
 routes/payments.py — Paiements Mobile Money via CinetPay.
 
-Couvre les services Tcheyna : commission de mise en relation, certification
-d'annonce et mise en avant (payées par le propriétaire), abonnement Passeport
+Couvre les services Tcheyna : frais de mise en relation, certification
+d'annonce et mise en avant (payés par le propriétaire), abonnement Passeport
 (locataire).
+
+Frais de mise en relation (décision D1, 20/10/2026) : un montant fixe, payé
+par le bailleur quand il accepte une candidature de location. L'acceptation
+ne prend effet qu'à la confirmation du paiement (`_confirmer`), si bien que
+rien de ce qu'elle débloque (adresse exacte, messagerie, notification du
+locataire) ne sort avant. Une vente reste gratuite. Ils remplacent la
+commission de 6 % du premier loyer, qu'on ne peut plus initier ; les
+commissions déjà enregistrées restent lisibles (historique, reçus, admin).
 
 Caution et premier loyer ne passent plus par la plateforme (décision D2 = A,
 PRD §8.2) : Tcheyna n'a pas d'agrément pour détenir des fonds de tiers. Les
@@ -25,7 +33,6 @@ from sqlalchemy import select
 
 from app import db, limiter
 from app.models import (
-    COMMISSION_RATE,
     PAYMENT_TYPES,
     Listing,
     Match,
@@ -49,13 +56,20 @@ payments_bp = Blueprint("payments", __name__)
 CINETPAY_INIT_URL = "https://api-checkout.cinetpay.com/v2/payment"
 CINETPAY_CHECK_URL = "https://api-checkout.cinetpay.com/v2/payment/check"
 
+# Frais fixes de mise en relation (D1) : payés par le bailleur à
+# l'acceptation d'une candidature de location.
+FRAIS_MISE_EN_RELATION = "frais_mise_en_relation"
+FRAIS_MISE_EN_RELATION_GNF = 250_000
+
 # Tarifs des services Tcheyna, en GNF (base : Conakry). Ouvrir un marché
-# dans une autre devise demandera une grille par devise.
+# dans une autre devise demandera une grille par devise : aucun montant n'est
+# encore fixé en XOF, GHS ou NGN.
 DEVISE_TARIFS = "GNF"
 TARIFS_GNF = {
     "certification":        250_000,
     "abonnement_passeport": 150_000,
     "mise_en_avant":        200_000,
+    FRAIS_MISE_EN_RELATION: FRAIS_MISE_EN_RELATION_GNF,
 }
 DUREE_MISE_EN_AVANT = timedelta(days=30)
 
@@ -65,8 +79,13 @@ DUREE_MISE_EN_AVANT = timedelta(days=30)
 # reste alors en attente, car un client a peut-être déjà été débité.
 ACCEPTE, REFUSE, INCONNU = "accepte", "refuse", "inconnu"
 
-# La commission découle d'une candidature acceptée par le bailleur.
-MATCH_CONCLU = ("accepted", "completed")
+# Services rattachés à une candidature : l'ancienne commission (lecture et
+# confirmation des paiements déjà initiés) et les frais de mise en relation.
+SERVICES_PAR_CANDIDATURE = ("commission", FRAIS_MISE_EN_RELATION)
+
+# Les frais s'acquittent avant que l'acceptation ne prenne effet : seule une
+# candidature encore en attente de décision peut les porter.
+CANDIDATURE_EN_ATTENTE = "pending"
 
 # Un paiement resté en attente (callback perdu, réseau coupé) bloque un
 # nouveau paiement du même service pendant ce délai : le client a peut-être
@@ -96,18 +115,24 @@ def _montant_attendu(type_paiement, user, match, listing):
     Le montant vient toujours du serveur : le client ne choisit jamais combien
     il paie, sauf pour les paiements libres entre parties.
     """
-    # La commission découle d'un bail : elle n'a pas de sens sur une vente,
-    # dont le règlement se fait par acte notarié hors plateforme.
+    # Les frais découlent d'un bail : une vente est gratuite, son acceptation
+    # libre, et la cession se règle par acte notarié hors plateforme.
     vente = bool(match and match.listing and match.listing.est_vente)
-    if vente and type_paiement == "commission":
-        return None, None, ("Ce paiement ne s'applique qu'à une location. La cession "
-                            "d'un bien se règle devant notaire, hors plateforme.")
+    if vente and type_paiement == FRAIS_MISE_EN_RELATION:
+        return None, None, ("Aucun frais ne s'applique à une vente : acceptez la "
+                            "candidature directement. La cession se règle devant "
+                            "notaire, hors plateforme.")
 
-    if type_paiement == "commission":
-        if not match or not match.listing or match.status not in MATCH_CONCLU:
-            return None, None, "Un match conclu est requis pour la commission"
-        montant = int((match.listing.prix or 0) * COMMISSION_RATE)
-        return montant, f"Commission Tcheyna — {match.listing.title_fr}", None
+    if type_paiement == FRAIS_MISE_EN_RELATION:
+        if not match or not match.listing:
+            return None, None, "match_id requis pour les frais de mise en relation"
+        if listing and listing.id != match.listing_id:
+            return None, None, "Cette candidature ne porte pas sur cette annonce"
+        if match.status != CANDIDATURE_EN_ATTENTE:
+            return None, None, ("Seule une candidature en attente de votre décision "
+                                "peut être acceptée")
+        return (FRAIS_MISE_EN_RELATION_GNF,
+                f"Frais de mise en relation — {match.listing.title_fr}", None)
 
     if type_paiement == "certification":
         if not listing:
@@ -134,11 +159,12 @@ def _montant_attendu(type_paiement, user, match, listing):
 def _filtre_service(type_paiement, user_id, match_id, listing_id):
     """Critères qui identifient « le même service » qu'un paiement règle.
 
-    La commission se rattache au match, certification et mise en avant à
-    l'annonce, l'abonnement Passeport au seul locataire.
+    Frais de mise en relation (et ancienne commission) se rattachent à la
+    candidature, certification et mise en avant à l'annonce, l'abonnement
+    Passeport au seul locataire.
     """
     criteres = [Payment.type_paiement == type_paiement, Payment.user_id == user_id]
-    if type_paiement == "commission":
+    if type_paiement in SERVICES_PAR_CANDIDATURE:
         criteres.append(Payment.match_id == match_id)
     elif type_paiement in ("certification", "mise_en_avant"):
         criteres.append(Payment.listing_id == listing_id)
@@ -148,12 +174,13 @@ def _filtre_service(type_paiement, user_id, match_id, listing_id):
 def _service_deja_regle(type_paiement, user_id, match_id, listing, exclure_id=None):
     """Le service est-il déjà payé, si bien qu'un nouveau paiement ferait double emploi ?
 
+    Frais de mise en relation : un seul paiement réussi par candidature.
     Certification : un seul paiement par annonce, comme l'exige déjà
     `listings.demander_certification`, qui accepte toute nouvelle demande
     (après un refus par exemple) dès qu'un paiement réussi existe.
     La mise en avant n'est jamais un doublon : chaque achat prolonge de 30 jours.
     """
-    if type_paiement in ("commission", "certification"):
+    if type_paiement in (*SERVICES_PAR_CANDIDATURE, "certification"):
         if type_paiement == "certification" and not listing:
             return False
         requete = Payment.query.filter(
@@ -214,6 +241,50 @@ def _reprendre_paiement_en_attente(type_paiement, user_id, match_id, listing_id)
     return confirme, en_cours
 
 
+def frais_mise_en_relation_a_regler(match):
+    """L'acceptation de `match` attend-elle le paiement des frais (D1) ?
+
+    Oui pour une candidature de location encore en attente dont les frais ne
+    sont pas déjà réglés. Une vente reste libre, comme une candidature déjà
+    acceptée (avant D1, ou par la confirmation d'un paiement).
+    """
+    if not match or not match.listing or match.listing.est_vente:
+        return False
+    if match.status != CANDIDATURE_EN_ATTENTE:
+        return False
+    return not _service_deja_regle(FRAIS_MISE_EN_RELATION, match.listing.landlord_id,
+                                   match.id, None)
+
+
+def refus_acceptation_sans_frais(match):
+    """Réponse `(corps, code)` à renvoyer au bailleur qui accepte une
+    candidature de location sans avoir réglé les frais, ou None.
+
+    La candidature reste en attente : c'est la confirmation du paiement
+    (`_confirmer`) qui l'accepte. Hors GNF, aucun montant n'est fixé : le
+    service n'est pas proposé, comme les autres tarifs.
+    """
+    if not frais_mise_en_relation_a_regler(match):
+        return None
+    if match.listing.devise != DEVISE_TARIFS:
+        return {"error": f"Les frais de mise en relation ne sont proposés qu'en "
+                         f"{DEVISE_TARIFS} pour le moment : cette candidature ne peut "
+                         "pas encore être acceptée."}, 400
+    montant = f"{FRAIS_MISE_EN_RELATION_GNF:,}".replace(",", " ")
+    return {
+        "error": f"Pour accepter cette candidature, réglez les frais de mise en relation "
+                 f"({montant} {DEVISE_TARIFS}). L'acceptation prendra effet dès la "
+                 "confirmation du paiement.",
+        "action_requise": "payer_frais_mise_en_relation",
+        "paiement": {
+            "type_paiement": FRAIS_MISE_EN_RELATION,
+            "match_id":      match.id,
+            "montant":       FRAIS_MISE_EN_RELATION_GNF,
+            "devise":        DEVISE_TARIFS,
+        },
+    }, 402
+
+
 # ─── GET /api/payments/tarifs ────────────────────────────────
 
 @payments_bp.route("/tarifs", methods=["GET"])
@@ -222,6 +293,12 @@ def tarifs():
     return jsonify({
         "devise": DEVISE_TARIFS,
         "services": [
+            {"type": FRAIS_MISE_EN_RELATION, "libelle": PAYMENT_TYPES[FRAIS_MISE_EN_RELATION],
+             "montant": FRAIS_MISE_EN_RELATION_GNF, "payeur": "Propriétaire",
+             "moment": "À l'acceptation d'une candidature de location",
+             "description": "Dus par le propriétaire ou l'agence quand il accepte une "
+                            "candidature de location : l'acceptation prend effet à la "
+                            "confirmation du paiement. Aucun frais sur une vente."},
             {"type": "certification", "libelle": PAYMENT_TYPES["certification"],
              "montant": TARIFS_GNF["certification"], "payeur": "Propriétaire",
              "description": "Vérification des documents de propriété et badge Annonce Certifiée"},
@@ -232,13 +309,6 @@ def tarifs():
              "montant": TARIFS_GNF["abonnement_passeport"], "payeur": "Locataire",
              "description": "Profil vérifié et mis en avant auprès des propriétaires (1 an)"},
         ],
-        "commission": {
-            "taux": COMMISSION_RATE,
-            "libelle": "Commission de mise en relation",
-            "payeur": "Propriétaire",
-            "description": f"{int(COMMISSION_RATE * 100)} % du premier loyer, "
-                           "dus par le propriétaire lorsqu'une location est conclue via Tcheyna",
-        },
     }), 200
 
 
@@ -258,11 +328,14 @@ def initier_paiement(current_user, corps):
         return jsonify({"error": "Cette mise en relation ne vous concerne pas"}), 403
     if listing and listing.landlord_id != current_user.id:
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
-    # La commission revient au bailleur (CGU, PRD) : l'autre partie du match
-    # ne peut pas la régler à sa place. Certification et mise en avant sont
-    # déjà réservées au propriétaire de l'annonce, l'abonnement au locataire.
-    if type_paiement == "commission" and match and current_user.id != match.listing.landlord_id:
-        return jsonify({"error": "La commission est réglée par le propriétaire"}), 403
+    # Les frais de mise en relation reviennent au bailleur (D1) : l'autre
+    # partie de la candidature ne peut pas les régler à sa place.
+    # Certification et mise en avant sont déjà réservées au propriétaire de
+    # l'annonce, l'abonnement au locataire.
+    if (type_paiement == FRAIS_MISE_EN_RELATION and match
+            and current_user.id != match.listing.landlord_id):
+        return jsonify({"error": "Les frais de mise en relation sont réglés par "
+                                 "le propriétaire de l'annonce"}), 403
 
     montant, description, erreur = _montant_attendu(type_paiement, current_user, match, listing)
     if erreur:
@@ -515,7 +588,7 @@ def _verrouiller_service(paiement):
     """Verrouille la ligne qui porte le service payé (match, annonce ou
     compte) : deux paiements distincts du même service confirmés en même temps
     se sérialisent, et le second se voit en doublon."""
-    if paiement.type_paiement == "commission" and paiement.match_id:
+    if paiement.type_paiement in SERVICES_PAR_CANDIDATURE and paiement.match_id:
         modele, cle = Match, paiement.match_id
     elif paiement.type_paiement in ("certification", "mise_en_avant") and paiement.listing_id:
         modele, cle = Listing, paiement.listing_id
@@ -529,6 +602,9 @@ def _verrouiller_service(paiement):
     ).scalar_one_or_none()
 
 
+MOTIF_CANDIDATURE_CLOSE = "candidature_close"
+
+
 def _motif_remboursement(paiement):
     """Raison de ne pas confirmer un paiement accepté par CinetPay, ou None."""
     if paiement.type_paiement in PAIEMENTS_HORS_PLATEFORME:
@@ -538,6 +614,11 @@ def _motif_remboursement(paiement):
     if _service_deja_regle(paiement.type_paiement, paiement.user_id, paiement.match_id,
                            annonce, exclure_id=paiement.id):
         return "doublon"
+    # Candidature retirée, refusée ou close pendant le paiement : les frais
+    # n'ouvrent plus aucune mise en relation, l'argent est rendu.
+    if (paiement.type_paiement == FRAIS_MISE_EN_RELATION
+            and (not isinstance(objet, Match) or objet.status != CANDIDATURE_EN_ATTENTE)):
+        return MOTIF_CANDIDATURE_CLOSE
     return None
 
 
@@ -572,6 +653,14 @@ def _confirmer(paiement):
         base = max(annonce.premium_until or datetime.utcnow(), datetime.utcnow())
         annonce.is_premium = True
         annonce.premium_until = base + DUREE_MISE_EN_AVANT
+
+    elif paiement.type_paiement == FRAIS_MISE_EN_RELATION and paiement.match:
+        # D1 : l'acceptation demandée par le bailleur prend effet maintenant,
+        # et avec elle la messagerie, l'adresse et la notification du
+        # locataire. La candidature, verrouillée par `_verrouiller_service`,
+        # est encore en attente (`_motif_remboursement`).
+        from app.routes.matches import accepter_candidature
+        accepter_candidature(paiement.match)
 
     notify.paiement_confirme(
         paiement.user_id, paiement.montant, paiement.devise,

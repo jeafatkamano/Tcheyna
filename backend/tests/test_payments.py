@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy.dialects import postgresql
 
 from app import db
-from app.models import Listing, Notification, Payment
+from app.models import Conversation, Listing, Match, Notification, Payment
 from app.routes import payments
 
 
@@ -15,8 +15,16 @@ def test_tarifs_publics(client):
     corps = reponse.get_json()
     assert corps["devise"] == "GNF"
     # D2 = A : caution et premier loyer ne sont pas des services Tcheyna.
+    # D1 : les frais de mise en relation remplacent la commission de 6 %.
     types = {service["type"] for service in corps["services"]}
-    assert types == {"certification", "mise_en_avant", "abonnement_passeport"}
+    assert types == {"frais_mise_en_relation", "certification", "mise_en_avant",
+                     "abonnement_passeport"}
+    assert "commission" not in corps
+    (frais,) = [s for s in corps["services"] if s["type"] == "frais_mise_en_relation"]
+    assert (frais["montant"], frais["payeur"]) == (250_000, "Propriétaire")
+    assert frais["libelle"] == "Frais de mise en relation"
+    assert "acceptation" in frais["moment"]
+    assert "Aucun frais sur une vente" in frais["description"]
 
 
 # ─── D2 = A · Caution et premier loyer hors plateforme ───────
@@ -344,22 +352,6 @@ def test_paiement_echoue_n_est_pas_rouvert(client, fabrique, bailleur, entetes, 
 
 # Payeur imposé par le type.
 
-def test_locataire_ne_peut_pas_payer_la_commission(client, match, locataire, entetes, cinetpay):
-    reponse = client.post("/api/payments/initier", headers=entetes(locataire),
-                          json={"type_paiement": "commission", "match_id": match.id})
-
-    assert reponse.status_code == 403
-    assert Payment.query.count() == 0
-
-
-def test_bailleur_paie_la_commission(client, match, bailleur, entetes, cinetpay):
-    reponse = client.post("/api/payments/initier", headers=entetes(bailleur),
-                          json={"type_paiement": "commission", "match_id": match.id})
-
-    assert reponse.status_code == 200
-    assert reponse.get_json()["paiement"]["type_paiement"] == "commission"
-
-
 def test_bailleur_ne_peut_pas_prendre_l_abonnement_passeport(client, bailleur, entetes, cinetpay):
     reponse = client.post("/api/payments/initier", headers=entetes(bailleur),
                           json={"type_paiement": "abonnement_passeport"})
@@ -481,20 +473,22 @@ def test_paiement_en_attente_ancien_n_empeche_plus_de_repayer(client, fabrique, 
     assert Payment.query.get(ancien.id).statut == "pending"
 
 
-def test_callback_perdu_le_paiement_existant_est_confirme_pas_repaye(client, fabrique, match,
-                                                                     bailleur, entetes, cinetpay):
+def test_callback_perdu_le_paiement_existant_est_confirme_pas_repaye(client, fabrique, locataire,
+                                                                     annonce, bailleur, entetes,
+                                                                     cinetpay):
     # Le client a payé, le callback ne nous est jamais parvenu : la seconde
     # tentative découvre le succès au lieu de débiter une seconde fois.
-    commission = int(match.listing.prix * payments.COMMISSION_RATE)
-    premier = fabrique.paiement(bailleur, type_paiement="commission", match_id=match.id,
-                                listing_id=match.listing_id, montant=commission)
-    cinetpay.statut("ACCEPTED", montant=commission, devise="GNF")
+    candidature = fabrique.match(locataire, annonce)
+    premier = fabrique.paiement(bailleur, type_paiement="frais_mise_en_relation",
+                                match_id=candidature.id, listing_id=annonce.id)
 
     reponse = client.post("/api/payments/initier", headers=entetes(bailleur),
-                          json={"type_paiement": "commission", "match_id": match.id})
+                          json={"type_paiement": "frais_mise_en_relation",
+                                "match_id": candidature.id})
 
     assert reponse.status_code == 409
     assert Payment.query.get(premier.id).statut == "success"
+    assert Match.query.get(candidature.id).status == "accepted"
     assert Payment.query.count() == 1
     # `url_init` est un préfixe de `url_check` : comparer l'URL exacte.
     assert [a for a in cinetpay.reseau.appels if a["url"] == cinetpay.url_init] == []
@@ -516,7 +510,8 @@ def test_certification_deja_payee_ne_se_repaye_pas(client, fabrique, bailleur, e
 
 def test_ancien_paiement_accepte_apres_un_second_passe_a_rembourser(client, fabrique, match,
                                                                     bailleur, admin, cinetpay):
-    commission = int(match.listing.prix * payments.COMMISSION_RATE)
+    # Commission de l'ancien barème (6 % de 2 000 000), initiée avant D1.
+    commission = 120_000
     fabrique.paiement(bailleur, type_paiement="commission", match_id=match.id,
                       listing_id=match.listing_id, montant=commission, statut="success",
                       paid_at=datetime.utcnow())
@@ -554,13 +549,14 @@ def test_deux_mises_en_avant_se_cumulent(client, fabrique, annonce, bailleur, ci
     assert Payment.query.get(seconde.id).statut == "success"
 
 
-@pytest.mark.parametrize("statut", ["pending", "rejected", "cancelled"])
-def test_commission_refusee_hors_match_conclu(client, fabrique, locataire, annonce, bailleur,
-                                              entetes, cinetpay, statut):
+@pytest.mark.parametrize("statut", ["accepted", "completed", "rejected", "cancelled"])
+def test_frais_refuses_hors_candidature_en_attente(client, fabrique, locataire, annonce, bailleur,
+                                                   entetes, cinetpay, statut):
     candidature = fabrique.match(locataire, annonce, status=statut)
 
     reponse = client.post("/api/payments/initier", headers=entetes(bailleur),
-                          json={"type_paiement": "commission", "match_id": candidature.id})
+                          json={"type_paiement": "frais_mise_en_relation",
+                                "match_id": candidature.id})
 
     assert reponse.status_code == 400
     assert Payment.query.count() == 0
@@ -613,14 +609,15 @@ def test_reprise_bornee_en_nombre_et_en_age(client, fabrique, annonce, bailleur,
     assert len(cinetpay.verifications) == payments.REPRISE_MAX_VERIFICATIONS
 
 
-def test_commission_hors_match_conclu_sans_appel_sortant(client, fabrique, locataire, annonce,
-                                                         bailleur, entetes, cinetpay):
+def test_frais_hors_candidature_en_attente_sans_appel_sortant(client, fabrique, locataire,
+                                                              annonce, bailleur, entetes,
+                                                              cinetpay):
     candidature = fabrique.match(locataire, annonce, status="rejected")
-    fabrique.paiement(bailleur, type_paiement="commission", match_id=candidature.id,
-                      listing_id=annonce.id)
+    fabrique.paiement(bailleur, type_paiement="frais_mise_en_relation",
+                      match_id=candidature.id, listing_id=annonce.id)
 
     client.post("/api/payments/initier", headers=entetes(bailleur),
-                json={"type_paiement": "commission", "match_id": candidature.id})
+                json={"type_paiement": "frais_mise_en_relation", "match_id": candidature.id})
 
     assert cinetpay.verifications == []
 
@@ -676,3 +673,382 @@ def test_remboursement_reserve_a_l_admin(client, fabrique, locataire, entetes):
     assert client.put(f"/api/admin/paiements/{paiement.id}/rembourse",
                       headers=entetes(locataire), json={}).status_code == 403
     assert Payment.query.get(paiement.id).statut == payments.A_REMBOURSER
+
+
+# ─── Lot 2.4 · Frais de mise en relation (D1) ────────────────
+
+FRAIS = "frais_mise_en_relation"
+
+
+def _accepter(client, entetes, bailleur, candidature):
+    return client.put(f"/api/matches/{candidature.id}/statut", headers=entetes(bailleur),
+                      json={"statut": "accepted"})
+
+
+def _initier_frais(client, entetes, user, candidature, **extra):
+    return client.post("/api/payments/initier", headers=entetes(user),
+                       json={"type_paiement": FRAIS, "match_id": candidature.id,
+                             "methode": "orange_money", **extra})
+
+
+def _paiement_initie(reponse):
+    return Payment.query.get(reponse.get_json()["paiement"]["id"])
+
+
+def _vue_du_locataire(client, entetes, candidature):
+    return client.get(f"/api/matches/{candidature.id}",
+                      headers=entetes(candidature.tenant)).get_json()
+
+
+def _rien_n_est_debloque(client, entetes, candidature):
+    """La candidature est toujours en attente et rien de ce qu'ouvre
+    l'acceptation n'a été servi au locataire."""
+    assert Match.query.get(candidature.id).status == "pending"
+    assert Conversation.query.filter_by(match_id=candidature.id).count() == 0
+    assert _notifications(candidature.tenant, "candidature_acceptee") == 0
+    vue = _vue_du_locataire(client, entetes, candidature)
+    assert vue["status"] == "pending"
+    assert vue["listing"].get("adresse") is None
+    assert client.get(f"/api/messages/par-match/{candidature.id}",
+                      headers=entetes(candidature.tenant)).status_code == 404
+
+
+@pytest.fixture
+def candidature(fabrique, locataire, annonce):
+    """Candidature de location en attente de la décision du bailleur."""
+    return fabrique.match(locataire, annonce)
+
+
+def test_acceptation_d_une_location_exige_les_frais(client, candidature, bailleur, entetes,
+                                                    cinetpay):
+    reponse = _accepter(client, entetes, bailleur, candidature)
+
+    assert reponse.status_code == 402
+    corps = reponse.get_json()
+    assert corps["action_requise"] == "payer_frais_mise_en_relation"
+    assert corps["paiement"] == {"type_paiement": FRAIS, "match_id": candidature.id,
+                                 "montant": 250_000, "devise": "GNF"}
+    assert "250 000 GNF" in corps["error"]
+    _rien_n_est_debloque(client, entetes, candidature)
+    assert Payment.query.count() == 0
+    assert cinetpay.reseau.appels == []
+
+
+def test_frais_payes_puis_confirmes_acceptent_la_candidature(client, candidature, bailleur,
+                                                             admin, entetes, cinetpay):
+    initiation = _initier_frais(client, entetes, bailleur, candidature)
+
+    assert initiation.status_code == 200
+    envoi = cinetpay.reseau.appels_vers(cinetpay.url_init)[0]["json"]
+    assert (envoi["amount"], envoi["currency"]) == (250_000, "GNF")
+    paiement = _paiement_initie(initiation)
+    assert (paiement.type_paiement, paiement.match_id, paiement.listing_id) == (
+        FRAIS, candidature.id, candidature.listing_id)
+    assert paiement.description.startswith("Frais de mise en relation")
+    # Initié mais pas confirmé : rien n'est encore ouvert.
+    _rien_n_est_debloque(client, entetes, candidature)
+
+    assert _callback(client, paiement).status_code == 200
+
+    assert len(cinetpay.verifications) == 1
+    assert Payment.query.get(paiement.id).statut == "success"
+    assert Match.query.get(candidature.id).status == "accepted"
+    assert Conversation.query.filter_by(match_id=candidature.id).count() == 1
+    assert _notifications(candidature.tenant, "candidature_acceptee") == 1
+    assert _notifications_paiement(bailleur) == 1      # le reçu du bailleur
+    vue = _vue_du_locataire(client, entetes, candidature)
+    assert vue["listing"]["adresse"] == candidature.listing.adresse
+    assert vue["commission"] == 0
+    assert client.get(f"/api/messages/par-match/{candidature.id}",
+                      headers=entetes(candidature.tenant)).status_code == 200
+    for user in (bailleur, candidature.tenant, admin):
+        recu = client.get(f"/api/payments/{paiement.id}", headers=entetes(user))
+        assert recu.status_code == 200
+        assert recu.get_json()["type_label"] == "Frais de mise en relation"
+
+
+def test_frais_confirmes_par_verifier(client, candidature, bailleur, entetes, cinetpay):
+    paiement = _paiement_initie(_initier_frais(client, entetes, bailleur, candidature))
+    cinetpay.panne()            # callback perdu : l'opérateur est injoignable
+    _callback(client, paiement)
+    _rien_n_est_debloque(client, entetes, candidature)
+
+    cinetpay.statut("ACCEPTED", montant=250_000, devise="GNF")
+    corps = _verifier(client, entetes, bailleur, paiement).get_json()
+
+    assert corps["message"] == "Paiement confirmé"
+    assert Match.query.get(candidature.id).status == "accepted"
+
+
+def test_callback_des_frais_rejoue_idempotent(client, candidature, bailleur, entetes, cinetpay):
+    paiement = _paiement_initie(_initier_frais(client, entetes, bailleur, candidature))
+
+    _callback(client, paiement)
+    rejeu = _callback(client, paiement)
+
+    assert rejeu.get_json()["message"] == "Déjà traité"
+    assert len(cinetpay.verifications) == 1
+    assert Conversation.query.filter_by(match_id=candidature.id).count() == 1
+    assert _notifications(candidature.tenant, "candidature_acceptee") == 1
+    assert _notifications_paiement(bailleur) == 1
+
+
+@pytest.mark.parametrize("champ, valeur", [("montant", 1), ("devise", "XOF"),
+                                           ("amount", 1_000)])
+def test_frais_montant_ou_devise_du_client_refuses(client, candidature, bailleur, entetes,
+                                                   cinetpay, champ, valeur):
+    reponse = _initier_frais(client, entetes, bailleur, candidature, **{champ: valeur})
+
+    assert reponse.status_code == 422
+    assert Payment.query.count() == 0
+    assert cinetpay.reseau.appels == []
+
+
+def test_frais_encaisses_avec_un_ecart_n_acceptent_pas(client, candidature, bailleur, entetes,
+                                                       cinetpay):
+    paiement = _paiement_initie(_initier_frais(client, entetes, bailleur, candidature))
+    cinetpay.statut("ACCEPTED", montant=1_000, devise="GNF")
+
+    _callback(client, paiement)
+
+    assert Payment.query.get(paiement.id).statut == "pending"
+    _rien_n_est_debloque(client, entetes, candidature)
+
+
+def test_vente_acceptee_librement_sans_frais(client, fabrique, locataire, bailleur, entetes,
+                                             cinetpay):
+    vente = fabrique.annonce(bailleur, type_transaction="vente", prix=900_000_000)
+    candidature = fabrique.match(locataire, vente)
+
+    reponse = _accepter(client, entetes, bailleur, candidature)
+
+    assert reponse.status_code == 200
+    assert Match.query.get(candidature.id).status == "accepted"
+    assert Conversation.query.filter_by(match_id=candidature.id).count() == 1
+    assert _notifications(locataire, "candidature_acceptee") == 1
+    assert Payment.query.count() == 0
+    assert cinetpay.reseau.appels == []
+
+
+def test_frais_refuses_sur_une_vente(client, fabrique, locataire, bailleur, entetes, cinetpay):
+    vente = fabrique.annonce(bailleur, type_transaction="vente", prix=900_000_000)
+    candidature = fabrique.match(locataire, vente)
+
+    reponse = _initier_frais(client, entetes, bailleur, candidature)
+
+    assert reponse.status_code == 400
+    assert "vente" in reponse.get_json()["error"]
+    assert Payment.query.count() == 0
+
+
+def test_second_paiement_des_frais_refuse(client, candidature, bailleur, entetes, cinetpay):
+    _callback(client, _paiement_initie(_initier_frais(client, entetes, bailleur, candidature)))
+
+    reponse = _initier_frais(client, entetes, bailleur, candidature)
+
+    assert reponse.status_code == 400
+    assert Payment.query.count() == 1
+
+
+def test_frais_payes_deux_fois_le_second_passe_a_rembourser(client, fabrique, candidature,
+                                                            bailleur, admin, entetes, cinetpay):
+    # Deux tentatives parallèles (deux onglets) acceptées par l'opérateur : la
+    # candidature n'est acceptée qu'une fois, le second paiement est rendu.
+    premier = fabrique.paiement(bailleur, type_paiement=FRAIS, match_id=candidature.id,
+                                listing_id=candidature.listing_id)
+    second = fabrique.paiement(bailleur, type_paiement=FRAIS, match_id=candidature.id,
+                               listing_id=candidature.listing_id)
+
+    _callback(client, premier)
+    _callback(client, second)
+
+    assert Payment.query.get(premier.id).statut == "success"
+    assert Payment.query.get(second.id).statut == payments.A_REMBOURSER
+    assert _notifications(candidature.tenant, "candidature_acceptee") == 1
+    (ligne,) = client.get("/api/admin/paiements-a-rembourser", headers=entetes(admin)).get_json()
+    assert (ligne["id"], ligne["motif"]) == (second.id, "doublon")
+
+
+def test_frais_reserves_au_bailleur_de_l_annonce(client, fabrique, candidature, entetes,
+                                                 cinetpay):
+    intrus = fabrique.bailleur()
+    for user in (candidature.tenant, intrus, fabrique.agence()):
+        assert _initier_frais(client, entetes, user, candidature).status_code == 403
+    assert Payment.query.count() == 0
+    # Ni le locataire ni un autre bailleur ne peuvent forcer l'acceptation.
+    assert _accepter(client, entetes, candidature.tenant, candidature).status_code == 403
+    assert _accepter(client, entetes, intrus, candidature).status_code == 403
+    assert Match.query.get(candidature.id).status == "pending"
+
+
+def test_frais_sur_une_autre_annonce_refuses(client, fabrique, candidature, bailleur, entetes,
+                                             cinetpay):
+    # match_id de la candidature, listing_id d'une autre annonce du bailleur.
+    autre = fabrique.annonce(bailleur)
+
+    reponse = _initier_frais(client, entetes, bailleur, candidature, listing_id=autre.id)
+
+    assert reponse.status_code == 400
+    assert Payment.query.count() == 0
+
+
+def test_agence_paie_les_frais_de_son_annonce(client, fabrique, agence, locataire, entetes,
+                                              cinetpay):
+    candidature = fabrique.match(locataire, fabrique.annonce(agence))
+    assert _accepter(client, entetes, agence, candidature).status_code == 402
+
+    _callback(client, _paiement_initie(_initier_frais(client, entetes, agence, candidature)))
+
+    assert Match.query.get(candidature.id).status == "accepted"
+
+
+@pytest.mark.parametrize("cloture", ["retrait", "refus"])
+def test_candidature_close_pendant_le_paiement_frais_a_rembourser(client, candidature, bailleur,
+                                                                  admin, entetes, cinetpay,
+                                                                  cloture):
+    paiement = _paiement_initie(_initier_frais(client, entetes, bailleur, candidature))
+    if cloture == "retrait":
+        assert client.delete(f"/api/matches/{candidature.id}",
+                             headers=entetes(candidature.tenant)).status_code == 200
+        attendu = "cancelled"
+    else:
+        assert client.put(f"/api/matches/{candidature.id}/statut", headers=entetes(bailleur),
+                          json={"statut": "rejected"}).status_code == 200
+        attendu = "rejected"
+
+    _callback(client, paiement)
+
+    assert Payment.query.get(paiement.id).statut == payments.A_REMBOURSER
+    assert Match.query.get(candidature.id).status == attendu
+    assert Conversation.query.filter_by(match_id=candidature.id).count() == 0
+    assert _notifications(candidature.tenant, "candidature_acceptee") == 0
+    assert _notifications_paiement(bailleur) == 0
+    assert _notifications(bailleur, "paiement_a_rembourser") == 1
+    assert _notifications(admin, "paiement_a_rembourser") == 1
+    (ligne,) = client.get("/api/admin/paiements-a-rembourser", headers=entetes(admin)).get_json()
+    assert (ligne["id"], ligne["motif"]) == (paiement.id, "candidature_close")
+
+
+def test_location_conclue_avec_un_autre_frais_a_rembourser(client, fabrique, candidature,
+                                                           bailleur, entetes, cinetpay):
+    # Le bailleur paie pour un candidat puis conclut avec un autre : la
+    # candidature payée est libérée (refusée), ses frais rendus.
+    paiement = _paiement_initie(_initier_frais(client, entetes, bailleur, candidature))
+    autre = fabrique.match(fabrique.locataire(), candidature.listing, status="accepted")
+    assert client.put(f"/api/matches/{autre.id}/conclure",
+                      headers=entetes(bailleur)).status_code == 200
+
+    _callback(client, paiement)
+
+    assert Payment.query.get(paiement.id).statut == payments.A_REMBOURSER
+    assert Match.query.get(candidature.id).status == "rejected"
+
+
+def test_frais_refuses_par_l_operateur_candidature_toujours_en_attente(client, candidature,
+                                                                       bailleur, entetes,
+                                                                       cinetpay):
+    paiement = _paiement_initie(_initier_frais(client, entetes, bailleur, candidature))
+    cinetpay.statut("REFUSED", code="600", montant=250_000, devise="GNF")
+
+    _callback(client, paiement)
+
+    assert Payment.query.get(paiement.id).statut == "failed"
+    _rien_n_est_debloque(client, entetes, candidature)
+    # Le bailleur peut réessayer.
+    cinetpay.statut("ACCEPTED", montant=250_000, devise="GNF")
+    nouvel_essai = _initier_frais(client, entetes, bailleur, candidature)
+    assert nouvel_essai.status_code == 200
+    _callback(client, _paiement_initie(nouvel_essai))
+    assert Match.query.get(candidature.id).status == "accepted"
+
+
+def test_frais_abandonnes_nouvel_essai_possible(client, fabrique, candidature, bailleur, entetes,
+                                                cinetpay):
+    # Paiement jamais validé sur le téléphone, initié il y a plus de 30 min.
+    abandonne = fabrique.paiement(bailleur, type_paiement=FRAIS, match_id=candidature.id,
+                                  listing_id=candidature.listing_id,
+                                  created_at=datetime.utcnow() - timedelta(hours=1))
+    cinetpay.statut("PENDING")
+    _rien_n_est_debloque(client, entetes, candidature)
+
+    reponse = _initier_frais(client, entetes, bailleur, candidature)
+
+    assert reponse.status_code == 200
+    assert Payment.query.get(abandonne.id).statut == "pending"
+    assert Match.query.get(candidature.id).status == "pending"
+
+
+def test_frais_en_cours_bloquent_un_second_paiement_recent(client, candidature, bailleur,
+                                                           entetes, cinetpay):
+    assert _initier_frais(client, entetes, bailleur, candidature).status_code == 200
+    cinetpay.statut("PENDING")
+
+    reponse = _initier_frais(client, entetes, bailleur, candidature)
+
+    assert reponse.status_code == 409
+    assert Payment.query.count() == 1
+
+
+def test_frais_hors_gnf_refuses(client, fabrique, locataire, bailleur, entetes, cinetpay):
+    # Aucun montant n'est fixé en XOF, GHS ou NGN (question posée à Kamano).
+    annonce_xof = fabrique.annonce(bailleur, devise="XOF")
+    candidature = fabrique.match(locataire, annonce_xof)
+
+    acceptation = _accepter(client, entetes, bailleur, candidature)
+    initiation = _initier_frais(client, entetes, bailleur, candidature)
+
+    assert acceptation.status_code == 400
+    assert "GNF" in acceptation.get_json()["error"]
+    assert initiation.status_code == 400
+    assert initiation.get_json()["error"] == "Ce service n'est proposé qu'en GNF pour le moment"
+    assert Payment.query.count() == 0
+    assert cinetpay.reseau.appels == []
+    _rien_n_est_debloque(client, entetes, candidature)
+
+
+# Commission de 6 % : retirée des parcours, lisible dans l'historique.
+
+@pytest.mark.parametrize("payeur", ["locataire", "bailleur"])
+def test_commission_ne_s_initie_plus(client, match, entetes, cinetpay, request, payeur):
+    reponse = client.post("/api/payments/initier",
+                          headers=entetes(request.getfixturevalue(payeur)),
+                          json={"type_paiement": "commission", "match_id": match.id})
+
+    assert reponse.status_code == 422
+    corps = reponse.get_json()
+    assert (corps["details"][0]["champ"], corps["details"][0]["code"]) == (
+        "type_paiement", "type_retire")
+    assert "frais de mise en relation" in corps["error"]
+    assert Payment.query.count() == 0
+    assert cinetpay.reseau.appels == []
+
+
+def test_ancienne_commission_reste_lisible(client, fabrique, match, locataire, bailleur, admin,
+                                           entetes):
+    ancienne = fabrique.paiement(bailleur, type_paiement="commission", match_id=match.id,
+                                 listing_id=match.listing_id, montant=120_000,
+                                 statut="success", paid_at=datetime(2026, 9, 1))
+
+    (ligne,) = client.get("/api/payments/mes-paiements",
+                          headers=entetes(bailleur)).get_json()["paiements"]
+    assert ligne["type_paiement"] == "commission"
+    assert ligne["type_label"] == "Commission de mise en relation (ancien barème, 6 %)"
+    for user in (bailleur, locataire, admin):
+        recu = client.get(f"/api/payments/{ancienne.id}", headers=entetes(user))
+        assert recu.status_code == 200
+        assert (recu.get_json()["montant"], recu.get_json()["statut"]) == (120_000, "success")
+    revenus = client.get("/api/admin/stats", headers=entetes(admin)).get_json()["revenus"]
+    assert revenus["commissions"] == 120_000
+
+
+def test_ancienne_commission_en_attente_reste_confirmable(client, fabrique, match, bailleur,
+                                                         cinetpay):
+    # Initiée avant D1, encaissée après : elle était due sous l'ancien barème.
+    ancienne = fabrique.paiement(bailleur, type_paiement="commission", match_id=match.id,
+                                 listing_id=match.listing_id, montant=120_000)
+    cinetpay.statut("ACCEPTED", montant=120_000, devise="GNF")
+
+    _callback(client, ancienne)
+
+    assert Payment.query.get(ancienne.id).statut == "success"
+    assert Match.query.get(match.id).status == "accepted"
