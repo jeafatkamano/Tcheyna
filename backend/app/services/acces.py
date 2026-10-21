@@ -5,11 +5,16 @@ Toutes les règles de visibilité des données sensibles vivent ici, et nulle
 part ailleurs : le passeport d'un locataire, l'adresse exacte d'un bien, une
 annonce retirée. Chaque route qui sert l'une de ces données appelle la règle
 correspondante ; une route oubliée ne fuit pas, car les sérialisations
-masquent par défaut (voir `Listing.to_dict`).
+masquent par défaut (voir `Listing.to_dict`). Le droit de publier une
+annonce (D3) y vit aussi : il conditionne l'accès aux dossiers des candidats.
 
 Les ensembles de statuts sont des constantes nommées : élargir ou restreindre
 un accès est une décision métier, qui se change ici et se lit dans le diff.
 """
+from functools import wraps
+
+from flask import jsonify
+
 from app.models import Listing, Match
 
 # ─── Passeport locataire ─────────────────────────────────────
@@ -201,3 +206,43 @@ def peut_voir_annonce(viewer, annonce):
         return True
     return Match.query.filter_by(tenant_id=viewer.id,
                                  listing_id=annonce.id).first() is not None
+
+
+# ─── Publication d'une annonce (D3, lot 2.1) ─────────────────
+
+# Décision D3 (20/10/2026) : un bailleur ou une agence ne publie qu'avec un
+# téléphone vérifié par OTP. Sans ce verrou, un compte créé à l'instant
+# publie une annonce appât et reçoit l'identité et le passeport public des
+# candidats (`peut_voir_passeport`). La CNI validée n'est PAS exigée : elle
+# donne le badge « Propriétaire vérifié » (`User.proprietaire_verifie`).
+CODE_TELEPHONE_NON_VERIFIE = "telephone_non_verifie"
+MESSAGE_TELEPHONE_NON_VERIFIE = "Vérifiez votre numéro de téléphone pour publier une annonce."
+
+
+def peut_publier_annonce(bailleur):
+    """`bailleur` peut-il rendre une annonce visible ? Seul `phone_verified`
+    compte, que seul un code OTP reçu pose (POST /auth/verify-otp)."""
+    return (bailleur is not None and getattr(bailleur, "is_active", True)
+            and bailleur.role in ROLES_BAILLEUR and bool(bailleur.phone_verified))
+
+
+def publication_autorisee(fn):
+    """Décorateur de toute route qui rend une annonce visible (aujourd'hui la
+    seule création, POST /listings : aucune route ne remet en ligne une
+    annonce retirée). Toute future route de remise en ligne le porte aussi.
+
+    À placer SOUS `@role_required` et AU-DESSUS de `@valider_corps` : le refus
+    passe avant la validation du corps, le formulaire n'ayant rien à corriger.
+    403 au format uniforme, avec un `code` stable que le client lit pour
+    proposer la vérification du téléphone.
+    """
+    @wraps(fn)
+    def wrapper(*args, current_user, **kwargs):
+        if not peut_publier_annonce(current_user):
+            return jsonify({
+                "error": MESSAGE_TELEPHONE_NON_VERIFIE,
+                "details": [{"champ": "__root__", "code": CODE_TELEPHONE_NON_VERIFIE,
+                             "message": MESSAGE_TELEPHONE_NON_VERIFIE}],
+            }), 403
+        return fn(*args, current_user=current_user, **kwargs)
+    return wrapper
