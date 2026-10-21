@@ -265,9 +265,10 @@ describe("OwnerListingForm — téléphone vérifié pour publier", () => {
     await soumettre(conteneur);
     expect(creer).toHaveBeenCalledTimes(1);
 
-    // Le refus remplace l'avertissement : un seul bandeau, sous le formulaire.
+    // Le refus remplace l'avertissement : un seul bandeau, qui reçoit le focus.
     const ouvrir = boutons("Vérifier mon numéro");
     expect(ouvrir).toHaveLength(1);
+    expect(document.activeElement?.contains(ouvrir[0])).toBe(true);
     act(() => ouvrir[0].click());
     expect(ouvrir[0].getAttribute("aria-expanded")).toBe("true");
 
@@ -287,11 +288,41 @@ describe("OwnerListingForm — téléphone vérifié pour publier", () => {
     expect(document.body.textContent).not.toContain("Vérifiez votre numéro");
     expect(document.body.textContent).toContain("Numéro vérifié : vous pouvez publier votre annonce.");
     expect(conteneur.querySelector<HTMLInputElement>("#titre")!.value).toBe("Villa à Lambanyi");
+    // Le bandeau a quitté la page : le focus va au bouton « Publier », pas à <body>.
+    expect(document.activeElement?.textContent).toBe("Publier l'annonce");
 
     await soumettre(conteneur);
 
     expect(creer).toHaveBeenCalledTimes(2);
     expect(creer.mock.calls[1][0]).toMatchObject({ title_fr: "Villa à Lambanyi" });
     expect(router.state.location.pathname).toBe("/owner/listings/L9");
+  });
+});
+
+describe("OwnerListingForm — vérification commencée avant le refus", () => {
+  it("le 403 transforme le bandeau sans perdre la vérification en cours", async () => {
+    auth.user = { ...auth.user, phone_verified: false };
+    creer.mockRejectedValue(refusTelephone());
+    envoyerOTP.mockResolvedValue({ message: "ok", phone: "+224622000000", expire_dans: 300 });
+
+    const { conteneur } = monterCreation();
+    act(() => boutons("Vérifier mon numéro")[0].click());
+    act(() => boutons("Recevoir le code par SMS")[0].click());
+    await attendreUnPeu();
+    const champCode = () =>
+      document.querySelector<HTMLInputElement>('input[aria-label="Code de vérification"]');
+    saisir(champCode()!, "12");
+
+    await soumettre(conteneur);
+
+    // Même bandeau : il passe en alerte avec le message du serveur…
+    expect(document.querySelector('[role="status"]')).toBeNull();
+    const alertes = [...document.querySelectorAll('[role="alert"]')];
+    expect(alertes).toHaveLength(1);
+    expect(alertes[0].textContent).toBe(MESSAGE_SERVEUR);
+    expect(boutons("Masquer la vérification")).toHaveLength(1);
+    // … et la vérification reste à l'étape du code, saisie comprise.
+    expect(champCode()?.value).toBe("12");
+    expect(envoyerOTP).toHaveBeenCalledTimes(1);
   });
 });

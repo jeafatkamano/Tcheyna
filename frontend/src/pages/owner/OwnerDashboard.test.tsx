@@ -122,5 +122,7 @@ describe("OwnerDashboard — téléphone à vérifier pour publier", () => {
     expect(verifierOTP).toHaveBeenCalledWith("654321");
     expect(document.body.textContent).not.toContain(AVERTISSEMENT);
     expect(document.body.textContent).toContain("Numéro vérifié : vous pouvez publier vos annonces.");
+    // Le bandeau a quitté la page : le focus va au lien « Publier », pas à <body>.
+    expect(document.activeElement?.textContent?.trim()).toBe("Publier");
   });
 });

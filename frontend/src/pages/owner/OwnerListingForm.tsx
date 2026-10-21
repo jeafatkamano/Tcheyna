@@ -188,17 +188,33 @@ function Formulaire({
   // vérification, plutôt que par le message d'erreur générique.
   const refusTelephone = creation.code === CODE_TELEPHONE_NON_VERIFIE;
   const erreur = (refusTelephone ? null : creation.erreur) ?? modification.erreur ?? retrait.erreur;
-  const telephoneAVerifier =
+  // Un seul bandeau, toujours au même endroit : l'avertissement préalable
+  // devient le refus (rôle et texte changent), sans démonter une
+  // vérification déjà commencée (numéro saisi, code attendu).
+  const bandeauTelephone =
     !courante &&
-    !telephoneVerifieIci &&
-    !refusTelephone &&
-    (user?.role === "landlord" || user?.role === "agency") &&
-    !user.phone_verified;
+    (refusTelephone ||
+      (!telephoneVerifieIci &&
+        (user?.role === "landlord" || user?.role === "agency") &&
+        !user.phone_verified));
+  const bandeauRef = useRef<HTMLDivElement>(null);
+  const publierRef = useRef<HTMLButtonElement>(null);
+
+  // Refus reçu en bas du formulaire : on amène l'utilisateur au bandeau.
+  useEffect(() => {
+    if (!refusTelephone) return;
+    bandeauRef.current?.scrollIntoView?.({ block: "center" });
+    bandeauRef.current?.focus();
+  }, [refusTelephone]);
 
   function apresVerificationTelephone() {
     setTelephoneVerifieIci(true);
     creation.reinitialiserErreur();
     confirmer("Numéro vérifié : vous pouvez publier votre annonce.");
+    // Le bandeau va quitter la page : le focus ne doit pas retomber sur
+    // <body>. Il va au bouton « Publier », toujours affiché.
+    publierRef.current?.scrollIntoView?.({ block: "center" });
+    publierRef.current?.focus();
   }
 
   function confirmer(message: string) {
@@ -311,7 +327,16 @@ function Formulaire({
       <div className="px-4 pt-5 space-y-5">
         <MessageSucces message={succes ?? messageCreation} />
 
-        {telephoneAVerifier && <BandeauTelephoneAVerifier onVerifie={apresVerificationTelephone} />}
+        {/* Hors du <form> : la vérification ne doit pas soumettre l'annonce. */}
+        {bandeauTelephone && (
+          <div ref={bandeauRef} tabIndex={-1} className="outline-none">
+            <BandeauTelephoneAVerifier
+              role={refusTelephone ? "alert" : "status"}
+              message={refusTelephone ? creation.erreur : null}
+              onVerifie={apresVerificationTelephone}
+            />
+          </div>
+        )}
 
         {/* Bloc certification (édition seulement) */}
         {existante && (
@@ -710,6 +735,7 @@ function Formulaire({
           <MessageErreur message={erreur} />
 
           <button
+            ref={publierRef}
             type="submit"
             disabled={enCours}
             className="w-full py-4 rounded-2xl font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-60"
@@ -745,15 +771,6 @@ function Formulaire({
           )}
         </form>
 
-        {/* Hors du <form> : la vérification ne doit pas soumettre l'annonce.
-            Juste sous le bouton « Publier », là où l'utilisateur regarde. */}
-        {refusTelephone && (
-          <BandeauTelephoneAVerifier
-            role="alert"
-            message={creation.erreur}
-            onVerifie={apresVerificationTelephone}
-          />
-        )}
       </div>
     </div>
   );

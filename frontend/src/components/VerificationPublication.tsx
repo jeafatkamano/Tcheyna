@@ -28,7 +28,10 @@ interface Props {
    * pour l'avertissement affiché avant la saisie.
    */
   role?: "status" | "alert";
-  /** Appelé une fois le numéro vérifié et l'utilisateur rafraîchi. */
+  /**
+   * Appelé une fois le numéro vérifié et l'utilisateur rafraîchi. Le bandeau
+   * quitte alors la page : l'appelant y déplace le focus (bouton « Publier »).
+   */
   onVerifie?: () => void;
 }
 
