@@ -20,7 +20,11 @@ import { useNavigate, useParams } from "react-router";
 
 import { ApiError, usersAPI } from "../../api";
 import { Avatar } from "../../components/Avatar";
-import { BadgeVerification, ScoreCircle } from "../../components/BadgeVerification";
+import {
+  BadgeProprietaireVerifie,
+  BadgeVerification,
+  ScoreCircle,
+} from "../../components/BadgeVerification";
 import { Chargement, Erreur } from "../../components/Etats";
 import { ListingCard } from "../../components/ListingCard";
 import { formatDate, formatMontantCourt, labelTypeBien } from "../../lib/format";
@@ -110,8 +114,9 @@ export function TenantProfileView() {
               }
               {utilisateur.quartier && ` · ${utilisateur.quartier}`}
             </p>
-            <div className="mt-2">
+            <div className="mt-2 flex flex-wrap gap-1.5">
               <BadgeVerification level={utilisateur.trust_level} size="sm" />
+              <BadgeProprietaireVerifie utilisateur={utilisateur} />
             </div>
           </div>
           {estLocataire && passeport && <ScoreCircle score={passeport.score} size={64} />}

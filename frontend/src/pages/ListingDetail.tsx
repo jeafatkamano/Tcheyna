@@ -31,7 +31,12 @@ import { Link, useNavigate, useParams } from "react-router";
 
 import { favorisAPI, listingsAPI, matchesAPI, urlFichier } from "../api";
 import { Avatar } from "../components/Avatar";
-import { BadgeCertifie, BadgeVerification, ScoreMatch } from "../components/BadgeVerification";
+import {
+  BadgeCertifie,
+  BadgeProprietaireVerifie,
+  BadgeVerification,
+  ScoreMatch,
+} from "../components/BadgeVerification";
 import { Chargement, Erreur, MessageErreur } from "../components/Etats";
 import { useAuth } from "../context/AuthContext";
 import { useAction, useApi } from "../hooks/useApi";
@@ -398,8 +403,9 @@ export function ListingDetail() {
                 <p className="font-bold" style={{ color: "#1E293B" }}>
                   {listing.landlord.full_name}
                 </p>
-                <div className="mt-1">
+                <div className="mt-1 flex flex-wrap gap-1.5">
                   <BadgeVerification level={listing.landlord.trust_level} size="sm" />
+                  <BadgeProprietaireVerifie utilisateur={listing.landlord} />
                 </div>
                 {listing.landlord.note_moyenne != null && (
                   <div className="flex items-center gap-1 mt-1.5">

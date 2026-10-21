@@ -4,7 +4,9 @@
  * Les libellés reprennent exactement la grille du Passeport Locataire :
  * Basique → Identifié → Solvable → Recommandé.
  */
-import { CheckCircle, Clock, ShieldCheck, Star, UserCheck } from "lucide-react";
+import { BadgeCheck, CheckCircle, Clock, ShieldCheck, Star, UserCheck } from "lucide-react";
+
+import type { User } from "../api";
 
 export const NIVEAUX = [
   { niveau: 0, label: "Non vérifié", icone: Clock, couleur: "#94A3B8", critere: "Compte créé" },
@@ -46,6 +48,42 @@ export function BadgeVerification({ level, size = "md", masquerSiZero = false }:
     >
       <Icone size={t.icone} />
       {niveau.label}
+    </span>
+  );
+}
+
+/**
+ * Libellé du badge, pour un bailleur comme pour une agence : un libellé propre
+ * aux agences (« Agence vérifiée » ?) reste à décider.
+ */
+export const LIBELLE_PROPRIETAIRE_VERIFIE = "Propriétaire vérifié";
+
+/**
+ * Badge « Propriétaire vérifié » (D3) : pièce d'identité du bailleur validée
+ * par Tcheyna. Rien n'est affiché si le champ est faux ou absent (serveur qui
+ * ne l'envoie pas encore). Fond opaque : lisible sur un en-tête foncé.
+ */
+export function BadgeProprietaireVerifie({
+  utilisateur,
+  size = "sm",
+}: {
+  utilisateur?: Pick<User, "proprietaire_verifie"> | null;
+  size?: keyof typeof TAILLES;
+}) {
+  if (utilisateur?.proprietaire_verifie !== true) return null;
+  const t = TAILLES[size];
+  return (
+    <span
+      className={`inline-flex items-center rounded-full font-semibold ${t.classes}`}
+      style={{
+        background: "#ECFDF5",
+        color: "#047857",
+        fontSize: t.texte,
+        border: "1.5px solid #A7F3D0",
+      }}
+    >
+      <BadgeCheck size={t.icone} aria-hidden="true" />
+      {LIBELLE_PROPRIETAIRE_VERIFIE}
     </span>
   );
 }
