@@ -438,3 +438,117 @@ def test_etat_de_resoumission_reserve_au_proprietaire(client, fabrique, a_certif
                             headers=entetes(lecteur) if lecteur else None).get_json()
         assert "certification_resoumission" not in detail
         assert "retiree" not in detail
+
+
+# ─── Retrait : absente de toutes les vitrines ────────────────
+
+def test_annonce_retiree_absente_des_favoris(client, annonce, bailleur, locataire, entetes):
+    client.post(f"/api/favorites/{annonce.id}", headers=entetes(locataire))
+
+    def favoris():
+        return [a["id"] for a in client.get("/api/favorites/",
+                                            headers=entetes(locataire)).get_json()["listings"]]
+
+    assert favoris() == [annonce.id]
+    _retirer(client, entetes, bailleur, annonce)
+    assert favoris() == []
+    # Le favori est gardé : l'annonce remise en ligne y revient.
+    _reactiver(client, entetes, bailleur, annonce)
+    assert favoris() == [annonce.id]
+
+
+def test_annonce_retiree_absente_des_recommandations(client, annonce, bailleur, locataire,
+                                                     entetes):
+    def recommandees():
+        reponse = client.get("/api/listings/recommandations", headers=entetes(locataire))
+        return [a["id"] for a in reponse.get_json()["listings"]]
+
+    assert recommandees() == [annonce.id]
+    _retirer(client, entetes, bailleur, annonce)
+    assert recommandees() == []
+
+
+def test_annonce_retiree_absente_du_profil_public(client, fabrique, annonce, bailleur, entetes):
+    autre = fabrique.annonce(bailleur)
+    _retirer(client, entetes, bailleur, annonce)
+
+    for lecteur in (None, fabrique.locataire()):
+        profil = client.get(f"/api/users/{bailleur.id}",
+                            headers=entetes(lecteur) if lecteur else None).get_json()
+        assert [a["id"] for a in profil["annonces"]] == [autre.id]
+        assert profil["nb_annonces"] == 1
+
+
+# ─── Verrous : conclusion et remise en ligne se sérialisent ──
+
+def _verrous_pendant(client, appel):
+    """Requêtes SELECT … FOR UPDATE émises pendant `appel`, compilées pour
+    PostgreSQL (SQLite ignore le verrou : on vérifie qu'il est demandé)."""
+    from sqlalchemy import event
+    from sqlalchemy.dialects import postgresql
+
+    verrous = []
+
+    def observer(etat):
+        if etat.is_select and etat.statement._for_update_arg is not None:
+            verrous.append(str(etat.statement.compile(dialect=postgresql.dialect())))
+
+    event.listen(db.session, "do_orm_execute", observer)
+    try:
+        reponse = appel()
+    finally:
+        event.remove(db.session, "do_orm_execute", observer)
+    return reponse, verrous
+
+
+def test_conclusion_verrouille_l_annonce_puis_la_candidature(client, match, bailleur, entetes):
+    reponse, verrous = _verrous_pendant(
+        client, lambda: client.put(f"/api/matches/{match.id}/conclure", headers=entetes(bailleur)))
+
+    assert reponse.status_code == 200
+    assert len(verrous) == 2
+    assert "FROM listings" in verrous[0] and verrous[0].endswith("FOR UPDATE")
+    assert "FROM matches" in verrous[1] and verrous[1].endswith("FOR NO KEY UPDATE")
+    assert Listing.query.get(match.listing_id).status == "matched"
+
+
+def test_reactivation_verrouille_l_annonce(client, annonce, bailleur, entetes):
+    _retirer(client, entetes, bailleur, annonce)
+
+    reponse, verrous = _verrous_pendant(client, lambda: _reactiver(client, entetes, bailleur,
+                                                                   annonce))
+
+    assert reponse.status_code == 200
+    assert len(verrous) == 1 and "FROM listings" in verrous[0]
+
+
+def test_reactivation_apres_une_conclusion_concurrente(client, annonce, bailleur, entetes):
+    # La conclusion a été validée pendant que la remise en ligne attendait le
+    # verrou : relue sous verrou, l'annonce est « matched » et reste conclue.
+    # L'écriture contourne la session, dont la copie dit encore « closed ».
+    _retirer(client, entetes, bailleur, annonce)
+    db.session.connection().exec_driver_sql(
+        "UPDATE listings SET status = 'matched' WHERE id = ?", (annonce.id,))
+
+    reponse = _reactiver(client, entetes, bailleur, annonce)
+
+    assert reponse.status_code == 409
+    assert Listing.query.get(annonce.id).is_visible is False
+
+
+# ─── Paiement de certification sans objet ────────────────────
+
+@pytest.mark.parametrize("champs", [{"certification_status": "certified"},
+                                    {"certification_status": "pending"},
+                                    {"status": "closed", "is_visible": False}])
+def test_paiement_de_certification_refuse_sans_examen_possible(client, fabrique, bailleur,
+                                                              entetes, cinetpay, champs):
+    annonce = fabrique.annonce(bailleur, documents_urls=DOCUMENT, **champs)
+    assert certification_a_payer(annonce)  # aucun paiement : seul l'état l'empêche
+
+    reponse = _initier(client, entetes, bailleur, annonce)
+
+    assert reponse.status_code == 409
+    assert Payment.query.count() == 0
+    # `url_init` est un préfixe de `url_check` : comparer l'URL exacte.
+    assert all(a["url"] != cinetpay.url_init for a in cinetpay.reseau.appels)

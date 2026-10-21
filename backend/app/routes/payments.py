@@ -298,6 +298,14 @@ def initier_paiement(current_user, corps):
     if _service_deja_regle(type_paiement, user_id, match_id,
                            listing or (match.listing if match else None)):
         return jsonify({"error": "Ce service est déjà réglé"}), 409
+    # Lot 2.2 : rien à examiner (annonce certifiée), examen déjà ouvert, ou
+    # annonce retirée : un paiement de certification serait un doublon.
+    if type_paiement == "certification" and listing:
+        if listing.is_certified or listing.certification_status == "pending":
+            return jsonify({"error": "Ce service est déjà réglé"}), 409
+        if not listing.is_visible:
+            return jsonify({"error": "Remettez l'annonce en ligne avant de régler "
+                                     "sa certification"}), 409
     if not montant or montant <= 0:
         return jsonify({"error": "Montant à payer indéterminé"}), 400
 
