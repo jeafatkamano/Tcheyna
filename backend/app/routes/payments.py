@@ -34,6 +34,7 @@ from app.models import (
     abonnements_passeport,
 )
 from app.routes import current_user_required
+from app.routes.listings import certification_a_payer
 from app.schemas import valider_corps
 from app.schemas.payments import (
     A_REMBOURSER,
@@ -148,14 +149,15 @@ def _filtre_service(type_paiement, user_id, match_id, listing_id):
 def _service_deja_regle(type_paiement, user_id, match_id, listing, exclure_id=None):
     """Le service est-il déjà payé, si bien qu'un nouveau paiement ferait double emploi ?
 
-    Certification : un seul paiement par annonce, comme l'exige déjà
-    `listings.demander_certification`, qui accepte toute nouvelle demande
-    (après un refus par exemple) dès qu'un paiement réussi existe.
+    Certification (D4, lot 2.2) : réglée tant que les paiements réussis
+    couvrent la prochaine demande, re-soumission gratuite comprise ; un
+    nouveau paiement n'est admis que lorsque `listings.demander_certification`
+    l'exige (`listings.certification_a_payer`).
     La mise en avant n'est jamais un doublon : chaque achat prolonge de 30 jours.
     """
-    if type_paiement in ("commission", "certification"):
-        if type_paiement == "certification" and not listing:
-            return False
+    if type_paiement == "certification":
+        return bool(listing) and not certification_a_payer(listing, exclure_paiement_id=exclure_id)
+    if type_paiement == "commission":
         requete = Payment.query.filter(
             *_filtre_service(type_paiement, user_id, match_id,
                              listing.id if listing else None),
