@@ -17,7 +17,9 @@ from app.models import (
     TYPES_BIEN_SANS_PIECES,
     Favorite,
     Listing,
+    Match,
     Payment,
+    Verification,
     agregats_annonces,
 )
 from app.routes import current_user_required, role_required, utilisateur_optionnel
@@ -33,7 +35,7 @@ from app.schemas.listings import (
     verifier_lieu,
 )
 from app.services import stockage
-from app.services.acces import peut_voir_annonce, visibilite_adresse
+from app.services.acces import peut_voir_annonce, publication_autorisee, visibilite_adresse
 from app.services.matching import score_compatibilite, trier_par_compatibilite
 
 listings_bp = Blueprint("listings", __name__)
@@ -264,15 +266,20 @@ def recommandations(current_user):
 @listings_bp.route("/mes-annonces", methods=["GET"])
 @role_required("landlord", "agency")
 def mes_annonces(current_user):
+    """Annonces en ligne du propriétaire. `?inclure_retirees=1` y ajoute ses
+    annonces retirées, pour qu'il puisse les remettre en ligne (lot 2.2) ; les
+    statistiques portent toujours sur les seules annonces en ligne."""
     lang = request.args.get("lang", "fr")
-    annonces = (current_user.listings
-                .filter(Listing.is_visible.is_(True))
-                .order_by(Listing.created_at.desc()).all())
+    requete = current_user.listings.order_by(Listing.created_at.desc())
+    annonces = requete.filter(Listing.is_visible.is_(True)).all()
+    listees = requete.all() if _bool_arg("inclure_retirees") else annonces
+    etats = etats_certification(listees)
 
     return jsonify({
-        "listings": [a.to_dict(lang=lang, include_landlord=False, avec_adresse=True)
-                     for a in annonces],
-        "total": len(annonces),
+        "listings": [{**a.to_dict(lang=lang, include_landlord=False, avec_adresse=True),
+                      **_vue_proprietaire(a, etats[a.id])}
+                     for a in listees],
+        "total": len(listees),
         "stats": {
             "actives":    sum(1 for a in annonces if a.status == "active"),
             "certifiees": sum(1 for a in annonces if a.is_certified),
@@ -309,6 +316,8 @@ def get_listing(listing_id):
             Favorite.query.filter_by(user_id=user.id, listing_id=listing.id).first()
         )
         data["is_owner"] = user.id == listing.landlord_id
+        if data["is_owner"]:
+            data.update(_vue_proprietaire(listing, etats_certification([listing])[listing.id]))
         if user.role == "tenant":
             score, details = score_compatibilite(user.passport, listing, user)
             data["score_compatibilite"] = score
@@ -325,6 +334,7 @@ def get_listing(listing_id):
 
 @listings_bp.route("/", methods=["POST"])
 @role_required("landlord", "agency")
+@publication_autorisee  # D3 : téléphone vérifié (services/acces.py)
 @valider_corps(CreationAnnonce)
 def create_listing(current_user, corps):
     valeurs = corps.model_dump()
@@ -438,10 +448,182 @@ def delete_listing(current_user, listing_id):
         return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
 
     # Retrait logique : les candidatures et paiements passés restent traçables.
-    listing.is_visible = False
-    listing.status = "closed"
+    # Même effet que PUT /<id>/retirer (lot 2.2), dont cette route est
+    # l'alias historique : elle garde sa réponse.
+    _retirer(listing)
     db.session.commit()
     return jsonify({"message": "Annonce retirée"}), 200
+
+
+# ─── Cycle de vie : retirer, remettre en ligne (lot 2.2) ─────
+#
+# États d'une annonce, portés par `status` et `is_visible` :
+#   en ligne : status « active », is_visible vrai. La création publie
+#              directement (D3 : téléphone vérifié) ; il n'y a pas de brouillon.
+#   retirée  : is_visible faux, status « closed ». Par son propriétaire
+#              (retrait, DELETE), ou avec tout son compte (désactivation,
+#              suppression). Invisible hors propriétaire, admin et candidats
+#              (`services.acces.peut_voir_annonce`).
+#   conclue  : status « matched », posé par PUT /matches/<id>/conclure. Le
+#              bien est loué ou vendu : il ne revient pas sur le marché.
+# Aucun administrateur ne retire d'annonce aujourd'hui (routes/admin.py).
+#
+# Le retrait ne touche pas aux candidatures : en attente ou acceptées, elles
+# le restent, comme avec DELETE depuis toujours (question posée dans la PR).
+
+def _retirer(listing):
+    """Retrait logique, réversible par `reactiver_annonce`. L'appelant valide."""
+    listing.is_visible = False
+    listing.status = "closed"
+
+
+def _conclue(listing):
+    """Le bien a-t-il été loué ou vendu par Tcheyna ? Une annonce conclue puis
+    retirée passe en « closed » : la candidature conclue en garde la trace."""
+    return listing.status == "matched" or listing.matches.filter(
+        Match.status == "completed").first() is not None
+
+
+def _vue_proprietaire(listing, etat_certification):
+    """Champs que seul le propriétaire lit : l'état de publication, et ce
+    qu'une nouvelle demande de certification lui coûterait (D4)."""
+    return {"retiree": not listing.is_visible, "certification_resoumission": etat_certification}
+
+
+def _refus_annonce(message, code, statut):
+    return jsonify({"error": message,
+                    "details": [{"champ": "__root__", "code": code, "message": message}]}), statut
+
+
+@listings_bp.route("/<string:listing_id>/retirer", methods=["PUT"])
+@role_required("landlord", "agency")
+def retirer_annonce(current_user, listing_id):
+    """Masque une annonce sans la supprimer. Idempotent."""
+    listing = Listing.query.get_or_404(listing_id)
+    if listing.landlord_id != current_user.id:
+        return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+
+    listing = _annonce_verrouillee(listing_id)
+    deja = not listing.is_visible
+    if not deja:
+        _retirer(listing)
+    db.session.commit()
+    return jsonify({
+        "message": "Annonce déjà retirée" if deja else "Annonce retirée",
+        "listing": {**listing.to_dict(include_landlord=False, avec_adresse=True),
+                    **_vue_proprietaire(listing, etats_certification([listing])[listing.id])},
+    }), 200
+
+
+@listings_bp.route("/<string:listing_id>/reactiver", methods=["PUT"])
+@role_required("landlord", "agency")
+@publication_autorisee  # D3 : remettre en ligne, c'est publier (services/acces.py)
+def reactiver_annonce(current_user, listing_id):
+    """Remet en ligne une annonce retirée. Idempotent.
+
+    Un compte désactivé n'arrive pas jusqu'ici (`role_required` : 403) ; un
+    compte réactivé par l'admin retrouve ses annonces retirées et peut les
+    remettre en ligne, comme celles qu'il avait retirées lui-même.
+    """
+    listing = Listing.query.get_or_404(listing_id)
+    if listing.landlord_id != current_user.id:
+        return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+
+    listing = _annonce_verrouillee(listing_id)
+    if _conclue(listing):
+        db.session.rollback()
+        return _refus_annonce("Ce bien a été loué ou vendu : son annonce ne peut pas être "
+                              "remise en ligne. Publiez une nouvelle annonce.",
+                              "annonce_conclue", 409)
+
+    deja = listing.is_visible and listing.status == "active"
+    listing.is_visible = True
+    listing.status = "active"
+    db.session.commit()
+    return jsonify({
+        "message": "Annonce déjà en ligne" if deja else "Annonce remise en ligne",
+        "listing": {**listing.to_dict(include_landlord=False, avec_adresse=True),
+                    **_vue_proprietaire(listing, etats_certification([listing])[listing.id])},
+    }), 200
+
+
+# ─── Re-soumission de certification (D4, lot 2.2) ────────────
+#
+# Décision D4 (20/10/2026) : la re-soumission d'une certification refusée est
+# gratuite une fois, payante ensuite au tarif de la certification. Le premier
+# paiement couvre donc deux examens (le premier et une re-soumission), chaque
+# paiement suivant un seul.
+#
+# Sans colonne dédiée (aucune migration) : les refus se lisent dans le journal
+# `verifications` (objet « certification_annonce », décision « refusee »,
+# écrit par PUT /admin/certifier depuis le lot 1.5, jamais purgé) et les
+# paiements dans `payments`. Les deux sont rejoués dans l'ordre : un paiement
+# ouvre des examens, un refus en consomme un. Un refus sans examen payé
+# (passerelle non configurée, refus antérieur au journal) ne consomme rien.
+# Seuls les refus comptent : une certification accordée puis annulée par une
+# modification du bien se redemande comme avant ce lot (question ouverte de
+# la PR #20). Retirer, compléter les pièces ou réactiver n'efface aucun refus.
+RESOUMISSIONS_GRATUITES = 1
+
+
+def etats_certification(annonces, exclure_paiement_id=None):
+    """État de la re-soumission de chaque annonce, en deux requêtes pour
+    toute la liste : {id: {"nb_refus", "nb_paiements", "paiement_requis",
+    "resoumission_gratuite"}}. Il vaut hors examen en cours : pendant un
+    examen, le crédit qu'il consommera n'est pas encore décompté.
+
+    `paiement_requis` : une nouvelle demande exige un nouveau paiement (dès
+    que la passerelle est configurée, voir `demander_certification`).
+    `resoumission_gratuite` : la prochaine demande est la re-soumission
+    gratuite. `exclure_paiement_id` : paiement en cours de confirmation, qui
+    ne compte pas encore (`routes.payments._motif_remboursement`).
+    """
+    ids = [a.id for a in annonces]
+    evenements = {i: [] for i in ids}
+    if ids:
+        paiements = Payment.query.with_entities(
+            Payment.listing_id, Payment.paid_at, Payment.created_at
+        ).filter(Payment.listing_id.in_(ids), Payment.type_paiement == "certification",
+                 Payment.statut == "success")
+        if exclure_paiement_id:
+            paiements = paiements.filter(Payment.id != exclure_paiement_id)
+        for listing_id, paye_le, cree_le in paiements:
+            # À date égale, le paiement passe avant le refus (0 < 1).
+            evenements[listing_id].append((paye_le or cree_le, 0))
+        refus = Verification.query.with_entities(
+            Verification.cible_id, Verification.created_at
+        ).filter(Verification.cible_id.in_(ids), Verification.objet == "certification_annonce",
+                 Verification.decision == "refusee")
+        for listing_id, le in refus:
+            evenements[listing_id].append((le, 1))
+
+    etats = {}
+    for listing_id, liste in evenements.items():
+        couverts = consommes = nb_refus = nb_paiements = 0
+        for _, est_refus in sorted(liste, key=lambda e: (e[0] or datetime.min, e[1])):
+            if not est_refus:
+                # Seul le premier paiement porte la re-soumission gratuite.
+                couverts += 1 if nb_paiements else 1 + RESOUMISSIONS_GRATUITES
+                nb_paiements += 1
+                continue
+            nb_refus += 1
+            if couverts:
+                couverts -= 1
+                consommes += 1
+        etats[listing_id] = {
+            "nb_refus": nb_refus,
+            "nb_paiements": nb_paiements,
+            "paiement_requis": couverts == 0,
+            "resoumission_gratuite": couverts > 0 and 1 <= consommes <= RESOUMISSIONS_GRATUITES,
+        }
+    return etats
+
+
+def certification_a_payer(listing, exclure_paiement_id=None):
+    """Une nouvelle demande de certification de `listing` exige-t-elle un
+    nouveau paiement ? Lue aussi par `routes.payments`, qui n'admet un
+    paiement de certification que dans ce cas."""
+    return etats_certification([listing], exclure_paiement_id)[listing.id]["paiement_requis"]
 
 
 # ─── POST /api/listings/<id>/certification ───────────────────
@@ -471,16 +653,18 @@ def demander_certification(current_user, listing_id):
     # passerelle Mobile Money n'est pas configurée, aucun propriétaire ne peut
     # payer : on laisse alors passer la demande plutôt que de bloquer le
     # parcours, et la contrainte s'applique d'elle-même dès l'activation.
-    if current_app.config.get("CINETPAY_API_KEY"):
-        regle = Payment.query.filter_by(
-            listing_id=listing.id, type_paiement="certification", statut="success"
-        ).first()
-        if not regle:
-            return jsonify({
-                "error": "La certification est un service payant. Réglez les frais "
-                         "de certification pour soumettre votre dossier.",
-                "paiement_requis": "certification",
-            }), 402
+    # Après un refus, la re-soumission gratuite (D4) passe sans paiement.
+    etat = etats_certification([listing])[listing.id]
+    if current_app.config.get("CINETPAY_API_KEY") and etat["paiement_requis"]:
+        return jsonify({
+            "error": ("Vous avez déjà utilisé la re-soumission gratuite de cette annonce. "
+                      "Réglez de nouveau les frais de certification pour soumettre "
+                      "votre dossier." if etat["nb_paiements"] else
+                      "La certification est un service payant. Réglez les frais "
+                      "de certification pour soumettre votre dossier."),
+            "paiement_requis": "certification",
+            "certification_resoumission": etat,
+        }), 402
 
     listing.certification_status = "pending"
     listing.certification_requested_at = datetime.utcnow()
