@@ -234,6 +234,11 @@ export function OwnerMatches() {
                   match.status === "pending"
                     ? etatFrais(paiements.data?.paiements ?? [], match.id)
                     : null;
+                // Location dont on ignore encore l'état des frais (paiements en
+                // chargement ou en erreur) : pas d'acceptation possible, elle
+                // pourrait relancer un paiement déjà en cours.
+                const fraisInconnus =
+                  match.status === "pending" && !match.listing?.est_vente && !paiements.data;
                 return (
                   <div
                     key={match.id}
@@ -373,6 +378,26 @@ export function OwnerMatches() {
                               candidature n'est pas encore acceptée.
                             </p>
                           )}
+                          {fraisInconnus &&
+                            (paiements.erreur ? (
+                              <div className="space-y-2">
+                                <MessageErreur
+                                  message={`${paiements.erreur} L'acceptation reste indisponible tant que l'état des frais de mise en relation n'est pas connu.`}
+                                />
+                                <button
+                                  onClick={() => void paiements.recharger()}
+                                  className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold"
+                                  style={{ background: "#F1F5F9", color: "#1E3A5F" }}
+                                >
+                                  <RefreshCw size={15} />
+                                  Recharger les paiements
+                                </button>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-gray-500 px-1">
+                                Vérification des frais de mise en relation…
+                              </p>
+                            ))}
                           <div className="flex gap-2">
                             <button
                               onClick={() => repondre(match, "rejected")}
@@ -383,15 +408,17 @@ export function OwnerMatches() {
                               <X size={15} />
                               Refuser
                             </button>
-                            <button
-                              onClick={() => repondre(match, "accepted")}
-                              disabled={reponse.enCours}
-                              className="flex-[2] flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-                              style={{ background: "#F97316" }}
-                            >
-                              {frais?.etat === "echec" ? <RefreshCw size={15} /> : <Check size={15} />}
-                              {frais?.etat === "echec" ? "Réessayer" : "Accepter et discuter"}
-                            </button>
+                            {!fraisInconnus && (
+                              <button
+                                onClick={() => repondre(match, "accepted")}
+                                disabled={reponse.enCours}
+                                className="flex-[2] flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                                style={{ background: "#F97316" }}
+                              >
+                                {frais?.etat === "echec" ? <RefreshCw size={15} /> : <Check size={15} />}
+                                {frais?.etat === "echec" ? "Réessayer" : "Accepter et discuter"}
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}

@@ -111,9 +111,10 @@ export function CGU() {
         />
         <p>
           L'acceptation d'une candidature de location ne prend effet qu'à la confirmation du
-          paiement des frais de mise en relation. Si la candidature est retirée, refusée ou
-          close avant cette confirmation, elle n'est pas acceptée et les frais encaissés sont
-          remboursés.
+          paiement des frais de mise en relation. Si, avant cette confirmation, la candidature
+          est retirée par le locataire, refusée, ou si une autre location a été conclue sur
+          l'annonce, elle n'est pas acceptée : les frais déjà encaissés sont signalés comme à
+          rembourser et remboursés par l'équipe Tcheyna.
         </p>
         <p>
           <strong>Aucun frais de mise en relation n'est dû sur une vente.</strong> La mise en

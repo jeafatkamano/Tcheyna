@@ -216,6 +216,40 @@ describe("OwnerMatches — acceptation et frais de mise en relation", () => {
     expect(bouton("Payer")).toBeUndefined();
   });
 
+  it("paiements en chargement : pas d'acceptation d'une location", async () => {
+    preparer();
+    mesPaiements.mockReturnValue(new Promise(() => {}));
+    await afficher();
+
+    expect(document.body.textContent).toContain("Vérification des frais de mise en relation");
+    expect(bouton("Accepter et discuter")).toBeUndefined();
+    expect(bouton("Refuser")).toBeDefined();
+  });
+
+  it("paiements en erreur : erreur affichée, pas d'acceptation, rechargement possible", async () => {
+    preparer();
+    mesPaiements.mockRejectedValueOnce(new ApiError("Connexion impossible.", 0));
+    await afficher();
+
+    expect(document.body.textContent).toContain("Connexion impossible.");
+    expect(document.body.textContent).toContain("L'acceptation reste indisponible");
+    expect(bouton("Accepter et discuter")).toBeUndefined();
+
+    await cliquer("Recharger les paiements");
+
+    expect(mesPaiements).toHaveBeenCalledTimes(2);
+    expect(bouton("Accepter et discuter")).toBeDefined();
+    expect(repondre).not.toHaveBeenCalled();
+  });
+
+  it("vente : l'état des paiements n'empêche pas l'acceptation", async () => {
+    preparer({ vente: true });
+    mesPaiements.mockRejectedValue(new ApiError("Connexion impossible.", 0));
+    await afficher();
+
+    expect(bouton("Accepter et discuter")).toBeDefined();
+  });
+
   it("plus aucun bouton « Régler la commission » sur une location conclue", async () => {
     mesDemandes.mockResolvedValue({
       matches: [{ ...candidature(), status: "completed", commission: 120_000 }],
