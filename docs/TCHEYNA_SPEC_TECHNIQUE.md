@@ -62,7 +62,7 @@ Autres règles liées au statut :
 > - **#37** : `conclure_location` relit l'annonce, puis la candidature, sous verrou.
 > - **#30** : écriture dans la conversation fermée si le statut n'est pas `pending`, `accepted` ou `completed` (donc après `rejected` ou `cancelled`) : 409 avec `motif` (`candidature_refusee`, `candidature_retiree`). Le fil reste lisible.
 > - **#38** : `visite_date` doit être future et à moins de 365 jours (422 `date_passee`, `date_trop_lointaine`) ; une date avec fuseau est convertie en UTC. Rappel la veille par `flask visites rappeler` (candidatures `accepted` seulement). La confirmation par l'autre partie attend une migration, après #19.
-> - D7 (5 candidatures actives au plus par locataire) : **aucune PR ouverte** ne l'applique (lot 2.5).
+> - D7 (5 candidatures actives au plus par locataire) : **aucune PR ouverte** ne l'applique (lot 2.5, bloqué par la migration en attente #19).
 
 ### 1.2 Annonce (`Listing.status` et `Listing.is_visible`)
 
@@ -101,7 +101,12 @@ Règles liées à l'état :
 > - **#37** : `PUT /api/listings/<id>/retirer` (idempotent ; `DELETE` en devient l'alias) et `PUT /api/listings/<id>/reactiver` (idempotent, soumis à `publication_autorisee` ; 409 `annonce_conclue` si l'annonce est `matched` ou a une candidature `completed`). Réactiver remet `status=active`, `is_visible=True`. `GET /mes-annonces?inclure_retirees=1` ; champs propriétaire `retiree` et `certification_resoumission`. Le retrait ne touche toujours pas aux candidatures (question en 4.1).
 > - **#33** : `PUT /api/listings/<id>` refuse (409) de changer `type_transaction` tant qu'une candidature est `pending` ou `accepted` ; annonce relue sous verrou.
 > - **#20** : `PUT /api/listings/<id>` relit l'annonce sous verrou (même bloc que #33).
-> - D6 (expiration après 30 jours sans activité, relance à J-7) : **aucune PR ouverte** (lot 2.3).
+> - **#39** (D6, fondée sur #37 et #31) : nouvelle transition en ligne → retirée, « 30 jours sans activité, après relance ». Une annonce en ligne sans activité depuis 30 jours est retirée (`_retirer`, comme un retrait par le bailleur) par `flask annonces expirer` (`routes/listings.py:expirer_annonces`, `_expirer`), après une relance à J-7.
+>   - Activité = la plus récente de trois dates (`dernieres_activites`) : la publication (`created_at`), la dernière écriture du propriétaire (`updated_at`, y compris un formulaire enregistré sans changement) et la dernière candidature reçue.
+>   - Un écouteur `before_update` (`_garder_date_d_activite`) laisse `updated_at` inchangé quand une écriture ne touche que des colonnes du système (`COLONNES_SYSTEME` : vues, décision de certification, mise en avant).
+>   - Le retrait n'arrive jamais moins de 7 jours après la relance de la même échéance. Une annonce en mise en avant en cours n'est ni relancée ni retirée.
+>   - Retrait journalisé (`verifications`, objet `annonce`, décision `expiree`). Notifications `annonce_bientot_expiree` et `annonce_expiree`. Candidatures inchangées.
+>   - Nouvelle route `PUT /api/listings/<id>/confirmer` (propriétaire), idempotente : elle compte comme une activité. 409 `annonce_retiree` ou `annonce_conclue` si l'annonce n'est pas en ligne. Une annonce expirée se remet en ligne par `PUT /<id>/reactiver` (#37).
 
 ### 1.3 Certification d'une annonce (`Listing.certification_status`)
 
@@ -434,6 +439,7 @@ Légende de la colonne Accès : **public** (sans jeton), **public+** (jeton facu
 > - **#21** : `POST /send-otp` : 429 « service momentanément saturé » au plafond global.
 > - **#31** : `POST /api/listings/` : 403 `telephone_non_verifie` ; `proprietaire_verifie` dans `User`.
 > - **#37** : `PUT /api/listings/<id>/retirer`, `PUT /api/listings/<id>/reactiver` (403 `telephone_non_verifie`, 409 `annonce_conclue`) ; `GET /mes-annonces?inclure_retirees=1` ; champs propriétaire `retiree`, `certification_resoumission` ; 402 de certification enrichi ; `/payments/initier` : 409 pour une certification sans objet.
+> - **#39** : `PUT /api/listings/<id>/confirmer` (`landlord` ou `agency` propriétaire ; 200 avec `expiration_prevue` ; 409 `annonce_retiree`, `annonce_conclue`) ; `PUT /<id>` compte comme une activité, même sans changement.
 > - **#20** : 409 pendant l'examen sur `PUT /<id>` (champ certifié), `POST`/`DELETE /<id>/photos` ; 409 sur `DELETE /<id>/documents` d'une annonce certifiée.
 > - **#33** : `PUT /matches/<id>/statut` : 402 (`action_requise`, `paiement`), 400 hors GNF ; `PUT /listings/<id>` : 409 changement de type ; `/payments/initier` : type `frais_mise_en_relation`, 422 `type_retire` pour `commission` ; `/payments/tarifs` sans bloc `commission`.
 > - **#30** : `GET /messages/conversations?page=&per_page=` (≤ 50) ; `GET` d'un fil `?limite=&avant=` (≤ 100, bloc `pagination`) ; champs `ecriture_fermee`, `motif_fermeture` ; `POST` d'un message : 409 `motif` ; `GET /api/messages/modeles`. Sans paramètre, réponses inchangées.
@@ -457,9 +463,9 @@ Décisions de Kamano du 20/10/2026 pour D1, D3, D4, D6, D7, D8, D11, D12 et D13 
 | D3 | Téléphone vérifié par OTP pour publier ; CNI validée = badge « Propriétaire vérifié », sans bloquer | aucun contrôle à la publication | #31 (backend), #34 (web), #37 (réactivation) |
 | D4 | Re-soumission d'une certification refusée gratuite une fois, payante ensuite | un paiement réussi couvre toute nouvelle demande (`routes/listings.py:demander_certification`) | #37 |
 | D5 | A : pièces supprimées dès la décision, 12 mois au plus sans décision | appliquée : suppression à la décision (`routes/admin.py:verify_cni`, `verify_revenus`), purge par `flask donnees purger-pieces` (`DUREE_CONSERVATION_PIECES_JOURS = 365`) ; rien n'est planifié | #28 (planification) |
-| D6 | Expiration après 30 jours sans activité, relance à J-7 | rien | aucune (lot 2.3) |
-| D7 | 5 candidatures actives au plus par locataire | rien | aucune (lot 2.5) |
-| D8 | Avis possible 30 jours après la conclusion | avis possible sans limite de temps après `completed` (`routes/reviews.py:create_review`) | aucune (lot 2.5) |
+| D6 | Expiration après 30 jours sans activité, relance à J-7 | rien | appliquée en PR #39 |
+| D7 | 5 candidatures actives au plus par locataire | rien | aucune (lot 2.5, bloqué par la migration en attente #19) |
+| D8 | Avis possible 30 jours après la conclusion | avis possible sans limite de temps après `completed` (`routes/reviews.py:create_review`) | aucune (lot 2.5, bloqué par la migration en attente #19) |
 | D9 | Hébergement Render | ouverte au backlog | — |
 | D10 | A : un seul dépôt ; déploiement séparé (3.9) et contrat d'API (3.10) | un seul dépôt | #18 (3.10) ; #28 utilise `buildFilter` pour le cron |
 | D11 | Éditeur légal Kamino, champs laissés vides | `frontend/src/lib/editeur.ts` : tous les champs vides, affichés « à compléter » | — |
@@ -489,11 +495,12 @@ Aucune tâche ne se déclenche seule dans l'application (`commandes.py`). Sur `m
 | `flask api spec [--check]` | écrit ou vérifie `backend/openapi.json` | à chaque changement d'API, et en CI | #18 |
 | `flask donnees expirer-revenus` | D12 : relance à J-7, puis expiration des revenus vérifiés | quotidienne | #35 |
 | `flask visites rappeler` | rappel des visites d'aujourd'hui et de demain aux deux parties, sans doublon | quotidienne | #38 |
+| `flask annonces expirer` | D6 : relance à J-7, puis retrait des annonces sans activité depuis 30 jours | quotidienne | #39 |
 
 > [!NOTE]
 > **Changements en PR (non mergés)**
 > - **#28** (D13) : Render Cron Job `tcheyna-purge-pieces` dans `render.yaml`, chaque jour à 03:00 UTC, plan `0.5c-512mb` (1 $ par mois au minimum), `buildFilter` sur `backend/**`, variables recopiées de `tcheyna-api` (`fromService`), clés propres. Commande : `retenter-suppressions`, puis `purger-pieces` même si la première échoue. Mise en place manuelle : `docs/RUNBOOK_PHASE1.md` §11 (ajoutée par #28).
-> - **#35** et **#38** n'ajoutent pas leur commande au cron : chacune propose dans son corps un `startCommand` qui l'enchaîne. Au merge de la seconde, il faut un seul `startCommand` qui enchaîne les quatre commandes et rende le code de sortie de la première en échec.
+> - **#35**, **#38** et **#39** n'ajoutent pas leur commande au cron : chacune propose dans son corps un `startCommand` différent. Un `startCommand` unique qui les réunit est proposé en annexe (section 5).
 
 ---
 
@@ -530,6 +537,12 @@ Une ligne par question, regroupées par thème. Le détail et les options sont d
 - #37 : au retrait d'une annonce, refuser ou annuler les candidatures en cours et prévenir les locataires ? Et à la réactivation ?
 - #37 : un bien déjà loué se republie par une nouvelle annonce, avec une nouvelle certification payante : est-ce voulu ?
 - #37 : suspendre la mise en avant payée pendant un retrait ?
+- #39 : définition de l'activité (publication, écriture du propriétaire, dernière candidature) : y ajouter le traitement des candidatures et la visite, ou les messages échangés ? Ou n'en garder que les actions explicites du propriétaire ?
+- #39 : annonce en mise en avant payée : épargnée jusqu'à la fin de la mise en avant (choix du lot) ? Ou elle expire comme les autres (remboursement ?) ? Ou la fin, ou le paiement, de la mise en avant compte comme une activité ?
+- #39 : préavis garanti de 7 jours après la relance : au déploiement, les annonces sans activité depuis plus de 23 jours sont relancées le premier soir, puis retirées 7 jours plus tard. Est-ce l'intention de D6 ?
+- #39 : candidatures en attente d'une annonce expirée : les laisser (choix du lot), les clore, ou prévenir les candidats ?
+- #39 : exiger le téléphone vérifié (D3) pour confirmer une annonce en ligne ? La relecture recommande que non ; à décider en même temps pour `PUT /<id>`.
+- #39 : relance d'expiration par SMS ?
 
 **Frais de mise en relation (D1)**
 - #33, #36 : montants hors GNF (frais, certification, mise en avant, Passeport) en XOF, GHS, NGN ?
@@ -590,9 +603,23 @@ Relevé dans le corps des PR, sans vérification supplémentaire.
 | L'étape CI « Migrations sur PostgreSQL 16 » échoue sur `main` depuis le lot 1.10 ; #18 et #19 la corrigent par les mêmes 4 lignes | #18, #19 |
 | #19 est la migration ouverte : toute migration suivante attend son merge | #19 → #31 (suite), #38 (suite) |
 | #32 contient #21 : merger #21 d'abord | #21 → #32 |
-| #37 contient #31 ; #34 (web) suit #31 | #31 → #37, #34 |
+| #37 contient #31, et #39 contient #37 ; #34 (web) suit #31 | #31 → #37 → #39 ; #31 → #34 |
 | #27 (web) suit #22 | #22 → #27 |
 | #33 et #36 se mergent ensemble (le 402 bloque l'acceptation d'une location depuis le web actuel) | #33 + #36 |
 | Après les PR qui changent l'API, #18 met à jour `schemas/reponses.py` (`proprietaire_verifie` de #31, champs de #30, 402 de #33…) et régénère `openapi.json` et `schema.gen.ts` | #18 |
 | Conflits triviaux annoncés : `models.py` (#33 et #24), `payments.py:_service_deja_regle` (#37 et #33), `CODES_LIBRES` (#38, #33, #32), `commandes.py` (#38 et #35), `__init__.py` (#38 et #18), `frontend/src/api/types.ts` (#34, #36 et #18) | voir chaque PR |
 | `render.yaml` est modifié par #25 et #28, sans conflit | #25, #28 |
+| #35, #38 et #39 proposent chacune une ligne à ajouter au cron de #28, avec trois `startCommand` différents : il en faut un seul (ci-dessous) | #28, #35, #38, #39 |
+
+**Proposition de `startCommand` unique** pour le cron `tcheyna-purge-pieces` de #28, à poser au merge de la dernière des PR #35, #38 et #39. Elle garde la règle de #28 : chaque étape tourne même si la précédente échoue (`;` et non `&&`), et le code de sortie est celui de la première étape en échec. Une étape dont la PR n'est pas encore mergée ne doit pas y figurer : la commande n'existerait pas.
+
+```yaml
+    startCommand: >-
+      cd backend && flask donnees retenter-suppressions; reprise=$?;
+      flask donnees purger-pieces; purge=$?;
+      flask donnees expirer-revenus; revenus=$?;
+      flask annonces expirer; annonces=$?;
+      flask visites rappeler; visites=$?;
+      for code in $reprise $purge $revenus $annonces $visites; do
+      [ "$code" -ne 0 ] && exit "$code"; done; exit 0
+```
