@@ -8,7 +8,7 @@ import { Link } from "react-router";
 import { urlFichier, type Listing } from "../api";
 import { formatMontantCourt, labelTransaction, labelTypeBien } from "../lib/format";
 import { HAUTEUR_REPLI, LARGEUR_REPLI, TAILLES_CARTE } from "../lib/imageRepli";
-import { BadgeCertifie, ScoreMatch } from "./BadgeVerification";
+import { BadgeCertifie, BadgeProprietaireVerifie, ScoreMatch } from "./BadgeVerification";
 import { PhotoAnnonce } from "./PhotoAnnonce";
 
 interface Props {
@@ -87,6 +87,12 @@ export function ListingCard({ listing, onToggleFavori, to }: Props) {
             <MapPin size={12} />
             {listing.quartier ?? listing.ville} · {labelTypeBien(listing.type_bien)}
           </div>
+
+          {listing.landlord?.proprietaire_verifie && (
+            <div className="mb-3">
+              <BadgeProprietaireVerifie utilisateur={listing.landlord} />
+            </div>
+          )}
 
           <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
             {listing.superficie != null && (

@@ -3,6 +3,10 @@
  *
  * En édition, la page porte aussi le parcours de certification : dépôt du
  * document de propriété, demande, et suivi de la décision.
+ *
+ * Publier exige un téléphone vérifié (D3) : la page le signale avant la
+ * saisie et, si le serveur refuse quand même (403 « telephone_non_verifie »),
+ * propose la vérification sur place, sans perdre le brouillon.
  */
 import { ArrowLeft, ArrowRight, Check, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -13,6 +17,11 @@ import { Chargement, Erreur, MessageErreur, MessageSucces } from "../../componen
 import { ModalePaiement } from "../../components/ModalePaiement";
 import { TeleversementDocuments } from "../../components/TeleversementDocuments";
 import { TeleversementPhotos } from "../../components/TeleversementPhotos";
+import {
+  BandeauTelephoneAVerifier,
+  CODE_TELEPHONE_NON_VERIFIE,
+} from "../../components/VerificationPublication";
+import { useAuth } from "../../context/AuthContext";
 import { useAction, useApi } from "../../hooks/useApi";
 import { useFilePhotos } from "../../hooks/useFilePhotos";
 import { resumer } from "../../lib/filePhotos";
@@ -117,6 +126,10 @@ function Formulaire({
   onSuppression: () => void;
 }) {
   const geo = useGeo("Guinée", "Conakry");
+  const { user } = useAuth();
+  // Vérifié depuis cette page : le bandeau s'efface même si le rafraîchissement
+  // de l'utilisateur échoue (réseau), le serveur tranchera à la publication.
+  const [telephoneVerifieIci, setTelephoneVerifieIci] = useState(false);
   const [succes, setSucces] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>(existante?.images ?? []);
   // En création, l'annonce n'a pas encore d'identifiant : les photos sont
@@ -171,7 +184,38 @@ function Formulaire({
   const demandeCertification = useAction(listingsAPI.demanderCertification);
 
   const enCours = creation.enCours || modification.enCours || (Boolean(creee) && photos.resume.occupee);
-  const erreur = creation.erreur ?? modification.erreur ?? retrait.erreur;
+  // Refus « téléphone non vérifié » : relayé par son propre bandeau, avec la
+  // vérification, plutôt que par le message d'erreur générique.
+  const refusTelephone = creation.code === CODE_TELEPHONE_NON_VERIFIE;
+  const erreur = (refusTelephone ? null : creation.erreur) ?? modification.erreur ?? retrait.erreur;
+  // Un seul bandeau, toujours au même endroit : l'avertissement préalable
+  // devient le refus (rôle et texte changent), sans démonter une
+  // vérification déjà commencée (numéro saisi, code attendu).
+  const bandeauTelephone =
+    !courante &&
+    (refusTelephone ||
+      (!telephoneVerifieIci &&
+        (user?.role === "landlord" || user?.role === "agency") &&
+        !user.phone_verified));
+  const bandeauRef = useRef<HTMLDivElement>(null);
+  const publierRef = useRef<HTMLButtonElement>(null);
+
+  // Refus reçu en bas du formulaire : on amène l'utilisateur au bandeau.
+  useEffect(() => {
+    if (!refusTelephone) return;
+    bandeauRef.current?.scrollIntoView?.({ block: "center" });
+    bandeauRef.current?.focus();
+  }, [refusTelephone]);
+
+  function apresVerificationTelephone() {
+    setTelephoneVerifieIci(true);
+    creation.reinitialiserErreur();
+    confirmer("Numéro vérifié : vous pouvez publier votre annonce.");
+    // Le bandeau va quitter la page : le focus ne doit pas retomber sur
+    // <body>. Il va au bouton « Publier », toujours affiché.
+    publierRef.current?.scrollIntoView?.({ block: "center" });
+    publierRef.current?.focus();
+  }
 
   function confirmer(message: string) {
     setSucces(message);
@@ -282,6 +326,17 @@ function Formulaire({
 
       <div className="px-4 pt-5 space-y-5">
         <MessageSucces message={succes ?? messageCreation} />
+
+        {/* Hors du <form> : la vérification ne doit pas soumettre l'annonce. */}
+        {bandeauTelephone && (
+          <div ref={bandeauRef} tabIndex={-1} className="outline-none">
+            <BandeauTelephoneAVerifier
+              role={refusTelephone ? "alert" : "status"}
+              message={refusTelephone ? creation.erreur : null}
+              onVerifie={apresVerificationTelephone}
+            />
+          </div>
+        )}
 
         {/* Bloc certification (édition seulement) */}
         {existante && (
@@ -680,6 +735,7 @@ function Formulaire({
           <MessageErreur message={erreur} />
 
           <button
+            ref={publierRef}
             type="submit"
             disabled={enCours}
             className="w-full py-4 rounded-2xl font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-60"
@@ -714,6 +770,7 @@ function Formulaire({
             </button>
           )}
         </form>
+
       </div>
     </div>
   );

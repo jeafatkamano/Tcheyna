@@ -10,6 +10,7 @@ import { Link, useNavigate, useParams } from "react-router";
 
 import { messagesAPI, type Message, type User } from "../../api";
 import { Avatar } from "../../components/Avatar";
+import { BadgeProprietaireVerifie } from "../../components/BadgeVerification";
 import { Chargement, Erreur, MessageErreur } from "../../components/Etats";
 import { useAuth } from "../../context/AuthContext";
 import { useAction, useApi } from "../../hooks/useApi";
@@ -105,6 +106,11 @@ export function ConversationPage() {
           <p className="text-white font-bold text-sm truncate">
             {interlocuteur?.full_name ?? "Interlocuteur"}
           </p>
+          {interlocuteur?.proprietaire_verifie && (
+            <div className="my-0.5">
+              <BadgeProprietaireVerifie utilisateur={interlocuteur} />
+            </div>
+          )}
           {listing && (
             <Link to={`/listing/${listing.id}`} className="text-white/50 text-xs truncate block">
               {listing.title} · {formatMontantCourt(listing.prix, listing.devise)}/mois

@@ -170,22 +170,40 @@ export function useApi<T>(
 }
 
 /**
+ * Code stable d'un refus du serveur : `details[0].code` du corps d'erreur
+ * uniforme (par ex. « telephone_non_verifie »). `null` sans code, ou pour une
+ * erreur de transport.
+ */
+export function codeErreur(err: unknown): string | null {
+  if (!(err instanceof ApiError)) return null;
+  const corps = err.details as { details?: { code?: unknown }[] } | null | undefined;
+  const code = Array.isArray(corps?.details) ? corps.details[0]?.code : undefined;
+  return typeof code === "string" ? code : null;
+}
+
+/**
  * useAction — Pour les actions déclenchées par l'utilisateur (envoi de
  * formulaire, candidature…). Empêche les doubles soumissions.
+ *
+ * `code` reprend le code stable du refus (voir `codeErreur`), pour qu'une page
+ * propose l'étape qui manque plutôt qu'un simple message.
  */
 export function useAction<Args extends unknown[], R>(action: (...args: Args) => Promise<R>) {
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(null);
 
   const executer = useCallback(
     async (...args: Args): Promise<R | null> => {
       if (enCours) return null;
       setEnCours(true);
       setErreur(null);
+      setCode(null);
       try {
         return await action(...args);
       } catch (err) {
         setErreur(err instanceof ApiError ? err.message : "Une erreur est survenue");
+        setCode(codeErreur(err));
         return null;
       } finally {
         setEnCours(false);
@@ -195,5 +213,14 @@ export function useAction<Args extends unknown[], R>(action: (...args: Args) => 
     [enCours],
   );
 
-  return { executer, enCours, erreur, reinitialiserErreur: () => setErreur(null) };
+  return {
+    executer,
+    enCours,
+    erreur,
+    code,
+    reinitialiserErreur: () => {
+      setErreur(null);
+      setCode(null);
+    },
+  };
 }

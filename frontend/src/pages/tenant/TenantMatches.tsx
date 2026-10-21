@@ -11,6 +11,7 @@ import {
   type MatchStatus,
   type TypePaiement,
 } from "../../api";
+import { BadgeProprietaireVerifie } from "../../components/BadgeVerification";
 import { Erreur, ListeVide, MessageErreur, SqueletteCartes } from "../../components/Etats";
 import { useAction, useApi } from "../../hooks/useApi";
 import { formatDateHeure, formatMontant, formatMontantCourt, formatRelatif } from "../../lib/format";
@@ -174,6 +175,11 @@ export function TenantMatches() {
                       {listing.quartier ?? listing.ville} ·{" "}
                       {formatMontantCourt(listing.prix, listing.devise)}/mois
                     </div>
+                    {listing.landlord?.proprietaire_verifie && (
+                      <div className="mt-1">
+                        <BadgeProprietaireVerifie utilisateur={listing.landlord} />
+                      </div>
+                    )}
                   </div>
                   <span
                     className="text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0"

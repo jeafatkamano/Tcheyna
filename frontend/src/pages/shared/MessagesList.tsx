@@ -3,6 +3,7 @@ import { Link } from "react-router";
 
 import { messagesAPI } from "../../api";
 import { Avatar } from "../../components/Avatar";
+import { BadgeProprietaireVerifie } from "../../components/BadgeVerification";
 import { Erreur, ListeVide, SqueletteCartes } from "../../components/Etats";
 import { useAuth } from "../../context/AuthContext";
 import { useApi } from "../../hooks/useApi";
@@ -77,6 +78,12 @@ export function MessagesList() {
                       {formatRelatif(conversation.last_message_at)}
                     </span>
                   </div>
+
+                  {conversation.interlocuteur?.proprietaire_verifie && (
+                    <div className="mb-1">
+                      <BadgeProprietaireVerifie utilisateur={conversation.interlocuteur} />
+                    </div>
+                  )}
 
                   {conversation.listing && (
                     <p className="text-xs text-gray-400 truncate mb-1">

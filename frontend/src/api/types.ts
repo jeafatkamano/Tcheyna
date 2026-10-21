@@ -28,6 +28,12 @@ export interface User {
   cni_verified: boolean;
   income_verified: boolean;
   cni_uploaded?: boolean;
+  /**
+   * Badge « Propriétaire vérifié » : bailleur ou agence dont la pièce
+   * d'identité a été validée. Absent tant que le serveur ne l'envoie pas :
+   * traiter `undefined` comme faux.
+   */
+  proprietaire_verifie?: boolean;
   is_active?: boolean;
   avatar_url?: string;
   preferred_lang: "fr" | "en";
