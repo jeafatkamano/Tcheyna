@@ -2,7 +2,7 @@
 
 > **Source.** Ce document est tiré du code de `main` au commit `71d7c82`. Il est à confronter au PRD §6, absent du dépôt (rangé dans les fichiers du projet, sous `audit/`). Là où le PRD et ce document divergent, c'est le code qui est décrit ici, pas l'intention.
 >
-> **Lecture.** Chaque section décrit `main`, puis liste dans un encadré « Changements en PR (non mergés) » ce que chaque PR ouverte au 21/10/2026 y change, avec son numéro. **À chaque merge**, on déplace la ligne de la PR depuis l'encadré vers le corps de la section. L'encadré sert ainsi de liste de contrôle.
+> **Lecture.** Chaque section décrit `main`, puis liste dans un encadré « Changements en PR (non mergés) » ce que chaque PR ouverte y change, avec son numéro. Relevé arrêté aux PR ouvertes jusqu'à #41, au 22/10/2026. **À chaque merge**, on déplace la ligne de la PR depuis l'encadré vers le corps de la section. L'encadré sert ainsi de liste de contrôle.
 >
 > **Renvois.** `fichier:fonction` désigne un chemin relatif à `backend/app/` (par exemple `routes/matches.py:create_match`), sauf mention contraire. Toutes les dates sont en UTC naïf (`datetime.utcnow()`), ce qui correspond à l'heure de Conakry (UTC+0, sans heure d'été).
 
@@ -181,10 +181,12 @@ Le niveau est **stocké** et recalculé par `models.py:User.update_trust_level`.
 | Niveau | Libellé (`TRUST_LEVELS`) | Condition | Ce qu'il ouvre dans le code |
 |---|---|---|---|
 | 0 | Non vérifié | compte créé | consultation |
-| 1 | Basique | `phone_verified` | candidater (`routes/matches.py:NIVEAU_MIN_CANDIDATURE`) ; figurer dans les candidats suggérés |
-| 2 | Identifié | 1 et `cni_verified` | candidater à une annonce certifiée (`NIVEAU_MIN_ANNONCE_CERTIFIEE`) |
-| 3 | Solvable | 2 et `income_verified` | libellé seulement |
-| 4 | Recommandé | 3 et au moins 3 avis positifs reçus (`is_positive`, note ≥ 4) | libellé seulement |
+| 1 | Basique | `phone_verified` | candidater (`routes/matches.py:NIVEAU_MIN_CANDIDATURE`) ; figurer dans les candidats suggérés ; points de compatibilité (voir sous le tableau) |
+| 2 | Identifié | 1 et `cni_verified` | candidater à une annonce certifiée (`NIVEAU_MIN_ANNONCE_CERTIFIEE`) ; points de compatibilité |
+| 3 | Solvable | 2 et `income_verified` | points de compatibilité |
+| 4 | Recommandé | 3 et au moins 3 avis positifs reçus (`is_positive`, note ≥ 4) | points de compatibilité ; étape 4 du passeport marquée faite (`routes/passport.py:_etapes_verification`) |
+
+À tous les niveaux, le score de compatibilité locataire-annonce lit `trust_level` : le critère « Confiance » donne `int(POIDS["confiance"] * 0.5 * min(niveau, 4) / 4)` points (`services/matching.py:score_compatibilite`). Ce score sert au tri « match » de la recherche, aux recommandations, aux candidats suggérés et au tri des candidatures reçues.
 
 ```mermaid
 stateDiagram-v2
@@ -250,7 +252,10 @@ stateDiagram-v2
 | désactivé → actif | même route | admin | compte supprimé : 409 | journal `activation` ; les jetons révoqués ne revivent pas ; les annonces retirées le restent |
 | actif → supprimé | `POST /api/users/me/suppression` (`routes/users.py:supprimer_compte`) | titulaire non admin (403) ; 5 par heure par IP | mot de passe exigé (422 si faux) | `services/donnees_personnelles.py:anonymiser_compte` : fichiers supprimés, passeport effacé, annonces retirées et vidées, candidatures en cours annulées, favoris, notifications et codes OTP effacés, e-mail remplacé, mot de passe inutilisable, niveau 0, jetons révoqués |
 
-Effets d'un compte désactivé : toute route protégée répond 403 « Compte désactivé » (`routes/__init__.py:role_required`), la connexion et le rafraîchissement aussi ; `GET /api/users/<id>` répond 404 ; il disparaît des candidats suggérés ; il n'a plus de droit sur les passeports et les adresses (`services/acces.py`).
+Effets d'un compte désactivé :
+- Avec un jeton émis avant la désactivation : 401 « Session révoquée ». La désactivation et la suppression appellent `revoquer_jetons`, et `__init__.py:jeton_revoque` passe avant tout autre contrôle.
+- Connexion : 403 « Compte désactivé ». Les contrôles 403 de `routes/auth.py:refresh` et de `routes/__init__.py:role_required` existent aussi, mais un ancien jeton y est déjà refusé en 401.
+- Le reste : `GET /api/users/<id>` répond 404 ; il disparaît des candidats suggérés ; il n'a plus de droit sur les passeports et les adresses (`services/acces.py`).
 
 > [!NOTE]
 > **Changements en PR (non mergés)**
@@ -331,7 +336,7 @@ Légende de la colonne Accès : **public** (sans jeton), **public+** (jeton facu
 
 | Méthode et chemin | Accès | Corps | Réponses notables | Débit | Fonction |
 |---|---|---|---|---|---|
-| `GET /` | public+ | paramètres : `page`, `per_page` (≤ 50), `pays`, `ville`, `quartier`, `type`, `transaction`, `prix_min`, `prix_max`, `nb_pieces_min`, `surface_min`, `has_water`, `has_generator`, `has_wifi`, `is_secured`, `has_parking`, `has_ac`, `meuble`, `certified_only`, `q`, `tri` (`recent`, `prix_asc`, `prix_desc`, `surface`, `match` pour un locataire) | mise en avant puis certifiée en tête ; locataire : `score_compatibilite`, `is_favorite` | — | `get_listings` |
+| `GET /` | public+ | paramètres : `page`, `per_page` (≤ 50), `pays`, `ville`, `quartier`, `type`, `transaction`, `prix_min`, `prix_max`, `nb_pieces_min`, `surface_min`, `has_water`, `has_generator`, `has_wifi`, `is_secured`, `has_parking`, `has_ac`, `meuble`, `certified_only`, `q`, `tri` (`recent`, `prix_asc`, `prix_desc`, `surface`, `match` pour un locataire) | mise en avant puis certifiée en tête ; connecté : `is_favorite` ; locataire : `score_compatibilite` | — | `get_listings` |
 | `GET /recommandations` | `tenant` | `limite` (≤ 30) | locations seulement | — | `recommandations` |
 | `GET /mes-annonces` | `landlord`, `agency` | — | annonces visibles du bailleur, adresse comprise | — | `mes_annonces` |
 | `GET /<id>` | public+ | — | 404 si retirée et lecteur sans droit ; compteur de vues ; locataire : `ma_candidature` | — | `get_listing` |
@@ -409,7 +414,7 @@ Légende de la colonne Accès : **public** (sans jeton), **public+** (jeton facu
 |---|---|---|---|---|---|
 | `GET /tarifs` | public | — | services et commission | — | `tarifs` |
 | `POST /initier` | connecté | `InitierPaiement` | voir 1.4 (400, 403, 409, 422, 502, 503) | 10/min par compte (sinon IP) | `initier_paiement` |
-| `POST /callback` | public (webhook CinetPay) | `CallbackCinetPay`, JSON ou formulaire, champs inconnus ignorés | 200 dans tous les cas ; statut revérifié auprès de CinetPay | 60/min par IP | `cinetpay_callback` |
+| `POST /callback` | public (webhook CinetPay) | `CallbackCinetPay`, JSON ou formulaire, champs inconnus ignorés | 200 pour tout corps valide, transaction inconnue ou déjà traitée comprises ; 400 ou 422 si `cpm_trans_id` manque ou si le corps est illisible ; 429 au-delà de la limite ; statut revérifié auprès de CinetPay | 60/min par IP | `cinetpay_callback` |
 | `GET /mes-paiements` | connecté | `statut` | paiements du compte, `total_paye` | — | `mes_paiements` |
 | `GET /<id>` | payeur, parties de la candidature, `admin` | — | 403 ; reçu | — | `recu` |
 | `POST /<id>/verifier` | payeur | — | 403 ; revérification d'un paiement `pending` | 10/min par IP | `verifier_paiement` |
@@ -445,7 +450,7 @@ Légende de la colonne Accès : **public** (sans jeton), **public+** (jeton facu
 > - **#30** : `GET /messages/conversations?page=&per_page=` (≤ 50) ; `GET` d'un fil `?limite=&avant=` (≤ 100, bloc `pagination`) ; champs `ecriture_fermee`, `motif_fermeture` ; `POST` d'un message : 409 `motif` ; `GET /api/messages/modeles`. Sans paramètre, réponses inchangées.
 > - **#38** : `PUT /matches/<id>/visite` : 422 `date_passee`, `date_trop_lointaine`.
 > - **#24** : `GET /reviews/user/<id>` : moyenne par auteur, champ `auteurs` ; `reviewer` d'un avis réduit s'il est locataire.
-> - **#26** : `POST /passport/upload/<doc_type>` : 422 si le contenu ne correspond pas à son type (`services/stockage.py:type_reel`), avec `details`. Les pièces de propriété (`POST /listings/<id>/documents`) restent en 400.
+> - **#26** : `POST /passport/upload/<doc_type>` : 422 si le contenu ne correspond pas à son type (`services/stockage.py:type_reel`), avec `details` vide. Les pièces de propriété (`POST /listings/<id>/documents`) restent en 400.
 > - **#29** : en-têtes de sécurité sur toutes les réponses de l'API (`nosniff`, CSP `default-src 'none'; frame-ancestors 'none'`, `X-Frame-Options`, `Referrer-Policy`, HSTS un an).
 
 ---
@@ -454,7 +459,7 @@ Légende de la colonne Accès : **public** (sans jeton), **public+** (jeton facu
 
 ### 3.1 Décisions D1 à D13
 
-Décisions de Kamano du 20/10/2026 pour D1, D3, D4, D6, D7, D8, D11, D12 et D13 (transmises aux agents ; #31, #33 et #37 les citent avec cette date), du 15/10/2026 pour D2, D5 et D10 (`docs/BACKLOG.md`). `docs/BACKLOG.md` liste encore D1, D3, D4, D6, D7, D8, D11 et D12 comme ouvertes, et ne connaît pas D13.
+**Source.** D1, D3, D4, D6, D7, D8, D11, D12 et D13 viennent de la consigne de Kamano du 20/10/2026 aux agents. Elle n'est pas consignée dans `docs/BACKLOG.md`, que seul Kamano modifie ; #31, #33 et #37 la citent avec cette date. D2, D5 et D10 viennent de `docs/BACKLOG.md` (15/10/2026). `docs/BACKLOG.md` liste encore D1, D3, D4, D6, D7, D8, D11 et D12 comme ouvertes, et ne connaît pas D13.
 
 | # | Décision | Dans le code de `main` | En PR |
 |---|---|---|---|
@@ -468,14 +473,14 @@ Décisions de Kamano du 20/10/2026 pour D1, D3, D4, D6, D7, D8, D11, D12 et D13 
 | D8 | Avis possible 30 jours après la conclusion | avis possible sans limite de temps après `completed` (`routes/reviews.py:create_review`) | aucune (lot 2.5, bloqué par la migration en attente #19) |
 | D9 | Hébergement Render | ouverte au backlog | — |
 | D10 | A : un seul dépôt ; déploiement séparé (3.9) et contrat d'API (3.10) | un seul dépôt | #18 (3.10) ; #28 utilise `buildFilter` pour le cron |
-| D11 | Éditeur légal Kamino, champs laissés vides | `frontend/src/lib/editeur.ts` : tous les champs vides, affichés « à compléter » | — |
+| D11 | Éditeur légal Kamino, champs laissés vides. « Kamino » est le nom de l'éditeur légal choisi, à ne pas confondre avec Kamano, le porteur du projet. | `frontend/src/lib/editeur.ts` : tous les champs vides, affichés « à compléter » | — |
 | D12 | Justificatif de revenus valable 3 mois | aucune expiration | #35 |
 | D13 | Purge D5 par Render Cron Job | commandes présentes, non planifiées | #28 |
 
 ### 3.2 Couloirs, socle, migrations
 
 - **Couloirs et socle partagé** : `docs/agents/LANES.md`. Une API qui change : la PR backend d'abord (changement additif, spécification à jour), la PR web ensuite avec « Dépend de #n ». #18 y ajoute au socle `schemas/reponses.py`, `openapi.py`, `backend/openapi.json` et `frontend/src/api/schema.gen.ts`.
-- **Migrations** (`LANES.md` n'a pas de section dédiée ; la référence technique est `backend/migrations/README`) :
+- **Migrations**. Source de ces règles : la consigne de Kamano du 20/10/2026, qui n'est écrite nulle part dans le dépôt. `LANES.md` n'a pas de section dédiée. `backend/migrations/README` ne décrit que la mise en œuvre technique ; seule la règle du RLS y est reprise, par #19.
   - une seule tête Alembic, une seule migration ouverte à la fois. Tête sur `main` : `694ce1497b2e` (chaîne `d5a017c5d0f3` → `3b8e2c41f7a9` → `7c4f1d2e9a6b` → `694ce1497b2e`). #19 ajoute `4506c18d7fd6` ;
   - révision additive, compatible avec le code déjà en production ;
   - toute nouvelle table active le RLS dans sa révision (`ALTER TABLE … ENABLE ROW LEVEL SECURITY`), seulement si `op.get_context().dialect.name == "postgresql"`. Après #19, la CI et `backend/tests/test_migrations_rls.py` échouent sinon ;
@@ -524,6 +529,8 @@ Une ligne par question, regroupées par thème. Le détail et les options sont d
 - #32 : confirmer l'exclusion des admins de la connexion par téléphone et de la récupération par SMS (un admin n'a alors aucune récupération en libre-service).
 - #32 : après une réinitialisation, ouvrir directement une session, ou exiger une connexion ?
 - #32 : prévenir le titulaire par SMS après une réinitialisation (SMS facturé) ?
+- #41 : faut-il afficher un texte pour les administrateurs, qui n'ont aucune récupération en libre-service, ou documenter un parcours manuel (support, commande d'administration) ?
+- #41 : laisser la page « Mot de passe oublié » accessible à un utilisateur connecté (choix du lot), ou le renvoyer vers le changement de mot de passe de son profil ?
 - #29 : HSTS de l'API à un an, ou plus court pour commencer, ou rien ?
 
 **Annonces et certification**
@@ -569,6 +576,7 @@ Une ligne par question, regroupées par thème. Le détail et les options sont d
 - #30 : texte des modèles de messages à valider ; versions anglaises ; textes côté API ou côté web ?
 - #30 : écriture après une location conclue : la fermer après un délai (aligné sur D8 ?) ou jamais ?
 - #30 : prévenir l'autre partie par une notification quand une discussion se ferme ?
+- #40 : les puces de messages types disparaissent dès qu'on écrit : faut-il plutôt les laisser visibles, et leur faire ajouter leur texte à la suite ?
 - #38 : marge minimale avant une visite (1 h, 2 h ?) ?
 - #38 : borne haute de 365 jours : la garder, la changer, l'enlever ?
 - #38 : rappel de visite par SMS ? Pour qui, à quel coût ?
@@ -596,7 +604,7 @@ Aucune PR ouverte ne les traite. Ce sont des constats sur le code de `main`, pas
 
 ## 5. Annexe : ordre de merge et conflits signalés
 
-Relevé dans le corps des PR, sans vérification supplémentaire.
+Relevé dans le corps des PR ouvertes jusqu'à #41 au 22/10/2026, sans vérification supplémentaire.
 
 | Contrainte | PR |
 |---|---|
@@ -605,6 +613,8 @@ Relevé dans le corps des PR, sans vérification supplémentaire.
 | #32 contient #21 : merger #21 d'abord | #21 → #32 |
 | #37 contient #31, et #39 contient #37 ; #34 (web) suit #31 | #31 → #37 → #39 ; #31 → #34 |
 | #27 (web) suit #22 | #22 → #27 |
+| #40 (web du lot 2.8 : conversation fermée, pagination, modèles) suit #30 | #30 → #40 |
+| #41 (web du lot 3.8 : connexion par téléphone, mot de passe oublié) suit #32, qui suit #21 | #21 → #32 → #41 |
 | #33 et #36 se mergent ensemble (le 402 bloque l'acceptation d'une location depuis le web actuel) | #33 + #36 |
 | Après les PR qui changent l'API, #18 met à jour `schemas/reponses.py` (`proprietaire_verifie` de #31, champs de #30, 402 de #33…) et régénère `openapi.json` et `schema.gen.ts` | #18 |
 | Conflits triviaux annoncés : `models.py` (#33 et #24), `payments.py:_service_deja_regle` (#37 et #33), `CODES_LIBRES` (#38, #33, #32), `commandes.py` (#38 et #35), `__init__.py` (#38 et #18), `frontend/src/api/types.ts` (#34, #36 et #18) | voir chaque PR |
