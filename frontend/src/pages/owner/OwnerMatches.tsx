@@ -542,7 +542,46 @@ function OngletSuggestions() {
 
 /* ─── Planification de visite ──────────────────────────────── */
 
-function ModaleVisite({
+// Bornes du serveur (schéma `Visite`, lot 2.7) : date strictement future, et
+// au plus 365 jours plus tard. Le serveur reste juge (422 affiché tel quel).
+const MINUTE_MS = 60_000;
+const VISITE_HORIZON_MS = 365 * 24 * 60 * MINUTE_MS;
+const VISITE_PASSEE = "La visite doit être fixée à une date future";
+const VISITE_TROP_LOINTAINE = "La visite doit être fixée dans les 365 prochains jours";
+
+/** Valeur d'un champ datetime-local (« 2026-11-15T14:30 »), à l'heure de l'appareil. */
+function valeurDateHeureLocale(instant: number) {
+  const d = new Date(instant);
+  const deux = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${deux(d.getMonth() + 1)}-${deux(d.getDate())}` +
+    `T${deux(d.getHours())}:${deux(d.getMinutes())}`
+  );
+}
+
+/**
+ * Bornes du sélecteur : de la minute qui suit à maintenant + 365 jours.
+ * Heure de l'appareil, envoyée sans fuseau et lue par le serveur comme l'heure
+ * UTC, celle de Conakry : hors UTC+0, le serveur peut encore refuser (limite
+ * connue, signalée dans la PR du lot 2.7 web).
+ */
+function bornesVisite(maintenant: number) {
+  return {
+    min: valeurDateHeureLocale(Math.floor(maintenant / MINUTE_MS) * MINUTE_MS + MINUTE_MS),
+    max: valeurDateHeureLocale(maintenant + VISITE_HORIZON_MS),
+  };
+}
+
+/** Refus local, avant tout appel : `null` si la date respecte les bornes du serveur. */
+function refusDateVisite(valeur: string, maintenant: number): string | null {
+  // « AAAA-MM-JJTHH:MM » sans fuseau : lu à l'heure de l'appareil, comme le champ.
+  const instant = new Date(valeur).getTime();
+  if (Number.isNaN(instant) || instant <= maintenant) return VISITE_PASSEE;
+  if (instant > maintenant + VISITE_HORIZON_MS) return VISITE_TROP_LOINTAINE;
+  return null;
+}
+
+export function ModaleVisite({
   matchId,
   onFerme,
   onPlanifie,
@@ -552,9 +591,18 @@ function ModaleVisite({
   onPlanifie: () => void;
 }) {
   const [date, setDate] = useState("");
+  // Bornes figées à l'ouverture ; le contrôle avant l'envoi relit l'horloge.
+  const [bornes] = useState(() => bornesVisite(Date.now()));
+  const [erreurLocale, setErreurLocale] = useState<string | null>(null);
   const planification = useAction(matchesAPI.planifierVisite);
 
   async function planifier() {
+    const refus = refusDateVisite(date, Date.now());
+    if (refus) {
+      planification.reinitialiserErreur();
+      setErreurLocale(refus);
+      return;
+    }
     const ok = await planification.executer(matchId, date);
     if (ok) onPlanifie();
   }
@@ -580,16 +628,25 @@ function ModaleVisite({
             id="visite"
             type="datetime-local"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            min={bornes.min}
+            max={bornes.max}
+            onChange={(e) => {
+              setDate(e.target.value);
+              setErreurLocale(null);
+            }}
+            aria-describedby="visite-regle"
             className="w-full px-4 py-3 rounded-xl outline-none"
             style={{ background: "white", border: "1.5px solid #E2E8F0", fontSize: "15px" }}
           />
-          <p className="text-xs text-gray-400 mt-1.5">
+          <p id="visite-regle" className="text-xs text-gray-500 mt-1.5">
+            La visite doit être fixée à une date à venir, dans les 365 prochains jours.
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
             Le locataire reçoit une notification avec la date proposée.
           </p>
         </div>
 
-        <MessageErreur message={planification.erreur} />
+        <MessageErreur message={erreurLocale ?? planification.erreur} />
 
         <button
           onClick={planifier}
