@@ -8,7 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-import { EDITEUR, renseigne, type ChampEditeur } from "../../lib/editeur";
+import { champsACompleter, EDITEUR, renseigne, type ChampEditeur } from "../../lib/editeur";
 
 export const DERNIERE_MAJ = "15 septembre 2026";
 
@@ -92,10 +92,12 @@ export function Liste({ items }: { items: ReactNode[] }) {
  */
 export function ACompleter({ champ, quoi }: { champ: ChampEditeur; quoi: string }) {
   if (renseigne(champ)) {
-    return <span>{EDITEUR[champ]}</span>;
+    return <span data-champ={champ}>{EDITEUR[champ]}</span>;
   }
   return (
     <span
+      data-champ={champ}
+      data-a-completer=""
       className="inline-block px-2 py-0.5 rounded font-semibold"
       style={{ background: "#FEF3C7", color: "#92400E", fontSize: "12.5px" }}
     >
@@ -104,7 +106,29 @@ export function ACompleter({ champ, quoi }: { champ: ChampEditeur; quoi: string 
   );
 }
 
+/**
+ * Désignation de l'éditeur dans le texte : le nom commercial, suivi de la
+ * dénomination sociale (ou de son repère « à compléter »), qui seule
+ * l'identifie juridiquement. La dénomination n'est pas répétée si elle se
+ * confond avec le nom commercial.
+ */
+export function NomEditeur() {
+  const nom = EDITEUR.nomCommercial.trim();
+  const denomination = EDITEUR.denomination.trim();
+  if (!nom) {
+    return <ACompleter champ="denomination" quoi="dénomination sociale de l'éditeur" />;
+  }
+  if (denomination === nom) {
+    return <span>{nom}</span>;
+  }
+  return (
+    <span>
+      {nom} (<ACompleter champ="denomination" quoi="dénomination sociale" />)
+    </span>
+  );
+}
+
 /** Vrai tant qu'au moins un champ d'identité manque. */
 export function identiteIncomplete(): boolean {
-  return (Object.keys(EDITEUR) as ChampEditeur[]).some((c) => !renseigne(c));
+  return champsACompleter().length > 0;
 }

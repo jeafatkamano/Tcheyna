@@ -21,7 +21,10 @@ export function MentionsLegales() {
 
       <Section titre="Éditeur">
         <p>
-          <strong>Dénomination :</strong> <ACompleter champ="denomination" quoi="dénomination sociale" />
+          <strong>Nom commercial :</strong> <ACompleter champ="nomCommercial" quoi="nom commercial" />
+        </p>
+        <p>
+          <strong>Dénomination sociale :</strong> <ACompleter champ="denomination" quoi="dénomination sociale" />
         </p>
         <p>
           <strong>Forme juridique :</strong> <ACompleter champ="formeJuridique" quoi="forme juridique, ex. SARL" />
