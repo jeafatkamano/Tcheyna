@@ -237,6 +237,19 @@ export const listingsAPI = {
       body: JSON.stringify({ url }),
       headers: { "Content-Type": "application/json" },
     }),
+
+  /* ─── Expiration sans activité (D6, lot 2.3) ─────────── */
+
+  /**
+   * Le propriétaire confirme que son annonce en ligne est toujours
+   * d'actualité. `expiration_prevue` : date de retrait sans autre activité,
+   * calculée par le serveur. Refus : 409 `annonce_retiree` ou
+   * `annonce_conclue` ; un serveur antérieur au lot 2.3 répond 404 ou 405.
+   */
+  confirmer: (id: string) =>
+    api.put<{ message: string; expiration_prevue: string; listing: Listing }>(
+      `/listings/${id}/confirmer`,
+    ),
 };
 
 /* ─── MISES EN RELATION ────────────────────────────────────── */
