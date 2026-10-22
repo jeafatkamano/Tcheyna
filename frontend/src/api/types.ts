@@ -60,7 +60,7 @@ export interface DetailCompatibilite {
 /** Un propriétaire peut mettre son bien en location ou le vendre. */
 export type TypeTransaction = "location" | "vente";
 
-export interface Listing {
+export interface Listing extends VueProprietaireAnnonce {
   id: string;
   title: string;
   description: string;
@@ -291,4 +291,29 @@ export interface CandidatSuggere {
   details_compatibilite: DetailCompatibilite[];
   /** Abonnement Passeport en cours : le dossier est mis en avant. */
   abonne_passeport: boolean;
+}
+
+/**
+ * Re-soumission d'une certification (D4, lot 2.2), telle que le serveur la
+ * calcule. Elle vaut hors examen en cours : le web ne la lit que pour une
+ * annonce « none » ou « rejected ».
+ */
+export interface CertificationResoumission {
+  nb_refus: number;
+  nb_paiements: number;
+  /** Une nouvelle demande exige un nouveau paiement (402 sinon). */
+  paiement_requis: boolean;
+  /** La prochaine demande est la re-soumission gratuite. */
+  resoumission_gratuite: boolean;
+}
+
+/**
+ * Champs que seul le propriétaire reçoit (`mes-annonces`, détail, retrait et
+ * remise en ligne). Absents d'un serveur antérieur au lot 2.2 : `undefined`
+ * ne vaut ni « retirée » ni « gratuite ».
+ */
+export interface VueProprietaireAnnonce {
+  /** Annonce retirée par son propriétaire : absente de la recherche. */
+  retiree?: boolean;
+  certification_resoumission?: CertificationResoumission;
 }
