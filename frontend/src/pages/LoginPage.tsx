@@ -1,18 +1,24 @@
-import { ArrowLeft, Eye, EyeOff, Lock, Mail } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ArrowLeft, Eye, EyeOff, Lock, UserRound } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
 import { effacerMotifDeconnexion, lireMotifDeconnexion } from "../api";
-import { MessageErreur } from "../components/Etats";
+import { MessageErreur, MessageSucces } from "../components/Etats";
 import { useAuth } from "../context/AuthContext";
 import { useAction } from "../hooks/useApi";
+
+/** Retour de la page « Mot de passe oublié » après une réinitialisation réussie. */
+const MESSAGE_REINITIALISATION =
+  "Mot de passe modifié. Vous avez été déconnecté de tous vos appareils.";
 
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { connecter, accueilDuRole } = useAuth();
 
-  const [email, setEmail] = useState("");
+  // E-mail ou numéro de téléphone vérifié (lot 3.8) : le serveur reconnaît
+  // l'un ou l'autre dans le champ `email`, sans contrôle de format ici.
+  const [identifiant, setIdentifiant] = useState("");
   const [motDePasse, setMotDePasse] = useState("");
   const [afficherMdp, setAfficherMdp] = useState(false);
 
@@ -22,10 +28,24 @@ export function LoginPage() {
   const [motif, setMotif] = useState(lireMotifDeconnexion);
   useEffect(() => effacerMotifDeconnexion(), []);
 
+  // Mot de passe réinitialisé : message de succès, qui reçoit le focus.
+  const [succes, setSucces] = useState(() =>
+    (location.state as { reinitialise?: boolean } | null)?.reinitialise
+      ? MESSAGE_REINITIALISATION
+      : null,
+  );
+  const succesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (succes) succesRef.current?.focus();
+    // Au chargement seulement : le message ne revient pas une fois effacé.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function soumettre(e: React.FormEvent) {
     e.preventDefault();
     setMotif(null);
-    const user = await connexion.executer(email, motDePasse);
+    setSucces(null);
+    const user = await connexion.executer(identifiant.trim(), motDePasse);
     if (!user) return;
     // Retour à la page demandée avant la redirection, sinon accueil du rôle.
     const destination = (location.state as { from?: string } | null)?.from;
@@ -56,25 +76,39 @@ export function LoginPage() {
             Connectez-vous pour retrouver vos annonces et vos mises en relation.
           </p>
 
+          {succes && (
+            <div ref={succesRef} tabIndex={-1} className="mb-4 outline-none">
+              <MessageSucces message={succes} />
+            </div>
+          )}
+
           <form onSubmit={soumettre} className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-white/80 mb-1.5">
-                Adresse e-mail
+              <label htmlFor="identifiant" className="block text-sm font-semibold text-white/80 mb-1.5">
+                E-mail ou téléphone
               </label>
               <div className="relative">
-                <Mail
+                <UserRound
                   size={17}
                   className="absolute left-3.5 top-1/2 -translate-y-1/2"
                   style={{ color: "#94A3B8" }}
+                  aria-hidden="true"
                 />
+                {/* type="text" : `type="email"` refuserait un numéro à l'envoi.
+                    Le clavier e-mail garde l'arobase et une rangée de chiffres. */}
                 <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
+                  id="identifiant"
+                  name="identifiant"
+                  type="text"
+                  inputMode="email"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="vous@exemple.com"
+                  value={identifiant}
+                  onChange={(e) => setIdentifiant(e.target.value)}
+                  placeholder="vous@exemple.com ou 622 52 92 52"
                   className="w-full pl-10 pr-4 py-3.5 rounded-xl outline-none"
                   style={{ background: "white", border: "1.5px solid #E2E8F0", fontSize: "15px" }}
                 />
@@ -111,6 +145,11 @@ export function LoginPage() {
                 >
                   {afficherMdp ? <EyeOff size={17} /> : <Eye size={17} />}
                 </button>
+              </div>
+              <div className="text-right mt-2">
+                <Link to="/mot-de-passe-oublie" className="text-sm font-medium text-white/70 underline">
+                  Mot de passe oublié ?
+                </Link>
               </div>
             </div>
 

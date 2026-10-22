@@ -82,6 +82,26 @@ export const authAPI = {
     return reponse;
   },
 
+  /**
+   * Mot de passe oublié, étape 1 (lot 3.8) : demande un code par SMS. La
+   * réponse est la même que le numéro corresponde à un compte ou non (message
+   * neutre, à afficher tel quel) ; seul un numéro **vérifié** reçoit un code.
+   */
+  demanderReinitialisation: (phone: string) =>
+    api.post<{ message: string; expire_dans: number }>("/auth/mot-de-passe-oublie", { phone }),
+
+  /**
+   * Étape 2 : code reçu + nouveau mot de passe. En cas de succès, le serveur
+   * révoque toutes les sessions du compte et n'en ouvre aucune : il faut se
+   * reconnecter. Tout échec du code répond le même 400.
+   */
+  confirmerReinitialisation: (phone: string, code: string, nouveau_mot_de_passe: string) =>
+    api.post<{ message: string }>("/auth/mot-de-passe-oublie/confirmer", {
+      phone,
+      code,
+      nouveau_mot_de_passe,
+    }),
+
   envoyerOTP: (phone?: string) =>
     api.post<{ message: string; phone: string; expire_dans: number; debug_code?: string }>(
       "/auth/send-otp",

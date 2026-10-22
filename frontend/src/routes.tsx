@@ -36,6 +36,7 @@ import {
   FavorisPage,
   ListingsPage,
   MentionsLegales,
+  MotDePasseOubliePage,
   OwnerDashboard,
   OwnerListingForm,
   OwnerListings,
@@ -136,6 +137,9 @@ const ROUTES: RouteObject[] = [
       </RedirectIfAuth>
     ),
   },
+  // Accessible aussi connecté : une réinitialisation réussie vide alors la
+  // session locale, que le serveur vient de révoquer.
+  { path: "/mot-de-passe-oublie", element: aLaDemande(MotDePasseOubliePage) },
   { path: "/onboarding/tenant", Component: OnboardingTenant },
   { path: "/onboarding/owner", Component: OnboardingOwner },
 

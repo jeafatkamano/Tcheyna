@@ -278,7 +278,7 @@ function deconnecter(raison?: string): ApiError {
   const message = raison ?? "Session expirée, veuillez vous reconnecter";
   tokens.clear();
   // Sur les pages publiques, inutile de rediriger vers la connexion.
-  const publiques = ["/", "/login", "/inscription"];
+  const publiques = ["/", "/login", "/inscription", "/mot-de-passe-oublie"];
   if (!publiques.includes(window.location.pathname)) {
     try {
       sessionStorage.setItem(CLE_MOTIF_DECONNEXION, message);
