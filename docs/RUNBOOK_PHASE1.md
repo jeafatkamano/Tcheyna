@@ -334,7 +334,11 @@ rejouables sans doublon.
 - Jeton absent sur Render : la route répond 404 (fonction désactivée).
 - Jeton faux ou absent dans l'appel : 401. Le jeton n'est lu que dans
   l'en-tête, jamais dans l'URL.
-- 5 appels par heure et par IP au plus.
+- Limites : 5 échecs (mauvais jeton) par heure et par IP ; 10 appels par jour
+  avec le bon jeton, toutes IP confondues. Les échecs ne comptent pas contre
+  le bon jeton : un inconnu ne peut pas épuiser la limite avant cron-job.org.
+- Le jeton doit être différent de `SECRET_KEY`, `JWT_SECRET_KEY` et
+  `OTP_HMAC_KEY` : sinon l'API refuse de démarrer.
 - Réponse : 200 si tout a réussi, 500 si une étape a échoué (cron-job.org
   compte alors l'exécution en échec et prévient par e-mail). Le corps donne,
   pour chaque étape, ses compteurs et son erreur éventuelle ; le détail
@@ -415,9 +419,9 @@ purge et les autres étapes tournent. Pour en sortir :
 - **Render** → `tcheyna-api` → Logs : une étape en échec y écrit
   `Tâche nocturne « <étape> » en échec` avec la trace complète.
 - Avant la mise en service, confirme `TRUSTED_PROXY_HOPS` (section 1) :
-  s'il est faux, tous les appelants partagent la limite de 5 appels par
-  heure, et n'importe qui peut la consommer avant cron-job.org.
-- **À la main**, depuis PowerShell (5 appels par heure au plus) :
+  s'il est faux, les limites par IP de toute l'API (connexion comprise)
+  visent l'IP d'un proxy partagé au lieu de celle du client.
+- **À la main**, depuis PowerShell (10 appels par jour au plus avec le bon jeton) :
 
 ```powershell
 $jeton = Read-Host "Jeton des tâches nocturnes"

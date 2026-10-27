@@ -522,7 +522,7 @@ Le `startCommand` ci-dessous est celui du cron `tcheyna-purge-pieces` dans `rend
 
 > [!NOTE]
 > **Changements en PR (non mergés)**
-> - **#49** (lot 1.25, D13 révisée) : `POST /api/interne/taches-nocturnes`, protégée par l'en-tête `X-Taches-Jeton` (`TACHES_NOCTURNES_JETON` ; absente : 404), 5 appels par heure et par IP, sans CORS. Elle enchaîne les cinq tâches quotidiennes ci-dessus dans le même ordre, par les mêmes fonctions, chacune même si une précédente échoue, avec un budget de 5 s par étape. Elle répond 200, ou 500 si une étape échoue. Appelée chaque nuit à 03:00 (Africa/Conakry) par cron-job.org. Le service `type: cron` sort de `render.yaml`. Réglage : `docs/RUNBOOK_PHASE1.md` §11.
+> - **#49** (lot 1.25, D13 révisée) : `POST /api/interne/taches-nocturnes`, protégée par l'en-tête `X-Taches-Jeton` (`TACHES_NOCTURNES_JETON`, distinct des autres clés ; absente : 404), 5 échecs par heure et par IP et 10 appels par jour avec le bon jeton (les échecs ne comptent pas contre lui), sans CORS. Elle enchaîne les cinq tâches quotidiennes ci-dessus dans le même ordre, par les mêmes fonctions, chacune même si une précédente échoue, avec un budget de 5 s par étape. Elle répond 200, ou 500 si une étape échoue. Appelée chaque nuit à 03:00 (Africa/Conakry) par cron-job.org. Le service `type: cron` sort de `render.yaml`. Réglage : `docs/RUNBOOK_PHASE1.md` §11.
 > - **#50** (lot 3.10) : `flask api spec [--check]` écrit ou vérifie `backend/openapi.json`, à chaque changement d'API et en CI.
 > - **Lot 1.22** : `flask admin reinitialiser-mot-de-passe <email>`, récupération manuelle d'un compte administrateur.
 

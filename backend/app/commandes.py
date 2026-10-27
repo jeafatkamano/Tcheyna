@@ -25,14 +25,20 @@ visites_cli = AppGroup("visites", help="Suivi des visites planifiées.")
 
 admin_cli = AppGroup("admin", help="Comptes administrateurs.")
 
-# Mêmes bornes que le mot de passe d'un compte (`schemas.MotDePasse`).
-MOT_DE_PASSE_MIN, MOT_DE_PASSE_MAX = 8, 128
+# Plus strict que le mot de passe d'un compte (`schemas.MotDePasse`, 8
+# caractères) : c'est le compte le plus privilégié, et il n'a aucune
+# récupération en libre-service.
+MOT_DE_PASSE_MIN, MOT_DE_PASSE_MAX = 12, 128
 
 
 def _longueur_admise(mot_de_passe):
     if not MOT_DE_PASSE_MIN <= len(mot_de_passe) <= MOT_DE_PASSE_MAX:
         raise click.BadParameter(
             f"Le mot de passe doit faire de {MOT_DE_PASSE_MIN} à {MOT_DE_PASSE_MAX} caractères.")
+    if mot_de_passe.isalpha() or mot_de_passe.isdigit() or len(set(mot_de_passe)) < 6:
+        raise click.BadParameter(
+            "Le mot de passe doit mêler lettres et chiffres ou symboles, "
+            "avec au moins 6 caractères différents.")
     return mot_de_passe
 
 

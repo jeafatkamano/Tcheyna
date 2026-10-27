@@ -79,16 +79,31 @@ def test_seule_la_methode_post_est_acceptee(client, jeton):
     assert client.get(URL, headers=jeton).status_code == 405
 
 
-def test_limite_de_cinq_appels_par_heure_et_par_ip(client, jeton):
+def test_cinq_echecs_par_heure_et_par_ip(client, jeton):
     for _ in range(5):
         assert client.post(URL, headers={"X-Taches-Jeton": "faux"}).status_code == 401
-
-    # Bon ou mauvais jeton, le sixième appel de l'heure est refusé.
     assert client.post(URL, headers={"X-Taches-Jeton": "faux"}).status_code == 429
-    assert client.post(URL, headers=jeton).status_code == 429
-    # Une autre IP a son propre compteur.
-    autre_ip = client.post(URL, headers=jeton, environ_base={"REMOTE_ADDR": "203.0.113.9"})
-    assert autre_ip.status_code == 200
+    # Une autre IP a son propre compteur d'échecs.
+    autre_ip = client.post(URL, headers={"X-Taches-Jeton": "faux"},
+                           environ_base={"REMOTE_ADDR": "203.0.113.9"})
+    assert autre_ip.status_code == 401
+
+
+def test_des_echecs_ne_bloquent_pas_le_bon_jeton(client, jeton):
+    # Audit du 27/10 : un inconnu qui épuise la limite depuis la même IP
+    # (cron-job.org sort par des IP partagées) ne doit pas empêcher l'appel
+    # légitime de la nuit.
+    for _ in range(6):
+        client.post(URL, headers={"X-Taches-Jeton": "faux"})
+    assert client.post(URL, headers=jeton).status_code == 200
+
+
+def test_bon_jeton_limite_a_dix_appels_par_jour_toutes_ip(client, jeton):
+    for i in range(10):
+        ip = {"REMOTE_ADDR": f"203.0.113.{i + 1}"}
+        assert client.post(URL, headers=jeton, environ_base=ip).status_code == 200
+    autre = client.post(URL, headers=jeton, environ_base={"REMOTE_ADDR": "198.51.100.7"})
+    assert autre.status_code == 429
 
 
 def test_aucun_entete_cors(client, jeton):

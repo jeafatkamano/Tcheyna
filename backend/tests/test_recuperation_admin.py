@@ -6,6 +6,7 @@ un poste qui a la base de production, lit le nouveau mot de passe au clavier.
 """
 import logging
 
+import pytest
 from werkzeug.security import check_password_hash
 
 from app.models import OTPCode, User
@@ -82,7 +83,7 @@ def test_refuse_un_mot_de_passe_trop_court(app, admin):
     resultat = _lancer(app, admin.email, "court\n")
 
     assert resultat.exit_code != 0
-    assert "8 à 128 caractères" in resultat.output
+    assert "12 à 128 caractères" in resultat.output
     assert check_password_hash(User.query.get(admin.id).password_hash, MOT_DE_PASSE)
 
 
@@ -90,7 +91,7 @@ def test_refuse_un_mot_de_passe_trop_long(app, admin):
     resultat = _lancer(app, admin.email, "x" * 129 + "\n")
 
     assert resultat.exit_code != 0
-    assert "8 à 128 caractères" in resultat.output
+    assert "12 à 128 caractères" in resultat.output
     assert check_password_hash(User.query.get(admin.id).password_hash, MOT_DE_PASSE)
 
 
@@ -98,7 +99,7 @@ def test_longueur_refusee_puis_saisie_redemandee_sur_place(app, admin):
     resultat = _lancer(app, admin.email, f"court\n{NOUVEAU}\n{NOUVEAU}\n")
 
     assert resultat.exit_code == 0, resultat.output
-    assert "8 à 128 caractères" in resultat.output
+    assert "12 à 128 caractères" in resultat.output
     assert check_password_hash(User.query.get(admin.id).password_hash, NOUVEAU)
 
 
@@ -132,3 +133,14 @@ def test_compte_desactive_signale(app, fabrique):
 
     assert resultat.exit_code == 0, resultat.output
     assert "désactivé" in resultat.output
+
+
+@pytest.mark.parametrize("faible", ["motdepasseadmin", "123456789012", "aaaaaa111111"])
+def test_refuse_un_mot_de_passe_trop_simple(app, admin, faible):
+    # Audit du 27/10 : 12 caractères ne suffisent pas, il faut mêler lettres
+    # et chiffres ou symboles, avec au moins 6 caractères différents.
+    resultat = _lancer(app, admin.email, f"{faible}\n")
+
+    assert resultat.exit_code != 0
+    assert "lettres et chiffres ou symboles" in resultat.output
+    assert check_password_hash(User.query.get(admin.id).password_hash, MOT_DE_PASSE)

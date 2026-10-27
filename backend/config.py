@@ -205,6 +205,14 @@ class ProductionConfig(Config):
                 "caractères) ou égal à une valeur d'exemple publique. Générez-en un avec : "
                 'python -c "import secrets; print(secrets.token_urlsafe(48))"'
             )
+        # Le jeton sort de Render (il est saisi chez cron-job.org) : identique
+        # à une autre clé, il en livrerait une copie (JWT_SECRET_KEY permet de
+        # signer un jeton administrateur).
+        if jeton and jeton in {self.SECRET_KEY, self.JWT_SECRET_KEY, self.OTP_HMAC_KEY}:
+            raise RuntimeError(
+                "TACHES_NOCTURNES_JETON doit être distinct de SECRET_KEY, "
+                "JWT_SECRET_KEY et OTP_HMAC_KEY : générez-en un à part."
+            )
         self.TACHES_NOCTURNES_JETON = jeton
 
 

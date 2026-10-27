@@ -102,5 +102,17 @@ def test_jeton_des_taches_nocturnes_fourni_doit_etre_fort(env_prod, valeur):
 
 
 def test_jeton_des_taches_nocturnes_fort_accepte(env_prod):
-    env_prod.setenv("TACHES_NOCTURNES_JETON", FORT_2)
-    assert ProductionConfig().TACHES_NOCTURNES_JETON == FORT_2
+    # Distinct de SECRET_KEY et de JWT_SECRET_KEY (FORT_1, FORT_2).
+    env_prod.setenv("TACHES_NOCTURNES_JETON", "c" * (LONGUEUR_MIN_SECRET + 8))
+    assert ProductionConfig().TACHES_NOCTURNES_JETON == "c" * (LONGUEUR_MIN_SECRET + 8)
+
+
+@pytest.mark.parametrize("cle", ["SECRET_KEY", "JWT_SECRET_KEY"])
+def test_jeton_des_taches_distinct_des_autres_cles(env_prod, cle):
+    # Audit du 27/10 : le jeton est saisi chez cron-job.org ; égal à une autre
+    # clé, il en livrerait une copie.
+    import os
+    env_prod.setenv("TACHES_NOCTURNES_JETON", os.environ[cle])
+    with pytest.raises(RuntimeError, match="distinct"):
+        ProductionConfig()
+
