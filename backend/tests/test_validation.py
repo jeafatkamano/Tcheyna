@@ -8,6 +8,8 @@ Trois familles :
     frontend/src (relevé appel par appel) est accepté. `extra="forbid"` ne
     doit casser aucun écran.
 """
+from datetime import datetime, timedelta
+
 import pytest
 from flask import request
 
@@ -383,12 +385,14 @@ def test_note_d_avis_invalide(client, fabrique, locataire, annonce, entetes, not
 
 
 def test_candidatures_et_visites(client, fabrique, match, locataire, bailleur, entetes):
+    # Une visite doit être à venir (lot 2.7) : la date suit l'horloge.
+    dans_un_mois = datetime.utcnow() + timedelta(days=30)
     assert erreur(client.put(f"/api/matches/{match.id}/statut", headers=entetes(bailleur),
                              json={"statut": "completed"})) == {"statut": "choix_invalide"}
     assert erreur(client.put(f"/api/matches/{match.id}/visite", headers=entetes(locataire),
                              json={"visite_date": 123})) == {"visite_date": "datetime_type"}
     assert client.put(f"/api/matches/{match.id}/visite", headers=entetes(locataire),
-                      json={"visite_date": "2026-09-15T14:30:00Z"}).status_code == 200
+                      json={"visite_date": f"{dans_un_mois:%Y-%m-%dT%H:%M}:00Z"}).status_code == 200
     # `Query.get(dict)` levait une exception (500).
     autre = fabrique.locataire()
     assert erreur(client.post("/api/matches/", headers=entetes(autre),
@@ -609,7 +613,8 @@ def test_front_mise_en_relation(client, fabrique, locataire, bailleur, annonce, 
                        json={"listing_id": autre.id, "message": ""}).status_code == 201
 
     # OwnerMatches : décision, frais de mise en relation (D1, location), puis
-    # visite (champ datetime-local, sans fuseau).
+    # visite (champ datetime-local, sans fuseau, à une date future depuis le
+    # lot 2.7).
     assert client.put(f"/api/matches/{match_id}/statut", headers=entetes(bailleur),
                       json={"statut": "accepted"}).status_code == 402
     frais = client.post("/api/payments/initier", headers=entetes(bailleur), json={
@@ -618,8 +623,9 @@ def test_front_mise_en_relation(client, fabrique, locataire, bailleur, annonce, 
     assert frais.status_code == 200
     assert client.post("/api/payments/callback", json={
         "cpm_trans_id": frais.get_json()["transaction_id"]}).status_code == 200
+    visite = datetime.utcnow() + timedelta(days=7)
     assert client.put(f"/api/matches/{match_id}/visite", headers=entetes(bailleur),
-                      json={"visite_date": "2026-11-15T14:30"}).status_code == 200
+                      json={"visite_date": f"{visite:%Y-%m-%dT%H:%M}"}).status_code == 200
 
     # ConversationPage
     conversation = Match.query.get(match_id).conversation

@@ -1,5 +1,5 @@
 """
-app/commandes.py — Commandes d'exploitation (`flask donnees …`).
+app/commandes.py — Commandes d'exploitation (`flask donnees …`, `flask visites …`).
 
 À lancer à la main ou par une tâche planifiée (Render Cron Job) : aucune
 n'est déclenchée automatiquement par l'application.
@@ -9,8 +9,10 @@ from flask.cli import AppGroup
 
 from app.routes.listings import expirer_annonces
 from app.services import donnees_personnelles as dp
+from app.services import notifications as notify
 
 donnees_cli = AppGroup("donnees", help="Conservation et suppression des données personnelles.")
+visites_cli = AppGroup("visites", help="Suivi des visites planifiées.")
 
 
 # ─── Annonces (lot 2.3) ──────────────────────────────────────
@@ -64,3 +66,11 @@ def expirer_revenus():
     recalcule son niveau. À lancer chaque jour ; sans effet si rejouée."""
     expires, relances = dp.appliquer_validite_revenus()
     click.echo(f"{expires} justificatif(s) de revenus expiré(s), {relances} relance(s) envoyée(s).")
+
+
+@visites_cli.command("rappeler")
+def rappeler_visites():
+    """Rappelle aux deux parties les visites d'aujourd'hui et de demain (UTC,
+    heure de Conakry). Sans doublon si la commande est rejouée : à lancer une
+    fois par jour, à heure fixe."""
+    click.echo(f"{notify.rappeler_visites()} rappel(s) de visite envoyé(s).")

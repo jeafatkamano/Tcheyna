@@ -5,8 +5,10 @@ Un seul point d'entrée (`notifier`) pour que tous les événements produisent d
 notifications homogènes, et des raccourcis nommés pour les événements du
 parcours locatif.
 """
+from datetime import datetime, time, timedelta
+
 from app import db
-from app.models import Notification
+from app.models import Match, Notification
 
 
 def notifier(user_id, type_notif, titre, contenu=None, lien=None, commit=False):
@@ -190,3 +192,73 @@ def niveau_atteint(user_id, niveau, label, debloque):
         f"Vous débloquez : {debloque}.",
         "/tenant/profile",
     )
+
+
+# ─── Rappel de visite (lot 2.7) ──────────────────────────────
+
+TYPE_RAPPEL_VISITE = "rappel_visite"
+
+
+def lien_rappel_visite(match):
+    """Lien du rappel, qui sert aussi de clé de dédoublonnage : il porte la
+    date de la visite, à la minute près. Une visite déplacée change de lien,
+    et reçoit donc son propre rappel ; la page de la conversation ignore le
+    paramètre."""
+    return f"/messages/{match.id}?visite={match.visite_date:%Y-%m-%dT%H:%M}"
+
+
+def rappeler_visites(maintenant=None):
+    """Rappelle aux deux parties les visites d'aujourd'hui et de demain qui
+    n'ont pas encore eu leur rappel. Retourne le nombre de notifications créées.
+
+    Faite pour un cron quotidien (`flask visites rappeler`), à n'importe
+    quelle heure fixe. Fenêtre : de maintenant à la fin de demain, en UTC,
+    qui est l'heure de Conakry (UTC+0, sans heure d'été).
+      • « demain » : toutes les visites du lendemain sont rappelées la veille,
+        quelle que soit leur heure ; une fenêtre glissante (maintenant + 12 h
+        à + 36 h, par exemple) rappellerait le jour même celles du soir ;
+      • « aujourd'hui » : rattrapage. Une visite que le passage d'hier n'a pas
+        rappelée (cron manqué, ou visite fixée après son passage) l'est
+        encore, tant qu'elle n'a pas eu lieu ;
+      • rejouer la commande ne crée aucun doublon : une partie qui a déjà le
+        rappel de cette visite, à cette date, n'en reçoit pas d'autre.
+
+    Seules les candidatures acceptées sont concernées : une candidature
+    refusée, retirée, conclue ou close par la suppression d'un compte n'a plus
+    de visite à rappeler.
+    """
+    maintenant = maintenant or datetime.utcnow()
+    aujourd_hui = maintenant.date()
+    fin_de_demain = datetime.combine(aujourd_hui + timedelta(days=2), time.min)
+
+    visites = (Match.query
+               .filter(Match.status == "accepted",
+                       Match.visite_date > maintenant,
+                       Match.visite_date < fin_de_demain)
+               .order_by(Match.visite_date)
+               .all())
+
+    crees = 0
+    for match in visites:
+        annonce = match.listing
+        if annonce is None or annonce.landlord is None or match.tenant is None:
+            continue
+        lien = lien_rappel_visite(match)
+        deja = {user_id for (user_id,) in db.session.query(Notification.user_id)
+                .filter(Notification.type == TYPE_RAPPEL_VISITE, Notification.lien == lien)}
+        quand = "demain" if match.visite_date.date() > aujourd_hui else "aujourd'hui"
+        horaire = f"{quand}, le {match.visite_date:%d/%m/%Y à %H:%M}"
+        parties = ((match.tenant_id, annonce.landlord.full_name),
+                   (annonce.landlord_id, match.tenant.full_name))
+        for user_id, autre_nom in parties:
+            if user_id in deja:
+                continue
+            notifier(
+                user_id, TYPE_RAPPEL_VISITE, f"Rappel : visite {quand}",
+                f"Visite de « {annonce.title_fr} » {horaire}, avec {autre_nom}.",
+                lien,
+            )
+            crees += 1
+
+    db.session.commit()
+    return crees
