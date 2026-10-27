@@ -5,7 +5,7 @@
  * d'intermédiaire, portée exacte de la vérification, tarifs effectivement
  * appliqués. Il ne promet rien que le produit ne tienne pas.
  */
-import { ACompleter, Liste, PageLegale, Section } from "./PageLegale";
+import { ACompleter, Liste, NomEditeur, PageLegale, Section } from "./PageLegale";
 
 export function CGU() {
   return (
@@ -19,6 +19,10 @@ export function CGU() {
           logement en location et des propriétaires ou agences proposant des biens, en
           République de Guinée. Les présentes conditions régissent l'accès et l'usage du site
           et de ses services.
+        </p>
+        <p>
+          La plateforme est éditée par <NomEditeur />, dont l'identification complète figure
+          dans les mentions légales.
         </p>
         <p>
           Créer un compte ou utiliser la plateforme vaut acceptation de ces conditions.

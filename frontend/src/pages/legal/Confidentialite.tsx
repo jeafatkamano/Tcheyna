@@ -4,7 +4,7 @@
  * Décrit les données réellement traitées par l'application, y compris les
  * pièces d'identité : c'est la condition préalable à leur collecte.
  */
-import { ACompleter, Liste, PageLegale, Section } from "./PageLegale";
+import { ACompleter, Liste, NomEditeur, PageLegale, Section } from "./PageLegale";
 
 export function Confidentialite() {
   return (
@@ -14,8 +14,8 @@ export function Confidentialite() {
     >
       <Section titre="1. Responsable du traitement">
         <p>
-          Le responsable du traitement est <ACompleter champ="denomination" quoi="dénomination sociale de l'éditeur" />,
-          éditeur de la plateforme Tcheyna. Pour toute question relative à vos données :{" "}
+          Le responsable du traitement est <NomEditeur />, éditeur de la plateforme
+          Tcheyna. Pour toute question relative à vos données :{" "}
           <ACompleter champ="emailDonnees" quoi="adresse e-mail dédiée aux données personnelles" />.
         </p>
       </Section>
