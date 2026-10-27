@@ -32,6 +32,11 @@ matches_bp = Blueprint("matches", __name__)
 NIVEAU_MIN_CANDIDATURE = 1
 NIVEAU_MIN_ANNONCE_CERTIFIEE = 2
 
+# D7 : au plus 5 candidatures actives (en attente ou acceptées) par locataire.
+# Un refus, un retrait ou la conclusion libèrent une place.
+PLAFOND_CANDIDATURES_ACTIVES = 5
+STATUTS_CANDIDATURE_ACTIVE = ("pending", "accepted")
+
 
 # ─── POST /api/matches ───────────────────────────────────────
 
@@ -68,6 +73,22 @@ def create_match(current_user, corps):
 
     if Match.query.filter_by(tenant_id=current_user.id, listing_id=listing_id).first():
         return jsonify({"error": "Vous avez déjà candidaté pour cette annonce"}), 409
+
+    # Verrou sur la ligne du compte (PostgreSQL ; sans effet sur SQLite) : deux
+    # candidatures simultanées ne franchissent pas le plafond ensemble.
+    current_user = (User.query.filter_by(id=current_user.id)
+                    .with_for_update().populate_existing().one())
+    actives = Match.query.filter(Match.tenant_id == current_user.id,
+                                 Match.status.in_(STATUTS_CANDIDATURE_ACTIVE)).count()
+    if actives >= PLAFOND_CANDIDATURES_ACTIVES:
+        return jsonify({
+            "error": (f"Vous avez déjà {PLAFOND_CANDIDATURES_ACTIVES} candidatures en cours, "
+                      "le maximum. Retirez-en une depuis « Mes candidatures » pour "
+                      "candidater ici. Une place se libère aussi quand une candidature "
+                      "est refusée ou qu'une location est conclue."),
+            "code": "plafond_candidatures",
+            "plafond": PLAFOND_CANDIDATURES_ACTIVES,
+        }), 409
 
     score, _ = score_compatibilite(current_user.passport, listing, current_user)
 
@@ -377,7 +398,7 @@ def conclure_location(current_user, match_id):
     notify.notifier(
         match.tenant_id, "candidature_acceptee", "Location conclue 🎉",
         f"Votre location de « {match.listing.title_fr} » est confirmée. "
-        "Vous pouvez maintenant laisser un avis sur le propriétaire.",
+        "Vous pouvez laisser un avis sur le propriétaire pendant 30 jours.",
         f"/tenant/matches?avis={match.id}",
     )
     db.session.commit()
