@@ -13,7 +13,9 @@ import type {
   Match,
   MatchStatus,
   Message,
+  ModelesMessages,
   Notification,
+  PageConversations,
   Payment,
   Pays,
   Referentiel,
@@ -343,16 +345,21 @@ export const passportAPI = {
 /* ─── MESSAGERIE ───────────────────────────────────────────── */
 
 export const messagesAPI = {
-  conversations: () =>
-    api.get<{ conversations: Conversation[]; total: number; non_lus: number }>(
-      "/messages/conversations",
-    ),
+  /** Sans paramètre : toutes les conversations. `page`/`per_page` (≤ 50) : une page. */
+  conversations: (pagination: { page?: number; per_page?: number } = {}, signal?: AbortSignal) =>
+    api.get<PageConversations>(`/messages/conversations${queryString(pagination)}`, { signal }),
 
   fil: (conversationId: string) =>
     api.get<Conversation>(`/messages/conversations/${conversationId}`),
 
-  filParMatch: (matchId: string, signal?: AbortSignal) =>
-    api.get<Conversation>(`/messages/par-match/${matchId}`, { signal }),
+  /**
+   * Sans `page` : le fil complet. Avec `limite` (1 à 100) et `avant` (id d'un
+   * message) : les `limite` messages qui précèdent `avant`, et un bloc
+   * `pagination`. Un serveur antérieur au lot 2.8 ignore ces paramètres et
+   * renvoie le fil complet, sans `pagination`.
+   */
+  filParMatch: (matchId: string, signal?: AbortSignal, page: PageFil = {}) =>
+    api.get<Conversation>(`/messages/par-match/${matchId}${queryString(page)}`, { signal }),
 
   envoyer: (conversationId: string, contenu: string) =>
     api.post<{ message: string; data: Message }>(`/messages/conversations/${conversationId}`, {
@@ -360,7 +367,16 @@ export const messagesAPI = {
     }),
 
   nonLus: () => api.get<{ non_lus: number }>("/messages/non-lus"),
+
+  /** Messages types du côté de l'appelant (404 sur un serveur antérieur au lot 2.8). */
+  modeles: (signal?: AbortSignal) => api.get<ModelesMessages>("/messages/modeles", { signal }),
 };
+
+/** Page du fil : `limite` messages avant le message `avant`. */
+export interface PageFil {
+  limite?: number;
+  avant?: string;
+}
 
 /* ─── FAVORIS ──────────────────────────────────────────────── */
 

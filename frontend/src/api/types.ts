@@ -193,6 +193,49 @@ export interface Conversation {
   last_message_at?: string | null;
   created_at?: string;
   messages?: Message[];
+  /*
+   * Messagerie bornée (lot 2.8, PR #30). Champs facultatifs : absents tant
+   * que le serveur ne les envoie pas, ce qui vaut « écriture ouverte » et
+   * « fil complet ».
+   */
+  /** Vrai quand la candidature est refusée, retirée ou close : lecture seule. */
+  ecriture_fermee?: boolean;
+  motif_fermeture?: MotifFermeture | null;
+  /** Présent seulement si le fil a été demandé par page (`limite`, `avant`). */
+  pagination?: PaginationMessages;
+}
+
+/** Code stable du motif de fermeture d'une conversation. */
+export type MotifFermeture = "candidature_refusee" | "candidature_retiree" | "candidature_close";
+
+export interface PaginationMessages {
+  limite: number;
+  /** Il reste des messages plus anciens que ceux de la page. */
+  plus_anciens: boolean;
+  /** Valeur à passer en `avant` pour la page plus ancienne (`null` à la fin). */
+  curseur: string | null;
+}
+
+export interface PageConversations {
+  conversations: Conversation[];
+  total: number;
+  /** Total des non-lus de TOUTES les conversations, même paginées. */
+  non_lus: number;
+  /* Présents seulement si la liste a été demandée par page. */
+  page?: number;
+  per_page?: number;
+  pages?: number;
+}
+
+/** Message type proposé à la saisie (GET /messages/modeles). */
+export interface ModeleMessage {
+  id: string;
+  texte: string;
+}
+
+export interface ModelesMessages {
+  cote: "locataire" | "bailleur" | null;
+  modeles: ModeleMessage[];
 }
 
 export interface Notification {
