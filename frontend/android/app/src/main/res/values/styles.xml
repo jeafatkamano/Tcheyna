@@ -18,5 +18,8 @@
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <!-- Android 12 et plus affichent leur propre écran de démarrage : l'icône
+             adaptative (« tcheyna. ») sur ce fond, bleu nuit comme l'icône. -->
+        <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
     </style>
 </resources>

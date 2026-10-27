@@ -41,7 +41,8 @@ export default defineConfig({
         display: "standalone",
         theme_color: "#1E3A5F",
         background_color: "#F0F4FA",
-        // Icônes provisoires (« T » sur fond bleu) en attendant le logo.
+        // Logo « tcheyna. » (lot 3.11) ; la masquable garde le mot dans le
+        // cercle de 80 % que les systèmes peuvent découper.
         icons: [
           { src: "/icons/icone-192.png", sizes: "192x192", type: "image/png" },
           { src: "/icons/icone-512.png", sizes: "512x512", type: "image/png" },
