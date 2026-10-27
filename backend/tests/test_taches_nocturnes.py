@@ -256,6 +256,8 @@ def test_budget_epuise_pendant_les_suppressions_les_garde_en_file(app, fabrique,
 
     class DeuxTentatives:
         """Budget qui laisse passer deux fichiers."""
+        delai_reseau = taches_nocturnes.DELAI_RESEAU
+
         def __init__(self):
             self.restants = 2
             self.epuise = False
@@ -283,3 +285,55 @@ def test_les_commandes_flask_restent_disponibles(app, supabase, travail):
         resultat = runner.invoke(args=commande)
         assert resultat.exit_code == 0, (commande, resultat.output)
     assert FichierASupprimer.query.count() == 0
+
+
+def test_budget_epuise_revenus_et_annonces_attendent_aussi(client, fabrique, jeton, monkeypatch):
+    # Un justificatif de revenus échu et une annonce sans activité depuis 40 jours.
+    echu = fabrique.locataire(niveau=2, income_verified=True, passeport=False)
+    fabrique.passeport(echu, revenus_deposes_le=datetime.utcnow() - timedelta(days=200))
+    ancienne = fabrique.annonce()
+    ancienne.created_at = ancienne.updated_at = datetime.utcnow() - timedelta(days=40)
+    db.session.commit()
+    monkeypatch.setattr(taches_nocturnes, "BUDGET_ETAPE_SECONDES", 0)
+
+    etapes = _etapes(client.post(URL, headers=jeton))
+
+    assert etapes["expiration_revenus"]["complete"] is False
+    assert etapes["expiration_revenus"]["compteurs"] == {"expires": 0, "relances": 0}
+    assert etapes["expiration_annonces"]["complete"] is False
+    assert etapes["expiration_annonces"]["compteurs"] == {"relances": 0, "retraits": 0}
+
+    monkeypatch.setattr(taches_nocturnes, "BUDGET_ETAPE_SECONDES", 5)
+    etapes = _etapes(client.post(URL, headers=jeton))
+
+    assert etapes["expiration_revenus"]["compteurs"] == {"expires": 0, "relances": 1}
+    assert etapes["expiration_annonces"]["compteurs"] == {"relances": 1, "retraits": 0}
+
+
+def test_suppressions_nocturnes_a_delai_reseau_court(client, jeton, supabase, travail, monkeypatch):
+    from app.services import stockage
+
+    delais = []
+    supprimer = stockage.supprimer
+
+    def espion(url, delai=30):
+        delais.append(delai)
+        return supprimer(url, delai=delai)
+
+    monkeypatch.setattr(stockage, "supprimer", espion)
+
+    client.post(URL, headers=jeton)
+
+    # Un Supabase lent ne tient pas l'appel au-delà des 60 s de gunicorn.
+    assert delais == [taches_nocturnes.DELAI_RESEAU] * 2
+
+
+def test_commande_flask_garde_le_delai_reseau_ordinaire(app, supabase, travail, monkeypatch):
+    from app.services import stockage
+
+    delais = []
+    monkeypatch.setattr(stockage, "supprimer", lambda url, delai=30: delais.append(delai) or True)
+
+    app.test_cli_runner().invoke(args=["donnees", "retenter-suppressions"])
+
+    assert delais == [30]

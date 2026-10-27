@@ -331,11 +331,36 @@ l'interface en anglais) : « Create cronjob », puis
 | Request method (onglet Advanced) | `POST` |
 | Headers (onglet Advanced) | clé `X-Taches-Jeton`, valeur = le jeton |
 | Request body | vide |
-| Timeout | 30 s (le maximum) |
 | Save responses in job history | activé |
-| Notifications | e-mail quand l'exécution échoue, et quand elle refonctionne |
+| Notifications | e-mail quand l'exécution échoue, quand elle refonctionne, et quand la tâche est désactivée |
 
 Enregistre, puis lance une première exécution (« Test run » ou « Run now »).
+cron-job.org coupe tout appel au bout de 30 s (limite fixe).
+
+**4. Réveiller l'API avant l'appel** (recommandé) : une seconde tâche
+cron-job.org, `GET https://tcheyna-api.onrender.com/health`, tous les jours
+à `02:55` (Africa/Conakry), sans en-tête. Elle ne dépend plus du ping
+UptimeRobot de la section 9, qui n'est que provisoire.
+
+**5. Si un Render Cron Job `tcheyna-purge-pieces` a été créé** à la main
+d'après l'ancienne version de ce fichier : le supprimer (Render → le service
+→ Settings → Delete), sinon les tâches passeraient deux fois et il serait
+facturé.
+
+### Tâche désactivée par cron-job.org
+
+cron-job.org désactive une tâche après une suite d'échecs, et prévient par
+e-mail. Cause la plus probable : un fichier que Supabase refuse durablement
+fait échouer l'étape de reprise chaque nuit (`"en_echec"` > 0), même si la
+purge et les autres étapes tournent. Pour en sortir :
+
+1. Render → `tcheyna-api` → Logs : `Suppression différée (…) : <référence>`
+   donne le fichier, et la requête de contrôle ci-dessous ses tentatives.
+2. Supprime le fichier à la main dans Supabase → Storage (ou vérifie qu'il
+   n'existe plus) : à la reprise suivante, un fichier absent compte comme
+   supprimé et sa ligne disparaît.
+3. Réactive la tâche sur cron-job.org et lance-la une fois (« Run now ») :
+   attendu `200`.
 
 ### Vérifier
 
@@ -344,6 +369,9 @@ Enregistre, puis lance une première exécution (« Test run » ou « Run now »
   `200`, `"ok": true` et `"complete": true` pour chaque étape.
 - **Render** → `tcheyna-api` → Logs : une étape en échec y écrit
   `Tâche nocturne « <étape> » en échec` avec la trace complète.
+- Avant la mise en service, confirme `TRUSTED_PROXY_HOPS` (section 1) :
+  s'il est faux, tous les appelants partagent la limite de 5 appels par
+  heure, et n'importe qui peut la consommer avant cron-job.org.
 - **À la main**, depuis PowerShell (5 appels par heure au plus) :
 
 ```powershell

@@ -34,14 +34,20 @@ from app.services import notifications as notify
 
 # 5 étapes × 5 s = 25 s au plus, sous les 30 s de cron-job.org. Un appel
 # réseau déjà lancé (suppression Supabase) va jusqu'à son terme : c'est la
-# seule marge que le budget ne tient pas.
+# seule marge que le budget ne tient pas, d'où DELAI_RESEAU.
 BUDGET_ETAPE_SECONDES = 5
+# Délais (connexion, lecture) d'une suppression Supabase pendant les tâches
+# nocturnes, au lieu de 30 s : au pire 3 étapes × (5 s + 8 s), sous les 60 s
+# de gunicorn. Un fichier non supprimé à temps reste en file.
+DELAI_RESEAU = (3, 5)
 
 
 class Budget:
     """Temps alloué à une étape. Les boucles des tâches appellent `reste()`
     avant chaque élément ; `epuise` dit ensuite si l'étape s'est arrêtée
     avant la fin."""
+
+    delai_reseau = DELAI_RESEAU
 
     def __init__(self, secondes):
         self.fin = time.monotonic() + secondes

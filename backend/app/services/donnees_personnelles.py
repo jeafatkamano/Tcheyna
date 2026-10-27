@@ -76,12 +76,15 @@ def executer_suppressions(lignes, budget=None):
     ait cessé de le désigner. Retourne le nombre d'échecs.
 
     `budget` (tâches nocturnes, lot 1.25) : épuisé, les fichiers restants ne
-    sont pas tentés ; ils restent en file, sans compter comme un échec."""
+    sont pas tentés ; ils restent en file, sans compter comme un échec. Il
+    plafonne aussi le délai d'attente de chaque appel au stockage : un
+    Supabase lent ne doit pas tenir l'appel nocturne au-delà de 60 s."""
     echecs = 0
     for ligne in lignes:
         if budget is not None and not budget.reste():
             break
-        if stockage.supprimer(ligne.reference):
+        delai = budget.delai_reseau if budget is not None else 30
+        if stockage.supprimer(ligne.reference, delai=delai):
             db.session.delete(ligne)
         else:
             echecs += 1
