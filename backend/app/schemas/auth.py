@@ -39,8 +39,10 @@ class Inscription(BaseCorps):
 
 
 class Connexion(BaseCorps):
-    # Pas de contrôle de format : un refus doit rester « Identifiants
-    # incorrects », sans dire ce qui cloche.
+    # Identifiant saisi : adresse e-mail, ou numéro de téléphone vérifié
+    # (lot 3.8). Le champ garde son nom `email` pour rester compatible avec
+    # les clients existants. Pas de contrôle de format : un refus doit rester
+    # « Identifiants incorrects », sans dire ce qui cloche.
     email: Texte(120, 1)
     password: MotDePasseSaisi
 
@@ -60,5 +62,22 @@ def _code(valeur):
     return valeur
 
 
+CodeOTP = Annotated[Texte(6, 1), AfterValidator(_code)]
+
+
 class VerificationOTP(BaseCorps):
-    code: Annotated[Texte(6, 1), AfterValidator(_code)]
+    code: CodeOTP
+
+
+# ─── Mot de passe oublié (lot 3.8) ───────────────────────────
+# Numéro requis ; normalisé puis contrôlé par la route, comme ailleurs.
+
+class DemandeReinitialisation(BaseCorps):
+    phone: Texte(30, 1)
+
+
+class ConfirmationReinitialisation(BaseCorps):
+    phone: Texte(30, 1)
+    code: CodeOTP
+    # Même politique qu'à l'inscription et au changement de mot de passe.
+    nouveau_mot_de_passe: MotDePasse
