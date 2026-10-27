@@ -30,13 +30,9 @@ import { ChangementMotDePasse } from "../../components/ChangementMotDePasse";
 import { Chargement, Erreur, ListeVide, MessageErreur, MessageSucces } from "../../components/Etats";
 import { useAction, useApi } from "../../hooks/useApi";
 import { formatMontant, formatMontantCourt, formatRelatif } from "../../lib/format";
+import { MOTIFS_REMBOURSEMENT } from "./motifsRemboursement";
 
 type Onglet = "identites" | "revenus" | "annonces" | "remboursements";
-
-const MOTIFS: Record<MotifRemboursement, string> = {
-  hors_plateforme: "Caution ou loyer : ne passe pas par Tcheyna",
-  doublon: "Service déjà réglé : paiement en double",
-};
 
 export function AdminDashboard() {
   const [onglet, setOnglet] = useState<Onglet>("identites");
@@ -639,7 +635,7 @@ function FicheRemboursement({
         Transaction CinetPay : {paiement.cinetpay_transaction_id ?? "—"}
       </p>
       <p className="text-xs font-semibold mb-3" style={{ color: "#7C3AED" }}>
-        {MOTIFS[paiement.motif]}
+        {MOTIFS_REMBOURSEMENT[paiement.motif]}
       </p>
       <input
         value={reference}

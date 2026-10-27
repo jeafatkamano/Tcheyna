@@ -89,7 +89,7 @@ describe("PaiementsPage — grille tarifaire", () => {
 
     const page = await afficher();
 
-    expect(page).toContain("Proposés uniquement pour les annonces en GNF.");
+    expect(page).toContain("Les services liés à une annonce ne sont proposés que pour les annonces en GNF.");
   });
 
   it("ignore le bloc commission d'un serveur antérieur au lot 2.4", async () => {

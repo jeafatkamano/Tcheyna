@@ -156,8 +156,8 @@ export function PaiementsPage() {
               Services Tcheyna
             </h2>
             <p className="text-xs text-gray-500 mb-4">
-              Payables par Mobile Money — Orange Money, MTN MoMo. Proposés uniquement pour les
-              annonces en {tarifs.data?.devise ?? "GNF"}.
+              Payables par Mobile Money — Orange Money, MTN MoMo. Les services liés à une
+              annonce ne sont proposés que pour les annonces en {tarifs.data?.devise ?? "GNF"}.
             </p>
 
             <div className="space-y-3">

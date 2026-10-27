@@ -105,8 +105,9 @@ export function CGU() {
 
       <Section titre="6. Services payants et tarifs">
         <p>
-          Les services payants sont facturés en francs guinéens (GNF). Ils ne sont proposés,
-          pour le moment, que sur les annonces publiées en francs guinéens : sur une annonce
+          Les services payants sont facturés en francs guinéens (GNF). Pour le moment, les
+          services liés à une annonce (frais de mise en relation, certification, mise en avant)
+          ne sont proposés que sur les annonces publiées en francs guinéens : sur une annonce
           dans une autre devise (franc CFA, cedi, naira), ils ne sont pas disponibles.
         </p>
         <p>Tarifs :</p>
@@ -129,9 +130,8 @@ export function CGU() {
           Une fois la candidature acceptée, la mise en relation a eu lieu. Si le locataire
           retire ensuite sa candidature, les frais de mise en relation restent acquis et ne
           sont pas remboursés ; le propriétaire en est informé. Si c'est le propriétaire qui
-          refuse ensuite la candidature, ou qui l'écarte en concluant la location avec un autre
-          candidat, les frais qu'il a réglés pour cette candidature lui sont remboursés par
-          l'équipe Tcheyna.
+          refuse ensuite la candidature, les frais qu'il a réglés pour cette candidature lui
+          sont remboursés par l'équipe Tcheyna.
         </p>
         <p>
           <strong>Aucun frais de mise en relation n'est dû sur une vente.</strong> La mise en

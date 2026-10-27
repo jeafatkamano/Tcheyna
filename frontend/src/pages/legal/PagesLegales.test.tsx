@@ -111,7 +111,7 @@ describe("conditions générales — frais de mise en relation (décisions du 27
   it("limite les services payants aux annonces en francs guinéens", () => {
     const texte = afficher(<CGU />).textContent ?? "";
 
-    expect(texte).toContain("que sur les annonces publiées en francs guinéens");
+    expect(texte).toContain("services liés à une annonce (frais de mise en relation, certification, mise en avant) ne sont proposés que sur les annonces publiées en francs guinéens");
   });
 });
 
