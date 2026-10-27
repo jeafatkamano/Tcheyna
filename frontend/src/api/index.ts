@@ -64,6 +64,19 @@ export const authAPI = {
   connecter: (email: string, password: string) =>
     api.post<ReponseAuth>("/auth/login", { email, password }),
 
+  /**
+   * Révoque côté serveur toutes les sessions du compte (`token_version`,
+   * lot 1.12). Le jeton est passé explicitement : celui d'accès, ou celui de
+   * rafraîchissement, que le serveur accepte aussi. Un 401 n'entraîne ni
+   * rafraîchissement ni redirection (route hors session, client.ts), et un
+   * POST n'est jamais rejoué.
+   */
+  deconnecter: (jeton: string, signal?: AbortSignal) =>
+    api.post<{ message: string }>("/auth/logout", undefined, {
+      headers: { Authorization: `Bearer ${jeton}` },
+      signal,
+    }),
+
   // Une seule reprise au démarrage : pas deux minutes de chargeur.
   moi: () => api.get<User>("/auth/me", { reprises: 1 }),
 

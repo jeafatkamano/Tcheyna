@@ -268,6 +268,25 @@ describe("session", () => {
     expect(tokens.access()).toBe("acces-neuf");
   });
 
+  it("un 401 sur /auth/logout ne rafraîchit pas et ne déconnecte pas de force", async () => {
+    window.history.replaceState({}, "", "/tenant/profile");
+    fetchSimule.mockResolvedValueOnce(json({ error: "Session révoquée" }, 401));
+
+    const r = await jusquauBout(authAPI.deconnecter("acces-expire"));
+
+    expect((r as { erreur: ApiError }).erreur.statut).toBe(401);
+    expect(fetchSimule).toHaveBeenCalledOnce();
+    const [url, init] = fetchSimule.mock.calls[0];
+    expect(url).toMatch(/\/auth\/logout$/);
+    expect(init?.method).toBe("POST");
+    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer acces-expire");
+    // Ni jetons effacés par le client (l'appelant s'en charge), ni motif, ni redirection.
+    expect(tokens.refresh()).toBe("refresh-valide");
+    expect(sessionStorage.getItem(CLE_MOTIF_DECONNEXION)).toBeNull();
+    expect(window.location.pathname).toBe("/tenant/profile");
+    window.history.replaceState({}, "", "/");
+  });
+
   it("rafraîchit le jeton sur 401 puis rejoue la requête", async () => {
     fetchSimule
       .mockResolvedValueOnce(json({ error: "Session expirée" }, 401))

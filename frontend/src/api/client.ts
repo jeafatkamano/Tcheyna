@@ -299,16 +299,22 @@ function messageStatut(statut: number): string {
 }
 
 /**
- * Routes où un 401 juge les identifiants saisis (« Identifiants incorrects »),
- * pas la session : ni rafraîchissement, ni déconnexion, le message du serveur
- * est affiché tel quel. /auth/password n'en fait pas partie : un ancien mot de
- * passe faux y répond 422, donc son 401 signale bien un jeton expiré.
+ * Routes où un 401 ne met pas la session en jeu : ni rafraîchissement, ni
+ * déconnexion forcée, le message du serveur est remonté tel quel.
+ *   • /auth/login, /auth/register : le 401 juge les identifiants saisis
+ *     (« Identifiants incorrects »).
+ *   • /auth/logout : le 401 dit que le jeton est déjà révoqué ou expiré. Le
+ *     rafraîchir pour le révoquer aussitôt ne servirait à rien, et un
+ *     rafraîchissement qui aboutirait après la déconnexion locale réécrirait
+ *     un jeton dans le stockage.
+ * /auth/password n'en fait pas partie : un ancien mot de passe faux y répond
+ * 422, donc son 401 signale bien un jeton expiré.
  */
-const ROUTES_IDENTIFIANTS = ["/auth/login", "/auth/register"];
+const ROUTES_HORS_SESSION = ["/auth/login", "/auth/register", "/auth/logout"];
 
-function jugeIdentifiants(endpoint: string) {
+function horsSession(endpoint: string) {
   const chemin = endpoint.split("?")[0].replace(/\/+$/, "");
-  return ROUTES_IDENTIFIANTS.includes(chemin);
+  return ROUTES_HORS_SESSION.includes(chemin);
 }
 
 /* ─── Requêtes JSON ────────────────────────────────────────── */
@@ -347,7 +353,7 @@ async function executer(endpoint: string, options: Options): Promise<Reponse> {
 /** Une tentative : requête, puis au besoin rafraîchissement et seconde exécution. */
 async function tentative<T>(endpoint: string, options: Options): Promise<T> {
   let res = await executer(endpoint, options);
-  const sessionEnJeu = !jugeIdentifiants(endpoint);
+  const sessionEnJeu = !horsSession(endpoint);
 
   // Jeton expiré : on tente un rafraîchissement, puis on rejoue une seule fois.
   // Ce rejeu fait partie de la tentative : il ne compte pas comme une reprise.
