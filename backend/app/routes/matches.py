@@ -26,7 +26,7 @@ NIVEAU_MIN_CANDIDATURE = 1
 NIVEAU_MIN_ANNONCE_CERTIFIEE = 2
 
 # D7 : au plus 5 candidatures actives (en attente ou acceptées) par locataire.
-# Retirer une candidature, ou recevoir une réponse, libère une place.
+# Un refus, un retrait ou la conclusion libèrent une place.
 PLAFOND_CANDIDATURES_ACTIVES = 5
 STATUTS_CANDIDATURE_ACTIVE = ("pending", "accepted")
 
@@ -72,8 +72,9 @@ def create_match(current_user, corps):
     if actives >= PLAFOND_CANDIDATURES_ACTIVES:
         return jsonify({
             "error": (f"Vous avez déjà {PLAFOND_CANDIDATURES_ACTIVES} candidatures en cours, "
-                      "le maximum. Retirez-en une depuis « Mes candidatures » ou attendez "
-                      "la réponse d'un propriétaire pour candidater ici."),
+                      "le maximum. Retirez-en une depuis « Mes candidatures » pour "
+                      "candidater ici. Une place se libère aussi quand une candidature "
+                      "est refusée ou qu'une location est conclue."),
             "code": "plafond_candidatures",
             "plafond": PLAFOND_CANDIDATURES_ACTIVES,
         }), 409
