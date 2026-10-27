@@ -79,11 +79,27 @@ def test_refuse_un_email_inconnu(app):
 
 
 def test_refuse_un_mot_de_passe_trop_court(app, admin):
-    resultat = _lancer(app, admin.email, "court\ncourt\n")
+    resultat = _lancer(app, admin.email, "court\n")
 
     assert resultat.exit_code != 0
     assert "8 à 128 caractères" in resultat.output
     assert check_password_hash(User.query.get(admin.id).password_hash, MOT_DE_PASSE)
+
+
+def test_refuse_un_mot_de_passe_trop_long(app, admin):
+    resultat = _lancer(app, admin.email, "x" * 129 + "\n")
+
+    assert resultat.exit_code != 0
+    assert "8 à 128 caractères" in resultat.output
+    assert check_password_hash(User.query.get(admin.id).password_hash, MOT_DE_PASSE)
+
+
+def test_longueur_refusee_puis_saisie_redemandee_sur_place(app, admin):
+    resultat = _lancer(app, admin.email, f"court\n{NOUVEAU}\n{NOUVEAU}\n")
+
+    assert resultat.exit_code == 0, resultat.output
+    assert "8 à 128 caractères" in resultat.output
+    assert check_password_hash(User.query.get(admin.id).password_hash, NOUVEAU)
 
 
 def test_confirmation_differente_redemandee_puis_abandon(app, admin):
@@ -94,7 +110,7 @@ def test_confirmation_differente_redemandee_puis_abandon(app, admin):
     assert check_password_hash(User.query.get(admin.id).password_hash, MOT_DE_PASSE)
 
 
-def test_codes_otp_en_cours_invalides(app, admin, fabrique):
+def test_codes_otp_en_cours_invalides(app, admin):
     from datetime import datetime, timedelta
 
     from app import db
@@ -103,8 +119,9 @@ def test_codes_otp_en_cours_invalides(app, admin, fabrique):
                            expires_at=datetime.utcnow() + timedelta(minutes=10)))
     db.session.commit()
 
-    _lancer(app, admin.email, f"{NOUVEAU}\n{NOUVEAU}\n")
+    resultat = _lancer(app, admin.email, f"{NOUVEAU}\n{NOUVEAU}\n")
 
+    assert resultat.exit_code == 0, resultat.output
     assert OTPCode.query.filter_by(user_id=admin.id, is_used=False).count() == 0
 
 

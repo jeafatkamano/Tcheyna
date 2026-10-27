@@ -28,6 +28,13 @@ admin_cli = AppGroup("admin", help="Comptes administrateurs.")
 MOT_DE_PASSE_MIN, MOT_DE_PASSE_MAX = 8, 128
 
 
+def _longueur_admise(mot_de_passe):
+    if not MOT_DE_PASSE_MIN <= len(mot_de_passe) <= MOT_DE_PASSE_MAX:
+        raise click.BadParameter(
+            f"Le mot de passe doit faire de {MOT_DE_PASSE_MIN} à {MOT_DE_PASSE_MAX} caractères.")
+    return mot_de_passe
+
+
 @admin_cli.command("reinitialiser-mot-de-passe")
 @click.argument("email")
 def reinitialiser_mot_de_passe(email):
@@ -48,12 +55,12 @@ def reinitialiser_mot_de_passe(email):
             f"Aucun compte administrateur pour {email}. Un autre compte passe par "
             "« Mot de passe oublié » ; pour créer un administrateur : python create_admin.py.")
 
+    # Une longueur hors bornes est refusée sur place et la saisie redemandée,
+    # sans relancer la commande.
     mot_de_passe = click.prompt(
         f"Nouveau mot de passe ({MOT_DE_PASSE_MIN} caractères minimum)",
-        hide_input=True, confirmation_prompt="Confirmer le mot de passe")
-    if not MOT_DE_PASSE_MIN <= len(mot_de_passe) <= MOT_DE_PASSE_MAX:
-        raise click.ClickException(
-            f"Le mot de passe doit faire de {MOT_DE_PASSE_MIN} à {MOT_DE_PASSE_MAX} caractères.")
+        hide_input=True, confirmation_prompt="Confirmer le mot de passe",
+        value_proc=_longueur_admise)
 
     user.password_hash = generate_password_hash(mot_de_passe)
     # Comme une réinitialisation par SMS : le mot de passe a pu être pris par

@@ -183,7 +183,7 @@ recevoir `flask db upgrade` : voir la procédure de `backend/migrations/README`.
 
 **Administrateur qui a perdu son mot de passe** : les comptes administrateurs
 n'ont pas de récupération par SMS. Depuis un poste qui a la `DATABASE_URL` de
-production :
+production (variables `FLASK_APP`, `FLASK_ENV` et secrets : voir le runbook) :
 
 ```bash
 cd backend

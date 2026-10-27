@@ -206,6 +206,8 @@ un administrateur a perdu son mot de passe, ou s'il faut le changer d'urgence
 
 ```powershell
 cd backend
+.\.venv\Scripts\Activate.ps1
+$env:PGPROD = Read-Host "Chaîne Session pooler de PRODUCTION"
 $env:FLASK_APP = "run.py"; $env:FLASK_ENV = "production"
 $env:DATABASE_URL = $env:PGPROD
 # ProductionConfig exige aussi des secrets forts ; pour cette commande, des
@@ -222,8 +224,11 @@ Remove-Item Env:DATABASE_URL, Env:PGPROD, Env:SECRET_KEY, Env:JWT_SECRET_KEY
 cd ..
 ```
 
-`$env:PGPROD` est la chaîne de connexion saisie à la section 2. Ne la colle pas
-dans la ligne de commande : elle resterait dans l'historique du terminal.
+`$env:PGPROD` est la même chaîne qu'à la section 2 (voir la section 0,
+point 4). Elle est demandée par `Read-Host`, qui ne l'inscrit pas dans
+l'historique du terminal : ne la colle pas directement dans une commande.
+Vérifie qu'elle désigne bien la **production** : la commande agit sur la base
+de `DATABASE_URL`, quelle qu'elle soit.
 
 - Le mot de passe ne se passe **jamais** en argument : la commande le refuse,
   et il resterait dans l'historique du terminal.
