@@ -8,13 +8,24 @@
  * saisie et, si le serveur refuse quand même (403 « telephone_non_verifie »),
  * propose la vérification sur place, sans perdre le brouillon.
  */
-import { ArrowLeft, ArrowRight, Check, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, EyeOff, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { listingsAPI, type DonneesAnnonce, type Listing, type TypeTransaction } from "../../api";
+import {
+  ApiError,
+  listingsAPI,
+  type DonneesAnnonce,
+  type Listing,
+  type TypeTransaction,
+} from "../../api";
 import { Chargement, Erreur, MessageErreur, MessageSucces } from "../../components/Etats";
 import { ModalePaiement } from "../../components/ModalePaiement";
+import {
+  ConfirmationRetrait,
+  EtatResoumission,
+  RemiseEnLigne,
+} from "../../components/CycleAnnonce";
 import { TeleversementDocuments } from "../../components/TeleversementDocuments";
 import { TeleversementPhotos } from "../../components/TeleversementPhotos";
 import {
@@ -111,7 +122,9 @@ export function OwnerListingForm() {
         if (!enEdition) navigate(`/owner/listings/${listing.id}`, { replace: true });
         else void annonce.recharger();
       }}
-      onSuppression={() => navigate("/owner/listings", { replace: true })}
+      // Retrait réversible (lot 2.2) : on reste sur l'annonce, qui propose
+      // alors sa remise en ligne.
+      onRetrait={() => void annonce.recharger()}
     />
   );
 }
@@ -119,11 +132,11 @@ export function OwnerListingForm() {
 function Formulaire({
   existante,
   onSauvegarde,
-  onSuppression,
+  onRetrait,
 }: {
   existante: Listing | null;
   onSauvegarde: (listing: Listing) => void;
-  onSuppression: () => void;
+  onRetrait: () => void;
 }) {
   const geo = useGeo("Guinée", "Conakry");
   const { user } = useAuth();
@@ -181,7 +194,6 @@ function Formulaire({
   const creation = useAction(listingsAPI.creer);
   const modification = useAction(listingsAPI.modifier);
   const retrait = useAction(listingsAPI.retirer);
-  const demandeCertification = useAction(listingsAPI.demanderCertification);
 
   const enCours = creation.enCours || modification.enCours || (Boolean(creee) && photos.resume.occupee);
   // Refus « téléphone non vérifié » : relayé par son propre bandeau, avec la
@@ -299,11 +311,17 @@ function Formulaire({
           : null
       : null;
 
-  async function supprimer() {
+  // Retrait confirmé sur place : le texte dit ce qu'il change (recherche,
+  // candidatures) avant que le bailleur ne s'engage.
+  const [confirmationRetrait, setConfirmationRetrait] = useState(false);
+
+  async function retirer() {
     if (!existante) return;
-    if (!window.confirm("Retirer cette annonce ? Elle ne sera plus visible des locataires.")) return;
-    const ok = await retrait.executer(existante.id);
-    if (ok) onSuppression();
+    const reponse = await retrait.executer(existante.id);
+    if (!reponse || !monte.current) return;
+    setConfirmationRetrait(false);
+    confirmer(reponse.message);
+    onRetrait();
   }
 
   const estVente = form.type_transaction === "vente";
@@ -325,6 +343,33 @@ function Formulaire({
       </div>
 
       <div className="px-4 pt-5 space-y-5">
+        {/* Annonce retirée : hors du <form>, la vérification du téléphone
+            que la remise en ligne peut ouvrir ne doit pas le soumettre. */}
+        {existante?.retiree && (
+          <section
+            className="rounded-2xl p-5 space-y-3"
+            style={{ background: "#F8FAFC", border: "1.5px solid #E2E8F0" }}
+          >
+            <div className="flex items-center gap-2">
+              <EyeOff size={18} aria-hidden="true" style={{ color: "#475569" }} />
+              <h2 className="font-bold text-sm" style={{ color: "#334155" }}>
+                Annonce retirée
+              </h2>
+            </div>
+            <p className="text-xs leading-relaxed" style={{ color: "#64748B" }}>
+              Elle n'apparaît plus dans la recherche. Les candidatures en cours restent
+              en l'état.
+            </p>
+            <RemiseEnLigne
+              listing={existante}
+              onRemiseEnLigne={(message) => {
+                confirmer(message);
+                onSauvegarde(existante);
+              }}
+            />
+          </section>
+        )}
+
         <MessageSucces message={succes ?? messageCreation} />
 
         {/* Hors du <form> : la vérification ne doit pas soumettre l'annonce. */}
@@ -342,9 +387,8 @@ function Formulaire({
         {existante && (
           <BlocCertification
             listing={existante}
-            demande={demandeCertification}
-            onChangement={async (message) => {
-              confirmer(message);
+            onChangement={(message) => {
+              if (message) confirmer(message);
               onSauvegarde(existante);
             }}
           />
@@ -757,15 +801,23 @@ function Formulaire({
             </button>
           )}
 
-          {existante && (
+          {existante && !existante.retiree && confirmationRetrait && (
+            <ConfirmationRetrait
+              enCours={retrait.enCours}
+              onConfirmer={retirer}
+              onAnnuler={() => setConfirmationRetrait(false)}
+            />
+          )}
+
+          {existante && !existante.retiree && !confirmationRetrait && (
             <button
               type="button"
-              onClick={supprimer}
+              onClick={() => setConfirmationRetrait(true)}
               disabled={retrait.enCours}
               className="w-full py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
               style={{ background: "#FEE2E2", color: "#DC2626" }}
             >
-              <Trash2 size={17} />
+              <EyeOff size={17} />
               Retirer l'annonce
             </button>
           )}
@@ -778,17 +830,50 @@ function Formulaire({
 
 /* ─── Bloc certification ───────────────────────────────────── */
 
+/** Ce que la certification apporte, rappelé dans la modale de paiement. */
+const DESCRIPTION_CERTIFICATION =
+  "Un vérificateur Tcheyna contrôle vos pièces de propriété. Une fois accordé, le badge « Annonce Certifiée » s'affiche sur votre bien et le fait remonter dans les résultats.";
+
 function BlocCertification({
   listing,
-  demande,
   onChangement,
 }: {
   listing: Listing;
-  demande: ReturnType<typeof useAction<[string], { message: string; listing: Listing }>>;
-  onChangement: (message: string) => Promise<void> | void;
+  /** Message à confirmer (ou `null`), puis rechargement de l'annonce. */
+  onChangement: (message: string | null) => void;
 }) {
   const [nbDocuments, setNbDocuments] = useState(listing.nb_documents);
   const [paiementOuvert, setPaiementOuvert] = useState(false);
+  // Motif du 402 renvoyé par le serveur, repris dans la modale de paiement.
+  const [motifPaiement, setMotifPaiement] = useState<string | null>(null);
+  const [envoi, setEnvoi] = useState({ enCours: false, erreur: null as string | null });
+
+  /**
+   * Demande de certification. Le serveur décide seul si elle est due (D4) :
+   * un 402 ouvre le paiement, sauf juste après un paiement, où il n'est
+   * qu'affiché (pas de boucle de paiements).
+   */
+  async function demander(apresPaiement: boolean) {
+    if (envoi.enCours) return;
+    setEnvoi({ enCours: true, erreur: null });
+    try {
+      await listingsAPI.demanderCertification(listing.id);
+      setEnvoi({ enCours: false, erreur: null });
+      onChangement("Demande de certification envoyée");
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Une erreur est survenue";
+      if (!apresPaiement && err instanceof ApiError && err.statut === 402) {
+        setEnvoi({ enCours: false, erreur: null });
+        setMotifPaiement(message);
+        setPaiementOuvert(true);
+        return;
+      }
+      setEnvoi({ enCours: false, erreur: message });
+      // Après un paiement, l'annonce a pu changer (examen ouvert à la
+      // confirmation) : on la relit même si la demande échoue.
+      if (apresPaiement) onChangement(null);
+    }
+  }
 
   const CONFIGS = {
     certified: {
@@ -834,6 +919,11 @@ function BlocCertification({
   const enExamen = listing.certification_status === "pending";
   const peutDemander =
     listing.certification_status === "none" || listing.certification_status === "rejected";
+  // Le serveur dit qu'aucun nouveau paiement n'est dû (re-soumission gratuite
+  // notamment) : la demande part directement. Champ absent (serveur antérieur
+  // au lot 2.2) : parcours d'avant, paiement d'abord.
+  const sansPaiement = listing.certification_resoumission?.paiement_requis === false;
+  const relance = listing.certification_status === "rejected";
 
   return (
     <div
@@ -864,27 +954,44 @@ function BlocCertification({
 
       {peutDemander && (
         <>
-          <div
-            className="flex items-baseline justify-between px-3.5 py-2.5 rounded-xl"
-            style={{ background: "rgba(255,255,255,0.65)" }}
-          >
-            <span className="text-xs font-semibold" style={{ color: config.titre }}>
-              Frais de certification
-            </span>
-            <span className="text-sm font-bold" style={{ color: "#EA580C" }}>
-              {formatMontant(PRIX_CERTIFICATION, listing.devise)}
-            </span>
-          </div>
+          <EtatResoumission listing={listing} />
 
-          <MessageErreur message={demande.erreur} />
+          {!sansPaiement && (
+            <div
+              className="flex items-baseline justify-between px-3.5 py-2.5 rounded-xl"
+              style={{ background: "rgba(255,255,255,0.65)" }}
+            >
+              <span className="text-xs font-semibold" style={{ color: config.titre }}>
+                Frais de certification
+              </span>
+              <span className="text-sm font-bold" style={{ color: "#EA580C" }}>
+                {formatMontant(PRIX_CERTIFICATION, listing.devise)}
+              </span>
+            </div>
+          )}
+
+          <MessageErreur message={envoi.erreur} />
 
           <button
-            onClick={() => setPaiementOuvert(true)}
-            disabled={!nbDocuments || !listing.images.length || demande.enCours}
+            type="button"
+            onClick={() => {
+              if (sansPaiement) void demander(false);
+              else {
+                setMotifPaiement(null);
+                setPaiementOuvert(true);
+              }
+            }}
+            disabled={!nbDocuments || !listing.images.length || envoi.enCours}
             className="w-full py-3.5 rounded-2xl font-semibold text-white disabled:opacity-50"
             style={{ background: "#1E3A5F" }}
           >
-            {demande.enCours ? "Envoi…" : "Régler et demander la certification"}
+            {envoi.enCours
+              ? "Envoi…"
+              : !sansPaiement
+                ? "Régler et demander la certification"
+                : relance
+                  ? "Relancer la certification"
+                  : "Demander la certification"}
           </button>
 
           {(!nbDocuments || !listing.images.length) && (
@@ -903,16 +1010,16 @@ function BlocCertification({
         <ModalePaiement
           type="certification"
           titre="Certification de l'annonce"
-          description="Un vérificateur Tcheyna contrôle vos pièces de propriété. Une fois accordé, le badge « Annonce Certifiée » s'affiche sur votre bien et le fait remonter dans les résultats."
+          description={motifPaiement ?? DESCRIPTION_CERTIFICATION}
           montant={PRIX_CERTIFICATION}
           devise={listing.devise}
           listingId={listing.id}
           onFerme={() => setPaiementOuvert(false)}
-          onPaye={async () => {
+          onPaye={() => {
             // Passerelle hors ligne : le dossier part quand même à l'examen.
-            const ok = await demande.executer(listing.id);
+            // Avec la passerelle, l'utilisateur est parti chez l'opérateur.
             setPaiementOuvert(false);
-            if (ok) await onChangement("Demande de certification envoyée");
+            void demander(true);
           }}
         />
       )}

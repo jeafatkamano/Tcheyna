@@ -3,7 +3,8 @@ import { useState } from "react";
 import { Link } from "react-router";
 
 import { listingsAPI, urlFichier, type Listing } from "../../api";
-import { Erreur, ListeVide, SqueletteCartes } from "../../components/Etats";
+import { BadgeRetiree, EtatResoumission, RemiseEnLigne } from "../../components/CycleAnnonce";
+import { Erreur, ListeVide, MessageSucces, SqueletteCartes } from "../../components/Etats";
 import { StatutPastille } from "../../components/ListingCard";
 import { ModalePaiement } from "../../components/ModalePaiement";
 import { useApi } from "../../hooks/useApi";
@@ -24,8 +25,11 @@ const CERTIFICATION = {
 };
 
 export function OwnerListings() {
-  const annonces = useApi(() => listingsAPI.mesAnnonces(), []);
+  // Les annonces retirées figurent dans la liste pour pouvoir être remises
+  // en ligne (lot 2.2) ; les statistiques ne comptent que celles en ligne.
+  const annonces = useApi(() => listingsAPI.mesAnnonces({ inclure_retirees: true }), []);
   const [miseEnAvant, setMiseEnAvant] = useState<Listing | null>(null);
+  const [succes, setSucces] = useState<string | null>(null);
   const stats = annonces.data?.stats;
 
   return (
@@ -66,6 +70,8 @@ export function OwnerListings() {
       </div>
 
       <div className="px-4 pt-5 space-y-4">
+        <MessageSucces message={succes} />
+
         {annonces.chargement ? (
           <SqueletteCartes nombre={3} />
         ) : annonces.erreur ? (
@@ -123,7 +129,11 @@ export function OwnerListings() {
                             {labelTransaction(true)}
                           </span>
                         )}
-                        <StatutPastille statut={listing.status} />
+                        {listing.retiree ? (
+                          <BadgeRetiree />
+                        ) : (
+                          <StatutPastille statut={listing.status} />
+                        )}
                       </div>
                     </div>
 
@@ -144,19 +154,34 @@ export function OwnerListings() {
                       </span>
                     </div>
 
-                    <span
-                      className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full"
-                      style={{ background: cert.fond, color: cert.couleur }}
-                    >
-                      <ShieldCheck size={11} />
-                      {cert.label}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span
+                        className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full"
+                        style={{ background: cert.fond, color: cert.couleur }}
+                      >
+                        <ShieldCheck size={11} />
+                        {cert.label}
+                      </span>
+                      <EtatResoumission listing={listing} />
+                    </div>
                   </div>
                 </div>
               </Link>
 
+              {listing.retiree && (
+                <div className="px-3 pb-3">
+                  <RemiseEnLigne
+                    listing={listing}
+                    onRemiseEnLigne={(message) => {
+                      setSucces(message);
+                      void annonces.recharger();
+                    }}
+                  />
+                </div>
+              )}
+
               {/* La mise en avant n'a de sens que sur une annonce encore à louer. */}
-              {listing.status === "active" && (
+              {listing.status === "active" && !listing.retiree && (
                 <div className="px-3 pb-3">
                   {listing.is_premium ? (
                     <div

@@ -3,7 +3,15 @@
  *
  * Les composants importent d'ici et jamais `fetch` directement.
  */
-import { api, envoyerFichier, queryString, tokens, BASE_URL, type OptionsEnvoi } from "./client";
+import {
+  api,
+  ApiError,
+  envoyerFichier,
+  queryString,
+  tokens,
+  BASE_URL,
+  type OptionsEnvoi,
+} from "./client";
 import type {
   AvisADonner,
   DocumentPiece,
@@ -206,12 +214,18 @@ export const listingsAPI = {
       `/listings/recommandations${queryString({ limite })}`,
     ),
 
-  mesAnnonces: () =>
+  /**
+   * `inclure_retirees` ajoute les annonces retirées (lot 2.2), pour les
+   * remettre en ligne ; les `stats` ne portent que sur les annonces en ligne.
+   */
+  mesAnnonces: (options: { inclure_retirees?: boolean } = {}) =>
     api.get<{
       listings: Listing[];
       total: number;
       stats: { actives: number; certifiees: number; vues: number; candidatures: number };
-    }>("/listings/mes-annonces"),
+    }>(
+      `/listings/mes-annonces${queryString({ inclure_retirees: options.inclure_retirees ? 1 : undefined })}`,
+    ),
 
   detail: (id: string) => api.get<Listing>(`/listings/${id}`, { optionnel: true }),
 
@@ -221,7 +235,28 @@ export const listingsAPI = {
   modifier: (id: string, data: Partial<DonneesAnnonce>) =>
     api.put<{ message: string; listing: Listing }>(`/listings/${id}`, data),
 
-  retirer: (id: string) => api.delete<{ message: string }>(`/listings/${id}`),
+  /**
+   * Retire l'annonce de la recherche, de façon réversible (`reactiver`).
+   * Un serveur antérieur au lot 2.2 ne connaît pas PUT /retirer (404 ou
+   * 405) : il reçoit alors l'ancien DELETE, qui a le même effet.
+   */
+  retirer: async (id: string) => {
+    try {
+      return await api.put<{ message: string; listing?: Listing }>(`/listings/${id}/retirer`);
+    } catch (err) {
+      if (err instanceof ApiError && (err.statut === 404 || err.statut === 405)) {
+        return api.delete<{ message: string; listing?: Listing }>(`/listings/${id}`);
+      }
+      throw err;
+    }
+  },
+
+  /**
+   * Remet en ligne une annonce retirée. Refus : 403 `telephone_non_verifie`
+   * (D3), 409 `annonce_conclue` (bien loué ou vendu).
+   */
+  reactiver: (id: string) =>
+    api.put<{ message: string; listing: Listing }>(`/listings/${id}/reactiver`),
 
   demanderCertification: (id: string) =>
     api.post<{ message: string; listing: Listing }>(`/listings/${id}/certification`),
