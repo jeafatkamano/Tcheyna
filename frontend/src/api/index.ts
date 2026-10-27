@@ -596,7 +596,13 @@ export interface StatsAdmin {
 export type PiecesPasseport = Partial<Record<TypeDocument, string | null>>;
 
 /** Pourquoi un paiement encaissé doit être rendu. */
-export type MotifRemboursement = "hors_plateforme" | "doublon";
+export type MotifRemboursement =
+  | "hors_plateforme"
+  | "doublon"
+  /** Frais encaissés alors que la candidature n'était plus en attente (lot 2.4). */
+  | "candidature_close"
+  /** Frais confirmés, puis candidature écartée par le bailleur (lot 2.12). */
+  | "ecartee_par_le_bailleur";
 
 export const adminAPI = {
   stats: () => api.get<StatsAdmin>("/admin/stats"),
