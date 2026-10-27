@@ -1,8 +1,9 @@
 """
 app/commandes.py — Commandes d'exploitation (`flask donnees …`, `flask visites …`).
 
-À lancer à la main ou par une tâche planifiée (Render Cron Job) : aucune
-n'est déclenchée automatiquement par l'application.
+À lancer à la main. Chaque nuit, les tâches quotidiennes passent par
+POST /api/interne/taches-nocturnes (lot 1.25, D13 révisée), qui appelle les
+mêmes fonctions (services/taches_nocturnes.py).
 """
 import click
 from flask.cli import AppGroup

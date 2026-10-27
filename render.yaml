@@ -1,5 +1,4 @@
-# render.yaml — Déploiement Tcheyna (API Flask, purge nocturne des pièces,
-# frontend statique)
+# render.yaml — Déploiement Tcheyna (API Flask, frontend statique)
 #
 # Ce fichier décrit la configuration réellement en production. Il permet de
 # recréer les services à l'identique via un Blueprint Render, notamment
@@ -89,6 +88,13 @@ services:
       - key: SUPABASE_BUCKET_PRIVE
         value: tcheyna-documents
 
+      # Tâches nocturnes (lot 1.25) : jeton attendu par
+      # POST /api/interne/taches-nocturnes dans l'en-tête X-Taches-Jeton. Le
+      # même est saisi dans cron-job.org. Absent : la route répond 404.
+      # 32 caractères au moins, sinon l'API refuse de démarrer.
+      - key: TACHES_NOCTURNES_JETON
+        sync: false
+
       # Uniquement utilisé en développement local.
       - key: UPLOAD_FOLDER
         value: uploads
@@ -118,113 +124,14 @@ services:
       - key: CINETPAY_RETURN_URL
         value: https://tcheyna.onrender.com/paiements
 
-  # ─── Purge nocturne des pièces (lot 1.19) ────────────────
-  # Décision D5 : une pièce d'identité ou de revenus est supprimée dès la
-  # décision, et au plus tard 12 mois après son dépôt si personne ne l'a
-  # examinée. D13 : cette purge tourne dans un Render Cron Job, l'offre
-  # gratuite de l'API n'ayant ni shell ni tâche planifiée.
-  #
-  # Facturation à la seconde d'exécution, minimum 1 $ par mois et par cron
-  # job (docs Render, « Cron Jobs › Compute plans and billing ») ; une
-  # exécution dure quelques secondes.
-  - type: cron
-    name: tcheyna-purge-pieces
-    runtime: python
-    region: frankfurt
-    # Plus petite instance proposée aux cron jobs (ancien nom : starter) ;
-    # ce type de service n'a pas d'offre gratuite.
-    plan: 0.5c-512mb
-    branch: main
-
-    # 03:00 UTC, soit 03:00 à Conakry (UTC+0, sans heure d'été) : heure
-    # creuse. Render interprète toujours l'expression en UTC.
-    schedule: "0 3 * * *"
-
-    # Même code que l'API : ne se reconstruit que si backend/ change.
-    buildFilter:
-      paths:
-        - backend/**
-    buildCommand: pip install -r backend/requirements.txt
-
-    # 1. Reprise des suppressions de fichiers restées en échec ;
-    # 2. purge des pièces sans décision depuis plus de
-    #    DUREE_CONSERVATION_PIECES_JOURS (D5) ;
-    # 3. validité de 3 mois des justificatifs de revenus (D12, lot 2.10) ;
-    # 4. expiration des annonces sans activité depuis 30 jours (D6, lot 2.3) ;
-    # 5. rappels des visites du jour et du lendemain (lot 2.7).
-    # Chaque étape tourne MÊME si une précédente échoue (`;` et non `&&`) : il
-    # suffit d'un fichier que Supabase refuse durablement pour que la reprise
-    # sorte en erreur chaque nuit, et la purge, qui est l'engagement D5, ne
-    # tournerait alors plus jamais. Le code de sortie est celui de la
-    # première étape en échec : Render marque l'exécution « Failed » et
-    # l'erreur se lit dans les journaux. Commande unique proposée par la
-    # spécification technique (lot 0.3, annexe), posée à l'intégration du
-    # 27/10/2026 qui réunit les lots 2.3, 2.7 et 2.10.
-    startCommand: >-
-      cd backend && flask donnees retenter-suppressions; reprise=$?;
-      flask donnees purger-pieces; purge=$?;
-      flask donnees expirer-revenus; revenus=$?;
-      flask annonces expirer; annonces=$?;
-      flask visites rappeler; visites=$?;
-      for code in $reprise $purge $revenus $annonces $visites; do
-      [ "$code" -ne 0 ] && exit "$code"; done; exit 0
-
-    # Les secrets ne sont saisis qu'une fois, sur tcheyna-api : `fromService`
-    # en recopie la valeur à chaque synchronisation du Blueprint, et non en
-    # direct (après avoir changé une valeur sur l'API, relancer « Manual
-    # Sync » pour que le cron la reçoive). Un groupe d'environnement
-    # (`envVarGroups`) n'accepte pas `sync: false` : il aurait fallu y
-    # ressaisir DATABASE_URL et la clé Supabase.
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.12.7"
-      - key: FLASK_APP
-        value: run.py
-      # ProductionConfig refuse de démarrer sans DATABASE_URL ni secrets
-      # forts, y compris pour une commande `flask`.
-      - key: FLASK_ENV
-        value: production
-      - key: FLASK_DEBUG
-        value: "false"
-      # Les commandes de purge ne signent ni jeton ni code OTP : des clés
-      # propres au cron suffisent, et celles de l'API ne sont pas recopiées
-      # sur un service de plus.
-      - key: SECRET_KEY
-        generateValue: true
-      - key: JWT_SECRET_KEY
-        generateValue: true
-      - key: DATABASE_URL
-        fromService:
-          name: tcheyna-api
-          type: web
-          envVarKey: DATABASE_URL
-      # Sans ces deux valeurs, chaque suppression de fichier échoue (sans
-      # appel réseau) et reste en file pour la nuit suivante.
-      - key: SUPABASE_URL
-        fromService:
-          name: tcheyna-api
-          type: web
-          envVarKey: SUPABASE_URL
-      - key: SUPABASE_SERVICE_KEY
-        fromService:
-          name: tcheyna-api
-          type: web
-          envVarKey: SUPABASE_SERVICE_KEY
-      - key: SUPABASE_BUCKET_PUBLIC
-        fromService:
-          name: tcheyna-api
-          type: web
-          envVarKey: SUPABASE_BUCKET_PUBLIC
-      - key: SUPABASE_BUCKET_PRIVE
-        fromService:
-          name: tcheyna-api
-          type: web
-          envVarKey: SUPABASE_BUCKET_PRIVE
-      # D5 : 12 mois. Même valeur que le défaut de config.py, posée ici pour
-      # se lire sans ouvrir le code ; la purge refuse de tourner si elle
-      # n'est pas un entier strictement positif.
-      - key: DUREE_CONSERVATION_PIECES_JOURS
-        value: "365"
+  # ─── Tâches nocturnes (lot 1.25, D13 révisée) ───────────
+  # Pas de service `type: cron` : Render exige une carte bancaire pour un
+  # Cron Job, même à 1 $ par mois. Chaque nuit à 03:00 (Africa/Conakry),
+  # cron-job.org appelle POST /api/interne/taches-nocturnes sur tcheyna-api,
+  # avec l'en-tête X-Taches-Jeton (variable TACHES_NOCTURNES_JETON
+  # ci-dessus). La route enchaîne reprise des suppressions, purge des pièces
+  # (D5), validité des revenus (D12), expiration des annonces (D6) et rappels
+  # de visite. Réglage : docs/RUNBOOK_PHASE1.md, « Tâches nocturnes ».
 
   # ─── Frontend React ──────────────────────────────────────
   - type: web

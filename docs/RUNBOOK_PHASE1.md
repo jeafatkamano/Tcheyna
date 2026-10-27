@@ -263,47 +263,137 @@ Le service gratuit s'endort après 15 minutes sans requête ; le réveil prend
   chaque merge qui en contient une (le corps de la PR le signale), ou ajoute-le
   en tête de `startCommand` dans `render.yaml`.
 
-## 11. Purge nocturne des pièces (lot 1.19, D5 et D13)
+## 11. Tâches nocturnes (lot 1.25, D5, D13 révisée)
 
 D5 : une pièce d'identité ou de revenus est supprimée dès la décision, et au
-plus tard 12 mois après son dépôt si personne ne l'a examinée. Ce délai est
-tenu par le cron job Render `tcheyna-purge-pieces` (D13), décrit dans
-`render.yaml` : chaque nuit à 03:00 UTC (03:00 à Conakry), il lance
+plus tard 12 mois après son dépôt si personne ne l'a examinée. D'autres
+tâches tournent aussi chaque nuit : validité de 3 mois des justificatifs de
+revenus (D12), expiration des annonces sans activité (D6), rappels de visite.
 
-```bash
-cd backend && flask donnees retenter-suppressions; reprise=$?;
-flask donnees purger-pieces && exit $reprise
+D13 révisée (27/10/2026) : **pas de Render Cron Job** (Render exige une carte
+bancaire, même pour 1 $ par mois). Chaque nuit, **cron-job.org** (gratuit)
+appelle une route de l'API protégée par un jeton :
+
+```
+POST https://tcheyna-api.onrender.com/api/interne/taches-nocturnes
+X-Taches-Jeton: <le jeton>
 ```
 
-- `retenter-suppressions` reprend les fichiers dont la suppression a échoué
-  (Supabase injoignable) ; elle sort en erreur s'il en reste.
-- `purger-pieces` supprime les pièces sans décision depuis plus de
-  `DUREE_CONSERVATION_PIECES_JOURS` jours (365). Elle tourne même si la
-  reprise a échoué ; ses propres échecs sont repris la nuit suivante.
-- Une exécution « Failed » signale l'un ou l'autre échec : lire ses journaux.
+La route enchaîne, dans cet ordre, les mêmes fonctions que les commandes
+`flask` : reprise des suppressions de fichiers en échec, purge des pièces,
+expiration des revenus, expiration des annonces, rappels de visite. Chaque
+étape tourne même si une précédente échoue. Les clés de la base restent sur
+Render : seul le jeton sort, et il ne permet que de lancer ces tâches, toutes
+rejouables sans doublon.
 
-Coût : facturation à la seconde, **1 $ minimum par mois** (plus petite
-instance, `0.5c-512mb`). Aucune offre gratuite pour les cron jobs.
+- Jeton absent sur Render : la route répond 404 (fonction désactivée).
+- Jeton faux ou absent dans l'appel : 401. Le jeton n'est lu que dans
+  l'en-tête, jamais dans l'URL.
+- 5 appels par heure et par IP au plus.
+- Réponse : 200 si tout a réussi, 500 si une étape a échoué (cron-job.org
+  compte alors l'exécution en échec et prévient par e-mail). Le corps donne,
+  pour chaque étape, ses compteurs et son erreur éventuelle ; le détail
+  d'une erreur est dans les journaux Render, pas dans la réponse.
+- Durée : cron-job.org coupe l'appel au bout de 30 s. Chaque étape a un
+  budget de 5 s ; passé ce délai, elle s'arrête et le reste attend la nuit
+  suivante (`"complete": false` dans la réponse). Une étape incomplète n'est
+  pas un échec. Si elle l'est plusieurs nuits de suite, relance l'appel à
+  la main (voir « Vérifier ») ou lance la commande `flask` correspondante
+  depuis ton poste.
+- L'API doit être réveillée : le ping UptimeRobot de la section 9 s'en
+  charge. Un appel sur une API endormie peut dépasser 30 s.
 
-**Mise en place, une fois, après le merge :**
+### Mise en place, une fois
 
-1. Render → Blueprints → le Blueprint du dépôt → « Manual Sync » (ou
-   automatique si Auto Sync est actif). S'il n'existe pas de Blueprint, les
-   services ayant été créés autrement : crée le cron job à la main
-   (New → Cron Job) avec les valeurs de `render.yaml`, plutôt que de lier un
-   Blueprint qui réappliquerait toute la configuration aux services existants.
-2. Render → `tcheyna-purge-pieces` → Environment : vérifie que
-   `DATABASE_URL`, `SUPABASE_URL` et `SUPABASE_SERVICE_KEY` sont remplis
-   (recopiés de `tcheyna-api`), ainsi que `SECRET_KEY` et `JWT_SECRET_KEY`
-   (générés). Sans `DATABASE_URL`, l'exécution échoue au démarrage par un
-   `RuntimeError` explicite ; sans Supabase, les fichiers restent en file.
-3. « Trigger Run » sur la page Runs du cron, puis ouvre l'exécution : les
-   journaux doivent afficher `… suppression(s) reprise(s), 0 encore en échec.`
-   puis `… fichier(s) purgé(s).`, et l'exécution finir « Succeeded ».
+**1. Générer le jeton**, sur ton poste :
 
-Les variables recopiées de `tcheyna-api` (`fromService`) ne suivent pas en
-direct : après avoir changé `DATABASE_URL` ou la clé Supabase sur l'API,
-relance « Manual Sync » (ou corrige aussi la valeur sur le cron).
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Garde-le dans ton gestionnaire de mots de passe : il ne doit apparaître ni
+dans le dépôt, ni dans une URL, ni dans un message.
+
+**2. Le saisir sur Render** : Dashboard → `tcheyna-api` → Environment →
+« Add Environment Variable » → clé `TACHES_NOCTURNES_JETON`, valeur = le
+jeton → « Save Changes ». Render redéploie l'API. Moins de 32 caractères :
+l'API refuse de démarrer, avec un message qui le dit.
+
+**3. Créer la tâche sur cron-job.org** (compte gratuit, libellés de
+l'interface en anglais) : « Create cronjob », puis
+
+| Réglage | Valeur |
+|---|---|
+| Title | `Tcheyna — tâches nocturnes` |
+| URL | `https://tcheyna-api.onrender.com/api/interne/taches-nocturnes` |
+| Execution schedule | tous les jours (« Every day ») à `03:00` |
+| Time zone (onglet Advanced) | `Africa/Conakry` |
+| Request method (onglet Advanced) | `POST` |
+| Headers (onglet Advanced) | clé `X-Taches-Jeton`, valeur = le jeton |
+| Request body | vide |
+| Save responses in job history | activé |
+| Notifications | e-mail quand l'exécution échoue, quand elle refonctionne, et quand la tâche est désactivée |
+
+Enregistre, puis lance une première exécution (« Test run » ou « Run now »).
+cron-job.org coupe tout appel au bout de 30 s (limite fixe).
+
+**4. Réveiller l'API avant l'appel** (recommandé) : une seconde tâche
+cron-job.org, `GET https://tcheyna-api.onrender.com/health`, tous les jours
+à `02:55` (Africa/Conakry), sans en-tête. Elle ne dépend plus du ping
+UptimeRobot de la section 9, qui n'est que provisoire.
+
+**5. Si un Render Cron Job `tcheyna-purge-pieces` a été créé** à la main
+d'après l'ancienne version de ce fichier : le supprimer (Render → le service
+→ Settings → Delete), sinon les tâches passeraient deux fois et il serait
+facturé.
+
+### Tâche désactivée par cron-job.org
+
+cron-job.org désactive une tâche après une suite d'échecs, et prévient par
+e-mail. Cause la plus probable : un fichier que Supabase refuse durablement
+fait échouer l'étape de reprise chaque nuit (`"en_echec"` > 0), même si la
+purge et les autres étapes tournent. Pour en sortir :
+
+1. Render → `tcheyna-api` → Logs : `Suppression différée (…) : <référence>`
+   donne le fichier, et la requête de contrôle ci-dessous ses tentatives.
+2. Supprime le fichier à la main dans Supabase → Storage (ou vérifie qu'il
+   n'existe plus) : à la reprise suivante, un fichier absent compte comme
+   supprimé et sa ligne disparaît.
+3. Réactive la tâche sur cron-job.org et lance-la une fois (« Run now ») :
+   attendu `200`.
+
+### Vérifier
+
+- **cron-job.org** → la tâche → History : chaque exécution affiche le code
+  HTTP, la durée et le corps de la réponse (conservé 2 jours). Attendu :
+  `200`, `"ok": true` et `"complete": true` pour chaque étape.
+- **Render** → `tcheyna-api` → Logs : une étape en échec y écrit
+  `Tâche nocturne « <étape> » en échec` avec la trace complète.
+- Avant la mise en service, confirme `TRUSTED_PROXY_HOPS` (section 1) :
+  s'il est faux, tous les appelants partagent la limite de 5 appels par
+  heure, et n'importe qui peut la consommer avant cron-job.org.
+- **À la main**, depuis PowerShell (5 appels par heure au plus) :
+
+```powershell
+$jeton = Read-Host "Jeton des tâches nocturnes"
+Invoke-RestMethod -Method Post `
+  -Uri "https://tcheyna-api.onrender.com/api/interne/taches-nocturnes" `
+  -Headers @{ "X-Taches-Jeton" = $jeton } | ConvertTo-Json -Depth 5
+```
+
+Un 500 lève une erreur dans PowerShell ; le détail est alors dans les
+journaux Render.
+
+Les commandes restent disponibles pour un lancement manuel depuis un poste
+qui a `DATABASE_URL` (mêmes précautions qu'à la section 4) :
+`flask donnees retenter-suppressions`, `flask donnees purger-pieces`,
+`flask donnees expirer-revenus`, `flask annonces expirer`,
+`flask visites rappeler`.
+
+**Changer le jeton** (fuite, départ d'un tiers) : générer un nouveau jeton,
+le saisir sur Render, attendre le redéploiement, puis le reporter dans
+l'en-tête de la tâche cron-job.org. **Désactiver** : supprimer la variable
+sur Render (la route répond 404), puis désactiver la tâche sur cron-job.org.
 
 Contrôle en lecture seule, dans le SQL Editor de Supabase, des fichiers
 restés en file :

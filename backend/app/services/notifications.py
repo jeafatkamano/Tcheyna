@@ -207,7 +207,7 @@ def lien_rappel_visite(match):
     return f"/messages/{match.id}?visite={match.visite_date:%Y-%m-%dT%H:%M}"
 
 
-def rappeler_visites(maintenant=None):
+def rappeler_visites(maintenant=None, budget=None):
     """Rappelle aux deux parties les visites d'aujourd'hui et de demain qui
     n'ont pas encore eu leur rappel. Retourne le nombre de notifications créées.
 
@@ -226,6 +226,9 @@ def rappeler_visites(maintenant=None):
     Seules les candidatures acceptées sont concernées : une candidature
     refusée, retirée, conclue ou close par la suppression d'un compte n'a plus
     de visite à rappeler.
+
+    `budget` (tâches nocturnes, lot 1.25) épuisé : les visites restantes
+    sont rappelées au passage suivant.
     """
     maintenant = maintenant or datetime.utcnow()
     aujourd_hui = maintenant.date()
@@ -240,6 +243,8 @@ def rappeler_visites(maintenant=None):
 
     crees = 0
     for match in visites:
+        if budget is not None and not budget.reste():
+            break
         annonce = match.listing
         if annonce is None or annonce.landlord is None or match.tenant is None:
             continue
