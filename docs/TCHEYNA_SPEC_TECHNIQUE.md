@@ -4,7 +4,7 @@
 >
 > **Lecture.** Chaque section décrit `main`, puis liste dans un encadré « Changements en PR (non mergés) » ce que chaque PR ouverte y change, avec son numéro. Relevé arrêté aux PR ouvertes jusqu'à #41, au 22/10/2026. **À chaque merge**, on déplace la ligne de la PR depuis l'encadré vers le corps de la section. L'encadré sert ainsi de liste de contrôle.
 >
-> **Mise à jour du 27/10/2026.** Les sections 3 à 5 décrivent `main` après l'intégration des PR #19 à #48 (`f833a17`) et les décisions de Kamano du 27/10. Dans les sections 1 et 2, les encadrés « Changements en PR » des PR #19 à #48 décrivent désormais du code mergé : ils restent à reporter dans le corps de chaque section (lot de suivi). Les lots 2.12 (#51) et 3.10 (#50) mettent à jour les lignes qu'ils changent.
+> **Mise à jour du 27/10/2026.** Les sections 3 à 5 décrivent `main` après l'intégration des PR #19 à #48 (`f833a17`) et les décisions de Kamano du 27/10. Dans les sections 1 et 2, les encadrés « Changements en PR » des PR #19 à #48 décrivent désormais du code mergé : ils restent à reporter dans le corps de chaque section (lot de suivi). Le lot 2.12 (#51) met à jour les lignes qu'il change ; pour #49, #50 et le lot 1.22, les lignes de l'encadré se reportent au merge.
 >
 > **Renvois.** `fichier:fonction` désigne un chemin relatif à `backend/app/` (par exemple `routes/matches.py:create_match`), sauf mention contraire. Toutes les dates sont en UTC naïf (`datetime.utcnow()`), ce qui correspond à l'heure de Conakry (UTC+0, sans heure d'été).
 
@@ -467,7 +467,7 @@ Légende de la colonne Accès : **public** (sans jeton), **public+** (jeton facu
 
 | # | Décision | Dans le code de `main` | En PR |
 |---|---|---|---|
-| D1 | Frais fixes de mise en relation, 250 000 GNF, payés par le bailleur à l'acceptation ; remplacent les 6 % ; vente gratuite. 27/10 : GNF seulement ; remboursés si le bailleur refuse après avoir payé, pas si le locataire se retire | appliquée : 402 à l'acceptation d'une location, acceptation à la confirmation du paiement (`routes/payments.py:FRAIS_MISE_EN_RELATION_GNF`, `refus_acceptation_sans_frais`, `_confirmer`) ; commission retirée | #51 (remboursement, 422 hors GNF), #52 (CGU, tarifs) |
+| D1 | Frais fixes de mise en relation, 250 000 GNF, payés par le bailleur à l'acceptation ; remplacent les 6 % ; vente gratuite. 27/10 : GNF seulement ; remboursés si le bailleur refuse ou annule après avoir payé, pas si le locataire se retire | appliquée : 402 à l'acceptation d'une location, acceptation à la confirmation du paiement (`routes/payments.py:FRAIS_MISE_EN_RELATION_GNF`, `refus_acceptation_sans_frais`, `_confirmer`) ; commission retirée | #51 (remboursement, 422 hors GNF), #52 (CGU, tarifs) |
 | D2 | A : caution et premier loyer hors plateforme | appliquée : refus à l'initiation (`schemas/payments.py:PAIEMENTS_HORS_PLATEFORME`), encaissement éventuel → `a_rembourser` | — |
 | D3 | Téléphone vérifié par OTP pour publier ; CNI validée = badge « Propriétaire vérifié », sans bloquer. 27/10 : annonces existantes de bailleurs non vérifiés masquées 14 jours après notification | appliquée pour les nouvelles annonces (403 `telephone_non_verifie`) et le badge (`proprietaire_verifie`) | lot 2.13 (migration, à venir) |
 | D4 | Re-soumission d'une certification refusée gratuite une fois, payante ensuite | appliquée (`routes/listings.py:RESOUMISSIONS_GRATUITES`, `certification_a_payer`) | — |
@@ -475,7 +475,7 @@ Légende de la colonne Accès : **public** (sans jeton), **public+** (jeton facu
 | D6 | Expiration après 30 jours sans activité, relance à J-7 | appliquée (`routes/listings.py:expirer_annonces`, `flask annonces expirer`) | — |
 | D7 | 5 candidatures actives au plus par locataire | appliquée (`routes/matches.py:PLAFOND_CANDIDATURES_ACTIVES`, 409 `plafond_candidatures`) | — |
 | D8 | Avis possible 30 jours après la conclusion | appliquée depuis `completed_at` (`routes/reviews.py:DELAI_AVIS`) | lot 2.5 suite (conclusion confirmée, migration, à venir) |
-| D9 | Hébergement Render | offre gratuite, réveil par UptimeRobot (`docs/RUNBOOK_PHASE1.md` §9) ; ouverte au backlog | — |
+| D9 | Hébergement Render | offre gratuite ; procédure de réveil par UptimeRobot décrite dans `docs/RUNBOOK_PHASE1.md` §9 (mise en place non vérifiée) ; ouverte au backlog | — |
 | D10 | A : un seul dépôt ; déploiement séparé (3.9) et contrat d'API (3.10) | un seul dépôt, `buildFilter` par service | #50 (3.10, remplace #18) |
 | D11 | Éditeur légal Kamino, champs laissés vides. « Kamino » est le nom de l'éditeur légal choisi, à ne pas confondre avec Kamano, le porteur du projet. | `frontend/src/lib/editeur.ts` : tous les champs vides, affichés « à compléter » | — |
 | D12 | Justificatif de revenus valable 3 mois | appliquée (`services/donnees_personnelles.py:appliquer_validite_revenus`, 90 jours, `flask donnees expirer-revenus`) | — |
@@ -483,7 +483,7 @@ Légende de la colonne Accès : **public** (sans jeton), **public+** (jeton facu
 
 ### 3.2 Couloirs, socle, migrations
 
-- **Couloirs et socle partagé** : `docs/agents/LANES.md`. Une API qui change : la PR backend d'abord (changement additif, spécification à jour), la PR web ensuite avec « Dépend de #n ». #18 y ajoute au socle `schemas/reponses.py`, `openapi.py`, `backend/openapi.json` et `frontend/src/api/schema.gen.ts`.
+- **Couloirs et socle partagé** : `docs/agents/LANES.md`. Une API qui change : la PR backend d'abord (changement additif, spécification à jour), la PR web ensuite avec « Dépend de #n ». #50 (qui remplace #18) y ajoute au socle `schemas/reponses.py`, `openapi.py`, `backend/openapi.json` et `frontend/src/api/schema.gen.ts`.
 - **Migrations**. Source de ces règles : la consigne de Kamano du 20/10/2026, qui n'est écrite nulle part dans le dépôt. `LANES.md` n'a pas de section dédiée. `backend/migrations/README` ne décrit que la mise en œuvre technique ; seule la règle du RLS y est reprise, par #19.
   - une seule tête Alembic, une seule migration ouverte à la fois. Tête sur `main` et en production (27/10/2026) : `4506c18d7fd6` (chaîne `d5a017c5d0f3` → `3b8e2c41f7a9` → `7c4f1d2e9a6b` → `694ce1497b2e` → `4506c18d7fd6`, RLS sur toutes les tables) ;
   - révision additive, compatible avec le code déjà en production ;
@@ -505,7 +505,7 @@ Aucune tâche ne se déclenche seule dans l'application (`commandes.py`). **Sur 
 | `flask visites rappeler` | rappel des visites d'aujourd'hui et de demain aux deux parties, sans doublon | quotidienne |
 | `flask donnees rattraper-pieces-decidees` | supprime les pièces validées avant le lot 1.5 | une fois |
 
-`startCommand` du cron `tcheyna-purge-pieces`, tel qu'il figure dans `render.yaml` sur `main` depuis l'intégration du 27/10 (commande unique de l'ancienne annexe). Chaque étape tourne même si la précédente échoue, et le code de sortie est celui de la première étape en échec. **Ce service n'existe pas chez Render** : les services n'étant pas gérés par un Blueprint, `render.yaml` n'est pas appliqué, et la consigne du 27/10 abandonne le Render Cron Job (D13 révisée).
+Le `startCommand` ci-dessous est celui du cron `tcheyna-purge-pieces` dans `render.yaml` sur `main` depuis l'intégration du 27/10 (commande unique de l'ancienne annexe). Chaque étape tourne même si la précédente échoue, et le code de sortie est celui de la première étape en échec. **Ce service n'existe pas chez Render** : les services n'étant pas gérés par un Blueprint, `render.yaml` n'est pas appliqué, et la consigne du 27/10 abandonne le Render Cron Job (D13 révisée).
 
 ```yaml
     startCommand: >-
@@ -530,7 +530,7 @@ Aucune tâche ne se déclenche seule dans l'application (`commandes.py`). **Sur 
 
 ### 4.1 Questions posées à Kamano dans les PR #18 à #41 (tranchées le 27/10/2026)
 
-Une ligne par question, regroupées par thème. Kamano les a tranchées le 27/10/2026 : décision explicite, ou « choix du lot retenu ». Le détail et les options sont dans le corps de chaque PR (toutes fermées, leur contenu est dans `main`).
+Une ligne par question, regroupées par thème. Kamano les a tranchées le 27/10/2026 : décision explicite, ou « choix du lot retenu ». Le détail et les options sont dans le corps de chaque PR (toutes fermées ; leur contenu est dans `main`, sauf #18, remplacée par #50).
 
 **Comptes, connexion, SMS**
 - #21 : indicatifs acceptés pour l'OTP : seulement les marchés ouverts (A), ou tous avec un plafond séparé plus bas hors marchés ouverts (B) ? **Tranché le 27/10 : choix du lot retenu** — tous les indicatifs restent acceptés, sans plafond séparé (`PHONE_RE` inchangé). Restreindre les pays de destination dans le tableau de bord Africa's Talking : action manuelle, reste à faire par Kamano.
@@ -539,7 +539,7 @@ Une ligne par question, regroupées par thème. Kamano les a tranchées le 27/10
 - #22 : blocage ciblé d'un compte par la limite par e-mail ? **Tranché le 27/10 : choix du lot retenu** — risque accepté, aucune parade ajoutée : le blocage ne touche que la connexion par mot de passe et dure au plus une heure.
 - #22, #27 : la déconnexion ferme tous les appareils du compte ? **Tranché le 27/10 :** voulu.
 - #22 : confirmer `TRUSTED_PROXY_HOPS` par `/api/admin/diagnostic`. **Action manuelle, reste à faire par Kamano** (aussi demandée par #49 avant la mise en service des tâches nocturnes).
-- #25 : le repli `AT_USERNAME = "sandbox"` de `config.py` doit-il devenir `""` ? **Tranché le 27/10 : choix du lot retenu** — le repli `"sandbox"` est gardé ; `render.yaml` passe `AT_USERNAME` en `sync: false`.
+- #25 : le repli `AT_USERNAME = "sandbox"` de `config.py` doit-il devenir `""` ? **Tranché le 27/10 : choix du lot retenu** — le repli `"sandbox"` de `backend/config.py` est gardé ; `render.yaml` passe `AT_USERNAME` en `sync: false`.
 - #32 : durée et essais du code de réinitialisation ? **Tranché le 27/10 : choix du lot retenu** — 10 min et 5 essais, comme la vérification du téléphone.
 - #32 : quota propre à la réinitialisation, ou parade contre la privation de récupération ? **Tranché le 27/10 : choix du lot retenu** — ni l'un ni l'autre : quotas partagés avec la vérification (5 codes par compte et par numéro sur 24 h), plus le plafond global.
 - #32 : valeurs des limites de la réinitialisation et de la connexion par téléphone ? **Tranché le 27/10 : choix du lot retenu** — demande 10/h par IP et 5/h par numéro ; confirmation 10 échecs/h par numéro et 20/h par IP ; connexion par téléphone 30 échecs/h par numéro.
@@ -554,7 +554,7 @@ Une ligne par question, regroupées par thème. Kamano les a tranchées le 27/10
 - #20 : après une annulation de certification : nouvel examen complet (A) ou réexamen gratuit (B) ? **Tranché le 27/10 : choix du lot retenu** — l'annonce repasse à `none`, puis nouvelle demande avec examen complet, sans nouveau paiement (voir #37, option B).
 - #20 : action « renoncer à la certification » ? **Tranché le 27/10 : choix du lot retenu** — pas d'action dédiée ; une pièce ne se retire pas d'une annonce certifiée (409).
 - #31 : annonces déjà publiées par des bailleurs au téléphone non vérifié ? **Tranché le 27/10 :** notification, puis masquage au bout de 14 jours s'ils n'ont pas vérifié (lot 2.13, avec migration). **Non tranché :** faut-il fermer les passeports déjà ouverts par ces annonces ? À décider avec le lot 2.13.
-- #31 : dépôt de la pièce d'identité d'un bailleur ? **Tranché le 27/10 : choix du lot retenu** — table dédiée avec RLS, créée par une migration à venir ; pas de réutilisation de `TenantPassport`.
+- #31 : dépôt de la pièce d'identité d'un bailleur ? **Non tranché** : #31 n'a rien implémenté ; il recommande une table dédiée avec RLS (ou, plus simple, des colonnes sur `users`), sans réutiliser `TenantPassport`. À trancher avec la migration qui l'ajoutera.
 - #31, #34 : libellé du badge pour une agence ? **Tranché le 27/10 : choix du lot retenu** — « Propriétaire vérifié » partout, agence comprise (`BadgeVerification.tsx:LIBELLE_PROPRIETAIRE_VERIFIE`).
 - #37 : D4 : une re-soumission gratuite par annonce, ou une par paiement ? **Tranché le 27/10 : choix du lot retenu** — une seule par annonce (`RESOUMISSIONS_GRATUITES = 1`) ; chaque paiement suivant couvre un examen.
 - #37 : certification accordée puis annulée par une modification ? **Tranché le 27/10 : choix du lot retenu** — B : la redemande reste gratuite, seuls les refus consomment un examen.
@@ -597,7 +597,7 @@ Une ligne par question, regroupées par thème. Kamano les a tranchées le 27/10
 - #38 : marge minimale avant une visite ? **Tranché le 27/10 : choix du lot retenu** — aucune : la date doit être strictement future.
 - #38 : borne haute de 365 jours ? **Tranché le 27/10 : choix du lot retenu** — gardée.
 - #38 : rappel de visite par SMS ? **Tranché le 27/10 : choix du lot retenu** — non.
-- #38 : rappel à 03:00 ou second cron vers 08:00 ? **Tranché le 27/10 :** dans l'appel de 03:00, pas de second appel (D13 révisée, #49).
+- #38 : rappel à 03:00 ou second cron vers 08:00 ? **Tranché le 27/10 : choix du lot retenu** — dans l'appel de 03:00, le seul appel nocturne (D13 révisée, #49).
 - #38 : après la confirmation des visites, rappeler aussi les visites non confirmées ? **Sans objet pour l'instant** : la confirmation n'existe pas encore (lot 2.7 suite, avec migration). À décider avec ce lot.
 - #38 : pas de rappel pour une candidature conclue ? **Tranché le 27/10 : choix du lot retenu** — voulu : seules les candidatures acceptées sont rappelées.
 
