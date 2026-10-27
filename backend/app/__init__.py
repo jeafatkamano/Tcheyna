@@ -138,17 +138,15 @@ def create_app(config_class=Config):
     app.register_blueprint(geo_bp,           url_prefix="/api/geo")
     app.register_blueprint(admin_bp,         url_prefix="/api/admin")
 
-    from app.commandes import donnees_cli, visites_cli
+    from app.commandes import admin_cli, donnees_cli, visites_cli
     app.cli.add_command(donnees_cli)
     app.cli.add_command(visites_cli)
+    # Récupération d'un compte administrateur (lot 1.22).
+    app.cli.add_command(admin_cli)
 
     # Expiration des annonces sans activité (D6, lot 2.3).
     from app.commandes import annonces_cli
     app.cli.add_command(annonces_cli)
-
-    # Récupération d'un compte administrateur (lot 1.22).
-    from app.commandes import admin_cli
-    app.cli.add_command(admin_cli)
 
     # ─── Fichiers téléversés sur disque (développement) ──────
     # Le stockage disque n'existe qu'en développement et en test (voir
