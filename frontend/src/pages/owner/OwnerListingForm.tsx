@@ -38,6 +38,7 @@ import { useFilePhotos } from "../../hooks/useFilePhotos";
 import { resumer } from "../../lib/filePhotos";
 import { useGeo } from "../../hooks/useGeo";
 import { formatMontant, sansPieces } from "../../lib/format";
+import { ConfirmationActualite } from "../../components/ConfirmationActualite";
 
 /** Frais de certification, alignés sur la grille tarifaire du serveur. */
 const PRIX_CERTIFICATION = 250_000;
@@ -341,6 +342,16 @@ function Formulaire({
           </h1>
         </div>
       </div>
+
+      {/* « Toujours d'actualité ? » (D6, lot 2.3), en haut de la page pour la
+          relance, hors du <form> : confirmer n'enregistre pas l'annonce. */}
+      {existante && (
+        <ConfirmationActualite
+          listing={existante}
+          onPerimee={() => onSauvegarde(existante)}
+          className="px-4 pt-5"
+        />
+      )}
 
       <div className="px-4 pt-5 space-y-5">
         {/* Annonce retirée : hors du <form>, la vérification du téléphone

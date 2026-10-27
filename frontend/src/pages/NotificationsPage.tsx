@@ -2,7 +2,9 @@ import {
   Bell,
   CalendarClock,
   CheckCheck,
+  EyeOff,
   Home,
+  Hourglass,
   MessageSquare,
   Receipt,
   ShieldCheck,
@@ -25,6 +27,10 @@ const ICONES: Record<string, { icone: LucideIcon; couleur: string; fond: string 
   nouveau_message: { icone: MessageSquare, couleur: "#3B82F6", fond: "#EFF6FF" },
   annonce_certifiee: { icone: ShieldCheck, couleur: "#10B981", fond: "#ECFDF5" },
   annonce_refusee: { icone: Home, couleur: "#DC2626", fond: "#FEE2E2" },
+  // Expiration sans activité (D6, lot 2.3) : relance à J-7, puis retrait. Le
+  // lien ouvre l'annonce dans l'espace propriétaire.
+  annonce_bientot_expiree: { icone: Hourglass, couleur: "#B45309", fond: "#FEF3C7" },
+  annonce_expiree: { icone: EyeOff, couleur: "#475569", fond: "#F1F5F9" },
   paiement_recu: { icone: Receipt, couleur: "#8B5CF6", fond: "#F5F3FF" },
   nouvel_avis: { icone: Star, couleur: "#F59E0B", fond: "#FFFBEB" },
   niveau_confiance: { icone: ShieldCheck, couleur: "#1E3A5F", fond: "#EFF6FF" },
