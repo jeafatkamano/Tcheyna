@@ -557,7 +557,8 @@ class TenantPassport(db.Model):
 
     # Date du dernier dépôt de chaque catégorie de pièce : point de départ de
     # la durée de conservation d'une pièce restée sans décision (D5). Remise
-    # à NULL quand la pièce est supprimée.
+    # à NULL quand la pièce est supprimée, sauf un justificatif de revenus
+    # validé : sa date de dépôt fait courir ses 3 mois de validité (D12).
     identite_deposee_le = db.Column(db.DateTime, nullable=True)
     revenus_deposes_le  = db.Column(db.DateTime, nullable=True)
 
@@ -947,8 +948,10 @@ def abonnements_passeport(user_ids):
 OBJETS_VERIFICATION = ("identite", "revenus", "certification_annonce", "statut_compte")
 # decision : approuvee | refusee ; classee (demande sans pièce retirée de la
 # file) ; purgee (pièce supprimée faute de décision dans le délai) ;
-# activation | desactivation (statut d'un compte).
-DECISIONS_VERIFICATION = ("approuvee", "refusee", "classee", "purgee", "activation", "desactivation")
+# relancee | expiree (justificatif de revenus à J-7 puis au-delà de 3 mois,
+# D12) ; activation | desactivation (statut d'un compte).
+DECISIONS_VERIFICATION = ("approuvee", "refusee", "classee", "purgee", "relancee", "expiree",
+                          "activation", "desactivation")
 
 
 class Verification(db.Model):

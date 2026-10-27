@@ -107,6 +107,10 @@ def create_or_update_passport(current_user, corps):
         if passport.revenu_mensuel != revenu and current_user.income_verified:
             current_user.income_verified = False
             passport.income_verified = False
+            # La date de dépôt d'un justificatif validé et déjà supprimé ne
+            # désigne plus rien (D5, D12) : un nouveau dépôt la remplacera.
+            if not passport.income_doc_url:
+                passport.revenus_deposes_le = None
         passport.revenu_mensuel = revenu
 
     if "a_un_garant" in valeurs:

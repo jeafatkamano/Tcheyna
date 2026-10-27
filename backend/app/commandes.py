@@ -55,3 +55,12 @@ def purger_pieces():
 def rattraper_pieces_decidees():
     """Supprime les pièces déjà validées avant le lot 1.5 (à lancer une fois)."""
     click.echo(f"{dp.purger_pieces_decidees()} fichier(s) supprimé(s).")
+
+
+@donnees_cli.command("expirer-revenus")
+def expirer_revenus():
+    """Applique la validité de 3 mois des justificatifs de revenus (décision
+    D12) : relance le locataire à J-7, puis retire la vérification échue et
+    recalcule son niveau. À lancer chaque jour ; sans effet si rejouée."""
+    expires, relances = dp.appliquer_validite_revenus()
+    click.echo(f"{expires} justificatif(s) de revenus expiré(s), {relances} relance(s) envoyée(s).")

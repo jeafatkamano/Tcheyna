@@ -300,9 +300,11 @@ def verify_revenus(current_user, user_id, corps):
 
     user.passport.income_verified = bool(approuve)
     user.income_verified = bool(approuve)
-    # Supprimé dès la décision, comme les pièces d'identité.
-    a_supprimer = dp.planifier_suppression(dp.retirer_justificatif_revenus(user.passport),
-                                           "decision_revenus")
+    # Supprimé dès la décision, comme les pièces d'identité. Validé, il garde
+    # sa date de dépôt : les 3 mois de validité en partent (décision D12).
+    a_supprimer = dp.planifier_suppression(
+        dp.retirer_justificatif_revenus(user.passport, garder_date=bool(approuve)),
+        "decision_revenus")
     dp.consigner(current_user, user.id, "revenus",
                  "approuvee" if approuve else "refusee", corps.motif)
 
