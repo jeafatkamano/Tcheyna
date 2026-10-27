@@ -80,6 +80,52 @@ def certification_traitee(landlord_id, certifiee, listing_title, listing_id, mot
     )
 
 
+# ─── Expiration d'une annonce sans activité (D6, lot 2.3) ────
+# Logique dans `routes.listings.expirer_annonces` ; ici, les seuls messages.
+
+TYPE_RELANCE_EXPIRATION = "annonce_bientot_expiree"
+
+
+def lien_relance_expiration(listing_id, echeance):
+    """Lien de la relance, qui sert aussi de clé de dédoublonnage : il porte
+    la date d'échéance. Une nouvelle activité déplace l'échéance, et ouvre
+    donc droit à sa propre relance ; la page de l'annonce ignore le
+    paramètre."""
+    return f"/owner/listings/{listing_id}?echeance={echeance:%Y-%m-%d}"
+
+
+def relance_expiration(landlord_id, listing_id, echeance):
+    """Relance déjà envoyée pour cette échéance, ou None."""
+    return (Notification.query
+            .filter_by(user_id=landlord_id, type=TYPE_RELANCE_EXPIRATION,
+                       lien=lien_relance_expiration(listing_id, echeance))
+            .order_by(Notification.created_at)
+            .first())
+
+
+def annonce_bientot_expiree(landlord_id, listing_title, listing_id, echeance, retrait_le):
+    return notifier(
+        landlord_id, TYPE_RELANCE_EXPIRATION,
+        "Votre annonce est-elle toujours d'actualité ?",
+        f"Sans nouvelle activité, « {listing_title} » sera retirée des résultats "
+        f"à partir du {retrait_le:%d/%m/%Y}. Confirmez qu'elle est toujours "
+        "d'actualité, ou mettez-la à jour, depuis votre espace propriétaire.",
+        lien_relance_expiration(listing_id, echeance),
+    )
+
+
+def annonce_expiree(landlord_id, listing_title, listing_id, derniere_activite):
+    return notifier(
+        landlord_id, "annonce_expiree",
+        "Annonce retirée faute d'activité",
+        f"« {listing_title} » était sans activité depuis le "
+        f"{derniere_activite:%d/%m/%Y} : elle n'apparaît plus dans les résultats. "
+        "Vos candidatures en cours sont conservées. Remettez-la en ligne depuis "
+        "votre espace propriétaire.",
+        f"/owner/listings/{listing_id}",
+    )
+
+
 def paiement_confirme(user_id, montant, devise, type_label, payment_id):
     return notifier(
         user_id, "paiement_recu",

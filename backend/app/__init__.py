@@ -141,6 +141,10 @@ def create_app(config_class=Config):
     from app.commandes import donnees_cli
     app.cli.add_command(donnees_cli)
 
+    # Expiration des annonces sans activité (D6, lot 2.3).
+    from app.commandes import annonces_cli
+    app.cli.add_command(annonces_cli)
+
     # ─── Fichiers téléversés sur disque (développement) ──────
     # Le stockage disque n'existe qu'en développement et en test (voir
     # services/stockage.py) : en production, les fichiers sont sur Supabase et

@@ -10,10 +10,11 @@ l'examen, ces changements sont refusés : l'administrateur approuve l'état
 qu'il a ouvert.
 """
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Blueprint, current_app, jsonify, request
 from pydantic_core import PydanticCustomError
+from sqlalchemy import event, inspect
 from sqlalchemy.orm import selectinload
 
 from app import db
@@ -38,6 +39,8 @@ from app.schemas.listings import (
     UrlFichier,
     verifier_lieu,
 )
+from app.services import donnees_personnelles as dp
+from app.services import notifications as notify
 from app.services import stockage
 from app.services.acces import peut_voir_annonce, publication_autorisee, visibilite_adresse
 from app.services.matching import score_compatibilite, trier_par_compatibilite
@@ -485,6 +488,10 @@ def update_listing(current_user, listing_id, corps):
     for champ, valeur in valeurs.items():
         setattr(listing, champ, valeur)
     listing.devise = devise
+    # D6 (lot 2.3) : enregistrer le formulaire compte comme une activité, même
+    # sans changement réel. C'est la confirmation « toujours d'actualité » que
+    # le client actuel sait déjà faire, en plus de PUT /<id>/confirmer.
+    listing.updated_at = datetime.utcnow()
 
     # Basculer de la location vers la vente laisserait sinon traîner une caution
     # et des charges qui n'ont plus d'objet.
@@ -613,6 +620,185 @@ def reactiver_annonce(current_user, listing_id):
     db.session.commit()
     return jsonify({
         "message": "Annonce déjà en ligne" if deja else "Annonce remise en ligne",
+        "listing": {**listing.to_dict(include_landlord=False, avec_adresse=True),
+                    **_vue_proprietaire(listing, etats_certification([listing])[listing.id])},
+    }), 200
+
+
+# ─── Expiration sans activité (D6, lot 2.3) ──────────────────
+#
+# Décision D6 (20/10/2026) : une annonce sans activité expire après 30 jours,
+# avec une relance au propriétaire à J-7. Expirer, c'est retirer (`_retirer`) :
+# l'annonce quitte les résultats, ses candidatures restent en l'état (règle du
+# retrait, question posée dans la PR #37), et son propriétaire la remet en
+# ligne par PUT /<id>/reactiver (téléphone vérifié, D3).
+#
+# Activité, sans colonne dédiée (aucune migration) : la plus récente de
+#   • la publication (`created_at`) ;
+#   • la dernière écriture du propriétaire sur l'annonce (`updated_at`) :
+#     modification (même sans changement), photos, pièces, demande de
+#     certification, remise en ligne, confirmation (PUT /<id>/confirmer) ;
+#   • la dernière candidature reçue (`Match.created_at`).
+# `updated_at` suit toute écriture (`onupdate`), y compris celles du système,
+# qui ne disent rien de l'annonce : une écriture qui ne touche que
+# COLONNES_SYSTEME garde l'ancienne date (`_garder_date_d_activite`).
+DUREE_SANS_ACTIVITE = timedelta(days=30)
+DELAI_RELANCE = timedelta(days=7)
+
+# Compteur de vues (chaque visite), décision de certification par l'admin
+# (routes/admin.py) et mise en avant payée (routes/payments.py). Une demande
+# de certification par le propriétaire écrit aussi `certification_requested_at`
+# et compte ; ses pièces et ses photos aussi.
+COLONNES_SYSTEME = frozenset({
+    "views_count",
+    "certification_status", "certified_at", "certification_note",
+    "is_premium", "premium_until",
+})
+
+
+@event.listens_for(Listing, "before_update")
+def _garder_date_d_activite(_mapper, _connexion, annonce):
+    """Une écriture qui ne touche que des colonnes du système laisse
+    `updated_at` tel quel : `SET updated_at = updated_at` remplace le
+    `onupdate`. Posé ici une fois pour toutes plutôt qu'à chaque écriture
+    système : l'admin, les paiements et le compteur de vues n'ont rien à
+    savoir de l'expiration."""
+    etat = inspect(annonce)
+    modifiees = {colonne.key for colonne in etat.mapper.column_attrs
+                 if etat.attrs[colonne.key].history.has_changes()}
+    if modifiees and modifiees <= COLONNES_SYSTEME:
+        annonce.updated_at = Listing.updated_at
+
+
+def dernieres_activites(annonces):
+    """Date de la dernière activité de chaque annonce, en une requête pour
+    toute la liste : {id: datetime, ou None si aucune date n'est connue}."""
+    ids = [a.id for a in annonces]
+    candidatures = {}
+    if ids:
+        candidatures = dict(db.session.query(Match.listing_id, db.func.max(Match.created_at))
+                            .filter(Match.listing_id.in_(ids)).group_by(Match.listing_id))
+    return {a.id: max((d for d in (a.created_at, a.updated_at, candidatures.get(a.id))
+                       if d is not None), default=None)
+            for a in annonces}
+
+
+def _en_ligne(listing):
+    return listing.is_visible and listing.status == "active"
+
+
+def _mise_en_avant_en_cours(listing, maintenant):
+    return bool(listing.is_premium and listing.premium_until
+                and listing.premium_until > maintenant)
+
+
+def expirer_annonces(maintenant=None):
+    """Relance, puis retire, les annonces en ligne sans activité (D6).
+    Retourne (relances envoyées, annonces retirées).
+
+    Faite pour un cron quotidien (`flask annonces expirer`), à heure fixe :
+      • relance : dès J-7 (échéance moins 7 jours), une seule par échéance.
+        Le lien de la notification porte la date d'échéance : rejouer la
+        commande ne relance pas deux fois, et une nouvelle activité, qui
+        déplace l'échéance, ouvre droit à une nouvelle relance ;
+      • retrait : à l'échéance, et jamais moins de 7 jours (en dates) après
+        la relance de cette échéance. Un cron manqué pendant toute la fenêtre
+        de relance, ou la première exécution sur des annonces déjà anciennes,
+        relance d'abord et retire 7 jours plus tard : aucun propriétaire
+        n'est retiré sans préavis ;
+      • une annonce en mise en avant payée en cours n'est ni relancée ni
+        retirée (question posée dans la PR) ; à la fin de la mise en avant,
+        elle est relancée puis retirée comme les autres ;
+      • une annonce conclue (`matched`) ou déjà retirée n'est pas en ligne :
+        elle n'est pas concernée.
+    """
+    maintenant = maintenant or datetime.utcnow()
+    debut_relance = maintenant - (DUREE_SANS_ACTIVITE - DELAI_RELANCE)
+    # Condition nécessaire, lue en SQL : publiée et écrite avant le début de
+    # la fenêtre de relance. Les candidatures se vérifient ensuite.
+    annonces = (Listing.query
+                .filter(Listing.status == "active", Listing.is_visible.is_(True),
+                        Listing.created_at <= debut_relance,
+                        db.or_(Listing.updated_at.is_(None), Listing.updated_at <= debut_relance))
+                .order_by(Listing.created_at, Listing.id)
+                .all())
+    annonces = [a for a in annonces if not _mise_en_avant_en_cours(a, maintenant)]
+    activites = dernieres_activites(annonces)
+
+    relances = retraits = 0
+    for annonce in annonces:
+        derniere = activites[annonce.id]
+        if derniere is None or maintenant < derniere + DUREE_SANS_ACTIVITE - DELAI_RELANCE:
+            continue
+        echeance = derniere + DUREE_SANS_ACTIVITE
+        relance = notify.relance_expiration(annonce.landlord_id, annonce.id, echeance)
+        if relance is None:
+            notif = notify.annonce_bientot_expiree(
+                annonce.landlord_id, annonce.title_fr, annonce.id, echeance,
+                retrait_le=max(echeance, maintenant + DELAI_RELANCE))
+            # Date simulée par les tests ; en production, c'est maintenant.
+            notif.created_at = maintenant
+            db.session.commit()
+            relances += 1
+        elif (maintenant >= echeance
+              and relance.created_at.date() + DELAI_RELANCE <= maintenant.date()
+              and _expirer(annonce.id, maintenant)):
+            retraits += 1
+    return relances, retraits
+
+
+def _expirer(listing_id, maintenant):
+    """Retire une annonce arrivée à échéance, sous verrou : une confirmation,
+    une modification ou une candidature arrivée depuis la lecture (toutes
+    écrivent l'annonce ou la verrouillent) la garde en ligne. Retourne vrai
+    si l'annonce a été retirée."""
+    listing = _annonce_verrouillee(listing_id)
+    derniere = dernieres_activites([listing])[listing.id]
+    if (not _en_ligne(listing) or _mise_en_avant_en_cours(listing, maintenant)
+            or derniere is None or maintenant < derniere + DUREE_SANS_ACTIVITE):
+        db.session.rollback()
+        return False
+    _retirer(listing)
+    # Trace de la raison : le journal des décisions accueille déjà les
+    # traitements automatiques, sans décideur (purge des pièces).
+    dp.consigner(None, listing.id, "annonce", "expiree",
+                 f"Aucune activité depuis le {derniere:%d/%m/%Y} (D6 : 30 jours)")
+    notify.annonce_expiree(listing.landlord_id, listing.title_fr, listing.id, derniere)
+    db.session.commit()
+    return True
+
+
+@listings_bp.route("/<string:listing_id>/confirmer", methods=["PUT"])
+@role_required("landlord", "agency")
+def confirmer_annonce(current_user, listing_id):
+    """Le propriétaire confirme que son annonce en ligne est toujours
+    d'actualité. Ne change rien d'autre : compte comme une activité (D6) et
+    repousse l'expiration de 30 jours. Idempotent.
+
+    Une annonce retirée (par son propriétaire ou faute d'activité) se remet
+    en ligne par PUT /<id>/reactiver, qui exige le téléphone vérifié (D3) ;
+    confirmer ne la republie pas. Une annonce conclue ne se confirme pas.
+    """
+    listing = Listing.query.get_or_404(listing_id)
+    if listing.landlord_id != current_user.id:
+        return jsonify({"error": "Cette annonce ne vous appartient pas"}), 403
+
+    listing = _annonce_verrouillee(listing_id)
+    if not _en_ligne(listing):
+        conclue = _conclue(listing)
+        db.session.rollback()
+        if conclue:
+            return _refus_annonce("Ce bien a été loué ou vendu : son annonce n'est plus "
+                                  "en ligne.", "annonce_conclue", 409)
+        return _refus_annonce("Cette annonce n'est pas en ligne : remettez-la en ligne "
+                              "pour la publier de nouveau.", "annonce_retiree", 409)
+
+    listing.updated_at = datetime.utcnow()
+    db.session.commit()
+    echeance = dernieres_activites([listing])[listing.id] + DUREE_SANS_ACTIVITE
+    return jsonify({
+        "message": "Annonce confirmée : elle reste en ligne",
+        "expiration_prevue": echeance.isoformat(),
         "listing": {**listing.to_dict(include_landlord=False, avec_adresse=True),
                     **_vue_proprietaire(listing, etats_certification([listing])[listing.id])},
     }), 200

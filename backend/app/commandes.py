@@ -7,10 +7,29 @@ n'est déclenchée automatiquement par l'application.
 import click
 from flask.cli import AppGroup
 
+from app.routes.listings import expirer_annonces
 from app.services import donnees_personnelles as dp
 
 donnees_cli = AppGroup("donnees", help="Conservation et suppression des données personnelles.")
 
+
+# ─── Annonces (lot 2.3) ──────────────────────────────────────
+
+annonces_cli = AppGroup("annonces", help="Cycle de vie des annonces.")
+
+
+@annonces_cli.command("expirer")
+def expirer():
+    """Relance à J-7, puis retire, les annonces en ligne sans activité
+    depuis 30 jours (décision D6). Sans doublon si la commande est rejouée :
+    à lancer une fois par jour, à heure fixe. La logique vit avec le cycle
+    de vie de l'annonce (`routes.listings`)."""
+    relances, retraits = expirer_annonces()
+    click.echo(f"{relances} relance(s) envoyée(s), {retraits} annonce(s) retirée(s) "
+               "faute d'activité.")
+
+
+# ─── Données personnelles ────────────────────────────────────
 
 @donnees_cli.command("retenter-suppressions")
 def retenter_suppressions():
