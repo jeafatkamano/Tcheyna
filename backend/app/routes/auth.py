@@ -398,6 +398,10 @@ def refresh():
         identity=user.id, additional_claims={"tv": user.token_version})}), 200
 
 
+# Lu par app/openapi.py : route protégée par le jeton de rafraîchissement.
+refresh.jeton_refresh = True
+
+
 # ─── POST /api/auth/logout ────────────────────────────────────
 
 @auth_bp.route("/logout", methods=["POST"])
@@ -416,6 +420,10 @@ def logout():
     user.revoquer_jetons()
     db.session.commit()
     return jsonify({"message": "Déconnexion réussie"}), 200
+
+
+# Lu par app/openapi.py : jeton d'accès ou de rafraîchissement.
+logout.jeton_acces_ou_refresh = True
 
 
 # ─── GET /api/auth/me ─────────────────────────────────────────

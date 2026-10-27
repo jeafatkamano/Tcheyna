@@ -115,6 +115,12 @@ class Config:
     # de démarrer, c'est la purge qui la refuse (`purger_pieces_sans_decision`).
     DUREE_CONSERVATION_PIECES_JOURS = os.getenv("DUREE_CONSERVATION_PIECES_JOURS", "365").strip() or None
 
+    # ─── Tâches nocturnes (lot 1.25, D13 révisée) ───────────
+    # Jeton attendu dans l'en-tête X-Taches-Jeton par
+    # POST /api/interne/taches-nocturnes, que cron-job.org appelle chaque
+    # nuit. Vide : la route répond 404, la fonction est désactivée.
+    TACHES_NOCTURNES_JETON = os.getenv("TACHES_NOCTURNES_JETON", "")
+
     # ─── Africa's Talking (OTP SMS) ─────────────────────────
     AT_API_KEY = os.getenv("AT_API_KEY", "")
     AT_USERNAME = os.getenv("AT_USERNAME", "sandbox")
@@ -189,6 +195,25 @@ class ProductionConfig(Config):
                 "Laissez-le vide pour le dériver de SECRET_KEY."
             )
         self.OTP_HMAC_KEY = otp
+
+        # Jeton des tâches nocturnes : facultatif (absent, la route est
+        # désactivée) ; fourni, aussi fort que les autres secrets.
+        jeton = os.getenv("TACHES_NOCTURNES_JETON", "")
+        if jeton and not _secret_valide(jeton):
+            raise RuntimeError(
+                f"TACHES_NOCTURNES_JETON est trop court (moins de {LONGUEUR_MIN_SECRET} "
+                "caractères) ou égal à une valeur d'exemple publique. Générez-en un avec : "
+                'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+            )
+        # Le jeton sort de Render (il est saisi chez cron-job.org) : identique
+        # à une autre clé, il en livrerait une copie (JWT_SECRET_KEY permet de
+        # signer un jeton administrateur).
+        if jeton and jeton in {self.SECRET_KEY, self.JWT_SECRET_KEY, self.OTP_HMAC_KEY}:
+            raise RuntimeError(
+                "TACHES_NOCTURNES_JETON doit être distinct de SECRET_KEY, "
+                "JWT_SECRET_KEY et OTP_HMAC_KEY : générez-en un à part."
+            )
+        self.TACHES_NOCTURNES_JETON = jeton
 
 
 class TestingConfig(Config):

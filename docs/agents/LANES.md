@@ -16,10 +16,11 @@ Deux threads ne travaillent **jamais** dans le même couloir en même temps. Le 
 - `backend/app/models.py`, `backend/migrations/`
 - `backend/app/__init__.py`, `backend/config.py`
 - `backend/requirements*.txt`, `frontend/package.json`, `frontend/package-lock.json`
-- `frontend/src/api/` (`client.ts`, `index.ts`, `types.ts`)
+- `frontend/src/api/` (`client.ts`, `index.ts`, `types.ts`, `schema.gen.ts`)
+- Contrat d'API : `backend/app/schemas/reponses.py`, `backend/app/openapi.py`, `backend/openapi.json`
 
 Un lot dont le couloir est libre mais qui doit toucher le socle attend que le socle soit libre.
 
 ## Changement d'API
 
-Un lot qui modifie l'API ouvre d'abord la PR backend (changement additif et spec à jour). La PR web suit, avec « Dépend de #n » dans sa description, et ne démarre pas tant que la PR backend n'est pas mergée.
+Un lot qui modifie l'API ouvre d'abord la PR backend (changement additif et spec à jour : contrat dans `backend/app/schemas/reponses.py`, puis `flask api spec` dans `backend/` et `npm run api:types` dans `frontend/`, la CI refuse une spec ou des types en retard). La PR web suit, avec « Dépend de #n » dans sa description, et ne démarre pas tant que la PR backend n'est pas mergée.

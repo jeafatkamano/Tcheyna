@@ -31,7 +31,7 @@ function conv(n: number, extra: Partial<Conversation> = {}): Conversation {
     interlocuteur: { id: `u${n}`, full_name: `Interlocuteur ${n}` } as User,
     dernier_message: null,
     ...extra,
-  };
+  } as Conversation;
 }
 
 function attendreUnPeu() {

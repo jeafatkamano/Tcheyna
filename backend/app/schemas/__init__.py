@@ -169,7 +169,7 @@ def _message(erreur):
 CODES_LIBRES = {"email_invalide", "code_invalide", "lieu_invalide", "montant_trop_eleve",
                 "devise_incoherente", "budget_incoherent", "mot_de_passe_incorrect",
                 "piece_absente", "hors_plateforme", "telephone_invalide", "type_retire",
-                "date_passee", "date_trop_lointaine"}
+                "date_passee", "date_trop_lointaine", "devise_non_prise_en_charge"}
 
 
 def reponse_422(exc):
@@ -244,6 +244,10 @@ def valider_corps(schema, source="json"):
             except ValidationError as exc:
                 return reponse_422(exc)
             return fn(*args, corps=corps, **kwargs)
+        # Lu par app/openapi.py pour décrire le corps attendu. `wraps` recopie
+        # ces attributs sur les décorateurs posés au-dessus (`role_required`).
+        wrapper.schema_corps = schema
+        wrapper.source_corps = source
         return wrapper
     return decorateur
 

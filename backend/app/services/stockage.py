@@ -438,7 +438,7 @@ def est_stocke(url):
                           or "/storage/v1/object/public/" in url)
 
 
-def supprimer(url):
+def supprimer(url, delai=30):
     """Retire un fichier. Une URL inconnue est ignorée sans lever d'erreur :
     la base ne doit pas rester bloquée par un fichier déjà absent.
 
@@ -470,7 +470,7 @@ def supprimer(url):
     try:
         reponse = requests.delete(
             f"{current_app.config['SUPABASE_URL']}/storage/v1/object/{bucket}/{chemin}",
-            headers=_entetes(), timeout=30,
+            headers=_entetes(), timeout=delai,
         )
         return reponse.status_code in (200, 204) or _objet_absent(reponse)
     except requests.RequestException as exc:

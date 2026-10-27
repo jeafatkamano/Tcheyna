@@ -70,13 +70,21 @@ def planifier_suppression(references, origine):
     return lignes
 
 
-def executer_suppressions(lignes):
+def executer_suppressions(lignes, budget=None):
     """Supprime les fichiers planifiés. À appeler APRÈS le commit qui a
     effacé les références : un fichier ne disparaît jamais avant que la base
-    ait cessé de le désigner. Retourne le nombre d'échecs."""
+    ait cessé de le désigner. Retourne le nombre d'échecs.
+
+    `budget` (tâches nocturnes, lot 1.25) : épuisé, les fichiers restants ne
+    sont pas tentés ; ils restent en file, sans compter comme un échec. Il
+    plafonne aussi le délai d'attente de chaque appel au stockage : un
+    Supabase lent ne doit pas tenir l'appel nocturne au-delà de 60 s."""
     echecs = 0
     for ligne in lignes:
-        if stockage.supprimer(ligne.reference):
+        if budget is not None and not budget.reste():
+            break
+        delai = budget.delai_reseau if budget is not None else 30
+        if stockage.supprimer(ligne.reference, delai=delai):
             db.session.delete(ligne)
         else:
             echecs += 1
@@ -88,11 +96,12 @@ def executer_suppressions(lignes):
     return echecs
 
 
-def retenter_suppressions(limite=200):
-    """Reprend les suppressions restées en échec. Retourne (traitées, échecs)."""
+def retenter_suppressions(limite=200, budget=None):
+    """Reprend les suppressions restées en échec. Retourne (traitées, échecs) ;
+    avec un `budget` épuisé, « traitées » compte aussi les fichiers non tentés."""
     lignes = (FichierASupprimer.query.order_by(FichierASupprimer.created_at.asc())
               .limit(limite).all())
-    return len(lignes), executer_suppressions(lignes)
+    return len(lignes), executer_suppressions(lignes, budget)
 
 
 def retirer_pieces_identite(passeport):
@@ -119,12 +128,14 @@ def retirer_justificatif_revenus(passeport, garder_date=False):
 
 # ─── Purges ──────────────────────────────────────────────────
 
-def purger_pieces_sans_decision(maintenant=None):
+def purger_pieces_sans_decision(maintenant=None, budget=None):
     """Supprime les pièces restées sans décision au-delà de la durée de
     conservation (DUREE_CONSERVATION_PIECES_JOURS, décision D5).
 
     Refuse de tourner tant que la durée n'est pas configurée. Retourne le
-    nombre de pièces (fichiers) supprimées.
+    nombre de pièces (fichiers) retirées de la base. `budget` épuisé : les
+    passeports restants attendent le passage suivant (leur date de dépôt
+    n'est effacée qu'avec la pièce), les fichiers restants la reprise.
     """
     brut = current_app.config.get("DUREE_CONSERVATION_PIECES_JOURS")
     try:
@@ -146,6 +157,8 @@ def purger_pieces_sans_decision(maintenant=None):
                         User.cni_verified.is_(False))
                 .all())
     for passeport in identite:
+        if budget is not None and not budget.reste():
+            break
         references = retirer_pieces_identite(passeport)
         if not references:
             continue
@@ -163,6 +176,8 @@ def purger_pieces_sans_decision(maintenant=None):
                        TenantPassport.income_verified.is_(False))
                .all())
     for passeport in revenus:
+        if budget is not None and not budget.reste():
+            break
         references = retirer_justificatif_revenus(passeport)
         if not references:
             continue
@@ -174,7 +189,7 @@ def purger_pieces_sans_decision(maintenant=None):
                         "été supprimé. Vous pouvez le déposer de nouveau.", "/tenant/profile")
 
     db.session.commit()
-    executer_suppressions(lignes)
+    executer_suppressions(lignes, budget)
     return len(lignes)
 
 
@@ -232,7 +247,7 @@ def _debut_validite(passeport, validations):
     return passeport.revenus_deposes_le or validations.get(passeport.tenant_id)
 
 
-def appliquer_validite_revenus(maintenant=None):
+def appliquer_validite_revenus(maintenant=None, budget=None):
     """Relance à J-7, puis retire la vérification des revenus échue.
 
     Point de départ des 3 mois : la date de dépôt du justificatif validé
@@ -250,7 +265,8 @@ def appliquer_validite_revenus(maintenant=None):
     plus repris ; la relance est inscrite au journal, qui, contrairement aux
     notifications que le locataire peut supprimer, garantit qu'elle n'est
     envoyée qu'une fois par justificatif, même si la commande est rejouée ou
-    a sauté un jour. Retourne (expirés, relancés).
+    a sauté un jour. Retourne (expirés, relancés). `budget` épuisé : les
+    justificatifs restants attendent le passage suivant.
     """
     maintenant = maintenant or datetime.utcnow()
     preavis = timedelta(days=RELANCE_REVENUS_JOURS)
@@ -265,6 +281,8 @@ def appliquer_validite_revenus(maintenant=None):
     expires = relances_envoyees = 0
     lignes = []
     for passeport in passeports:
+        if budget is not None and not budget.reste():
+            break
         debut = _debut_validite(passeport, validations)
         echeance = debut + timedelta(days=VALIDITE_REVENUS_JOURS) if debut else None
         derniere_relance = relances.get(passeport.tenant_id)
@@ -320,7 +338,7 @@ def appliquer_validite_revenus(maintenant=None):
         expires += 1
 
     db.session.commit()
-    executer_suppressions(lignes)
+    executer_suppressions(lignes, budget)
     return expires, relances_envoyees
 
 

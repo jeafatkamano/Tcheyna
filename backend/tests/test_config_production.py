@@ -83,3 +83,36 @@ def test_configuration_de_test_non_concernee(monkeypatch):
     monkeypatch.delenv("SECRET_KEY", raising=False)
     monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
     TestingConfig()
+
+
+# ─── Jeton des tâches nocturnes (lot 1.25) ───────────────────
+
+def test_jeton_des_taches_nocturnes_facultatif(env_prod):
+    env_prod.delenv("TACHES_NOCTURNES_JETON", raising=False)
+    assert ProductionConfig().TACHES_NOCTURNES_JETON == ""
+
+
+@pytest.mark.parametrize("valeur", ["abc123", "x" * (LONGUEUR_MIN_SECRET - 1),
+                                    "dev-secret-a-changer-en-production"])
+def test_jeton_des_taches_nocturnes_fourni_doit_etre_fort(env_prod, valeur):
+    env_prod.setenv("TACHES_NOCTURNES_JETON", valeur)
+    with pytest.raises(RuntimeError, match="TACHES_NOCTURNES_JETON") as erreur:
+        ProductionConfig()
+    assert valeur not in str(erreur.value)
+
+
+def test_jeton_des_taches_nocturnes_fort_accepte(env_prod):
+    # Distinct de SECRET_KEY et de JWT_SECRET_KEY (FORT_1, FORT_2).
+    env_prod.setenv("TACHES_NOCTURNES_JETON", "c" * (LONGUEUR_MIN_SECRET + 8))
+    assert ProductionConfig().TACHES_NOCTURNES_JETON == "c" * (LONGUEUR_MIN_SECRET + 8)
+
+
+@pytest.mark.parametrize("cle", ["SECRET_KEY", "JWT_SECRET_KEY"])
+def test_jeton_des_taches_distinct_des_autres_cles(env_prod, cle):
+    # Audit du 27/10 : le jeton est saisi chez cron-job.org ; égal à une autre
+    # clé, il en livrerait une copie.
+    import os
+    env_prod.setenv("TACHES_NOCTURNES_JETON", os.environ[cle])
+    with pytest.raises(RuntimeError, match="distinct"):
+        ProductionConfig()
+

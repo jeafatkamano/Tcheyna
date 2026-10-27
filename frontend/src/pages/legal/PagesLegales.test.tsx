@@ -100,6 +100,21 @@ describe.each(PAGES)("%s", (_nom, page, champsAttendus) => {
   });
 });
 
+describe("conditions générales — frais de mise en relation (décisions du 27/10/2026)", () => {
+  it("annonce le remboursement si le propriétaire écarte la candidature, pas si le locataire se retire", () => {
+    const texte = afficher(<CGU />).textContent ?? "";
+
+    expect(texte).toContain("Si le locataire retire ensuite sa candidature, les frais de mise en relation restent acquis et ne sont pas remboursés");
+    expect(texte).toContain("les frais qu'il a réglés pour cette candidature lui sont remboursés");
+  });
+
+  it("limite les services payants aux annonces en francs guinéens", () => {
+    const texte = afficher(<CGU />).textContent ?? "";
+
+    expect(texte).toContain("services liés à une annonce (frais de mise en relation, certification, mise en avant) ne sont proposés que sur les annonces publiées en francs guinéens");
+  });
+});
+
 describe("désignation de l'éditeur", () => {
   it("nomme Kamino dans les conditions générales et la politique de confidentialité", () => {
     for (const page of [<CGU key="cgu" />, <Confidentialite key="conf" />]) {

@@ -18,7 +18,11 @@ from app import db
 from app.models import Conversation, Listing, Match, User, abonnements_passeport
 from app.routes import current_user_required, role_required
 from app.routes.listings import _annonce_verrouillee
-from app.routes.payments import refus_acceptation_sans_frais
+from app.routes.payments import (
+    frais_regles,
+    refus_acceptation_sans_frais,
+    rembourser_frais_ecartes,
+)
 from app.schemas import valider_corps
 from app.schemas.matches import Candidature, DecisionCandidature, Visite
 from app.services import notifications as notify
@@ -313,6 +317,7 @@ def update_match_status(current_user, match_id, corps):
     if match.status not in ("pending", "accepted"):
         return jsonify({"error": f"Candidature déjà « {match.status} »"}), 409
 
+    rembourses = []
     if statut == "accepted":
         refus = refus_acceptation_sans_frais(match)
         if refus:
@@ -321,12 +326,21 @@ def update_match_status(current_user, match_id, corps):
     else:
         match.status = statut
         notify.candidature_traitee(match.tenant_id, False, match.listing.title_fr, match.id)
+        # Refus après paiement des frais : remboursés (décision du 27/10/2026).
+        rembourses = rembourser_frais_ecartes(match)
     db.session.commit()
 
+    if statut == "accepted":
+        message = "Candidature acceptée — la messagerie est ouverte"
+    elif rembourses:
+        message = ("Candidature refusée. Les frais de mise en relation réglés vous seront "
+                   "remboursés par l'équipe Tcheyna.")
+    else:
+        message = "Candidature refusée"
     return jsonify({
-        "message": "Candidature acceptée — la messagerie est ouverte"
-                   if statut == "accepted" else "Candidature refusée",
+        "message": message,
         "match": match.to_dict(viewer=current_user),
+        "frais_a_rembourser": [p.to_dict() for p in rembourses],
     }), 200
 
 
@@ -394,6 +408,9 @@ def conclure_location(current_user, match_id):
     for autre in autres:
         autre.status = "rejected"
         notify.candidature_traitee(autre.tenant_id, False, match.listing.title_fr, autre.id)
+        # Le bailleur écarte ces candidatures en concluant avec un autre :
+        # des frais réglés sur l'une d'elles sont remboursés (27/10/2026).
+        rembourser_frais_ecartes(autre)
 
     notify.notifier(
         match.tenant_id, "candidature_acceptee", "Location conclue 🎉",
@@ -419,10 +436,20 @@ def retirer_candidature(current_user, match_id):
     match = Match.query.get_or_404(match_id)
     if match.tenant_id != current_user.id:
         return jsonify({"error": "Non autorisé"}), 403
+    # L'annonce, puis la candidature, puis ses paiements : le même ordre que le
+    # refus, la conclusion et la confirmation des frais. Sans ces verrous, un
+    # retrait lu « en attente » écraserait une acceptation confirmée entre-temps.
+    _annonce_verrouillee(match.listing_id)
+    match = db.session.execute(_requete_candidature_verrouillee(match_id)).scalar_one()
 
     if match.status == "completed":
         return jsonify({"error": "Une location conclue ne peut pas être retirée"}), 400
 
+    # Le bailleur d'une candidature acceptée est prévenu du retrait ; des
+    # frais réglés ne sont pas remboursés (décision du 27/10/2026).
+    if match.status == "accepted" and match.listing:
+        notify.candidature_retiree(match.listing.landlord_id, current_user.full_name,
+                                   match.listing.title_fr, match.id, bool(frais_regles(match)))
     match.status = "cancelled"
     db.session.commit()
     return jsonify({"message": "Candidature retirée"}), 200

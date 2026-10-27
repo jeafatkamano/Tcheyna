@@ -708,7 +708,7 @@ def _mise_en_avant_en_cours(listing, maintenant):
                 and listing.premium_until > maintenant)
 
 
-def expirer_annonces(maintenant=None):
+def expirer_annonces(maintenant=None, budget=None):
     """Relance, puis retire, les annonces en ligne sans activité (D6).
     Retourne (relances envoyées, annonces retirées).
 
@@ -727,6 +727,9 @@ def expirer_annonces(maintenant=None):
         elle est relancée puis retirée comme les autres ;
       • une annonce conclue (`matched`) ou déjà retirée n'est pas en ligne :
         elle n'est pas concernée.
+
+    `budget` (tâches nocturnes, lot 1.25) épuisé : les annonces restantes
+    attendent le passage suivant.
     """
     maintenant = maintenant or datetime.utcnow()
     debut_relance = maintenant - (DUREE_SANS_ACTIVITE - DELAI_RELANCE)
@@ -743,6 +746,8 @@ def expirer_annonces(maintenant=None):
 
     relances = retraits = 0
     for annonce in annonces:
+        if budget is not None and not budget.reste():
+            break
         derniere = activites[annonce.id]
         if derniere is None or maintenant < derniere + DUREE_SANS_ACTIVITE - DELAI_RELANCE:
             continue

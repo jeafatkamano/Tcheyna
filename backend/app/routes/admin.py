@@ -392,6 +392,10 @@ def certifier_annonce(current_user, listing_id, corps):
 def _motif_remboursement(paiement):
     if paiement.type_paiement in PAIEMENTS_HORS_PLATEFORME:
         return "hors_plateforme"
+    # Frais confirmés (`paid_at` n'est posé que par la confirmation), puis
+    # rendus parce que le bailleur a écarté la candidature (27/10/2026).
+    if paiement.type_paiement == "frais_mise_en_relation" and paiement.paid_at:
+        return "ecartee_par_le_bailleur"
     # Frais de mise en relation (D1) : sans autre paiement réussi pour la même
     # candidature, c'est que celle-ci a été retirée ou refusée pendant le paiement.
     if paiement.type_paiement == "frais_mise_en_relation" and not Payment.query.filter(
