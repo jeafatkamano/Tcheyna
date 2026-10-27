@@ -8,7 +8,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../api/client";
-import { useApi } from "./useApi";
+import { codeErreur, useAction, useApi } from "./useApi";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -110,5 +110,46 @@ describe("useApi", () => {
     act(() => racine.unmount());
 
     expect(signalRecu?.aborted).toBe(true);
+  });
+});
+
+describe("codeErreur et useAction.code", () => {
+  const refus = () =>
+    new ApiError("Vérifiez votre numéro", 403, {
+      error: "Vérifiez votre numéro",
+      details: [{ champ: "__root__", code: "telephone_non_verifie", message: "…" }],
+    });
+
+  it("lit le code stable du premier détail", () => {
+    expect(codeErreur(refus())).toBe("telephone_non_verifie");
+  });
+
+  it("null sans code, pour une erreur de transport ou une erreur quelconque", () => {
+    expect(codeErreur(new ApiError("Refusé", 403, { error: "Refusé" }))).toBeNull();
+    expect(codeErreur(new ApiError("Refusé", 403))).toBeNull();
+    expect(codeErreur(new ApiError("Hors ligne", 0, { cause: "reseau" }))).toBeNull();
+    expect(codeErreur(new ApiError("?", 422, { details: "texte" }))).toBeNull();
+    expect(codeErreur(new Error("boum"))).toBeNull();
+  });
+
+  it("useAction expose le code du refus, effacé par reinitialiserErreur", async () => {
+    const vu: { courant?: ReturnType<typeof useAction<[], never>> } = {};
+    function Sonde() {
+      vu.courant = useAction(() => Promise.reject(refus()));
+      return null;
+    }
+    const racine: Root = createRoot(document.createElement("div"));
+    act(() => racine.render(createElement(Sonde)));
+
+    await act(async () => {
+      await vu.courant!.executer();
+    });
+    expect(vu.courant!.erreur).toBe("Vérifiez votre numéro");
+    expect(vu.courant!.code).toBe("telephone_non_verifie");
+
+    act(() => vu.courant!.reinitialiserErreur());
+    expect(vu.courant!.erreur).toBeNull();
+    expect(vu.courant!.code).toBeNull();
+    act(() => racine.unmount());
   });
 });

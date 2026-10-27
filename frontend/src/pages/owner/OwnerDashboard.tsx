@@ -7,19 +7,37 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
+import { useRef, useState } from "react";
 import { Link } from "react-router";
 
 import { listingsAPI, matchesAPI } from "../../api";
 import { Avatar } from "../../components/Avatar";
 import { BadgeVerification, ScoreCircle } from "../../components/BadgeVerification";
-import { Erreur, ListeVide, SqueletteCartes } from "../../components/Etats";
+import { Erreur, ListeVide, MessageSucces, SqueletteCartes } from "../../components/Etats";
 import { ListingCard } from "../../components/ListingCard";
+import { BandeauTelephoneAVerifier } from "../../components/VerificationPublication";
 import { useAuth } from "../../context/AuthContext";
 import { useApi } from "../../hooks/useApi";
 import { formatRelatif } from "../../lib/format";
 
 export function OwnerDashboard() {
   const { user } = useAuth();
+  // Publier exige un téléphone vérifié (D3). Vérifié depuis ce bandeau : il
+  // s'efface même si le rafraîchissement de l'utilisateur échoue.
+  const [telephoneVerifieIci, setTelephoneVerifieIci] = useState(false);
+  const telephoneAVerifier =
+    !telephoneVerifieIci &&
+    (user?.role === "landlord" || user?.role === "agency") &&
+    !user.phone_verified;
+  const publierRef = useRef<HTMLAnchorElement>(null);
+
+  function apresVerificationTelephone() {
+    setTelephoneVerifieIci(true);
+    // Le bandeau va quitter la page : le focus ne doit pas retomber sur
+    // <body>. Il va au lien « Publier », toujours affiché.
+    publierRef.current?.scrollIntoView?.({ block: "center" });
+    publierRef.current?.focus();
+  }
 
   const annonces = useApi(() => listingsAPI.mesAnnonces(), []);
   const demandes = useApi(() => matchesAPI.mesDemandes(), []);
@@ -66,6 +84,13 @@ export function OwnerDashboard() {
       </div>
 
       <div className="px-4 space-y-5 -mt-3 relative z-10">
+        {telephoneAVerifier && (
+          <BandeauTelephoneAVerifier onVerifie={apresVerificationTelephone} />
+        )}
+        {telephoneVerifieIci && (
+          <MessageSucces message="Numéro vérifié : vous pouvez publier vos annonces." />
+        )}
+
         {/* Nouvelles candidatures */}
         {candidaturesEnAttente.length > 0 && (
           <Link
@@ -183,6 +208,7 @@ export function OwnerDashboard() {
               Mes biens
             </h2>
             <Link
+              ref={publierRef}
               to="/owner/listings/nouveau"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-white"
               style={{ background: "#F97316" }}
