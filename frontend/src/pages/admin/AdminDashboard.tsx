@@ -118,7 +118,7 @@ export function AdminDashboard() {
                 </p>
               </div>
               <div className="text-right flex-shrink-0">
-                <p className="text-white/60 text-xs">Commissions</p>
+                <p className="text-white/60 text-xs">Commissions (ancien barème)</p>
                 <p className="text-white font-semibold text-sm">
                   {formatMontantCourt(stats.data.revenus.commissions, stats.data.revenus.devise)}
                 </p>

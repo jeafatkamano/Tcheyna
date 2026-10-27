@@ -407,11 +407,7 @@ export const avisAPI = {
 
 export const paiementsAPI = {
   tarifs: () =>
-    api.get<{
-      devise: string;
-      services: Tarif[];
-      commission: { taux: number; libelle: string; payeur: string; description: string };
-    }>("/payments/tarifs", { optionnel: true }),
+    api.get<{ devise: string; services: Tarif[] }>("/payments/tarifs", { optionnel: true }),
 
   initier: (data: {
     type_paiement: TypePaiementPayable;

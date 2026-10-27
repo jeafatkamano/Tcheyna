@@ -667,8 +667,8 @@ function Formulaire({
                 <p className="text-xs leading-relaxed" style={{ color: "#1D4ED8" }}>
                   La cession se conclut devant notaire, hors plateforme. Tcheyna vous
                   met en relation avec des acquéreurs et conserve la trace des échanges ;
-                  ni caution ni loyer ne sont demandés, et <strong>aucune commission
-                  n'est prélevée sur la vente</strong>.
+                  ni caution ni loyer ne sont demandés, et <strong>aucun frais de mise en
+                  relation n'est dû sur une vente</strong>.
                 </p>
               </div>
             )}

@@ -3,6 +3,9 @@
  * y ramener l'utilisateur quand l'envoi s'arrête. Publier exige un téléphone
  * vérifié (D3) : bandeau avant la saisie, refus 403 relayé avec la
  * vérification sur place, brouillon conservé.
+ *
+ * Modification : un refus du serveur (changement de type de transaction avec
+ * des candidatures en cours, D1) s'affiche sans perdre la saisie.
  */
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -22,13 +25,16 @@ const auth: { user: Partial<User> | null; rafraichir: () => Promise<null> } = {
   rafraichir: async () => null,
 };
 vi.mock("../../context/AuthContext", () => ({ useAuth: () => auth }));
+const detail = vi.fn();
+const modifier = vi.fn();
+const documents = vi.fn();
 
 vi.mock("../../api", async (original) => {
   const reel = await original<typeof import("../../api")>();
   return {
     ...reel,
     geoAPI: { referentiel: () => Promise.reject(new Error("hors ligne")) },
-    listingsAPI: { ...reel.listingsAPI, creer, televerserPhoto },
+    listingsAPI: { ...reel.listingsAPI, creer, televerserPhoto, detail, modifier, documents },
     authAPI: { ...reel.authAPI, envoyerOTP, verifierOTP },
   };
 });
@@ -49,8 +55,7 @@ function attendreUnPeu() {
 let racine: ReturnType<typeof createRoot> | null = null;
 
 beforeEach(() => {
-  televerserPhoto.mockReset();
-  creer.mockReset();
+  for (const f of [televerserPhoto, creer, detail, modifier, documents]) f.mockReset();
   envoyerOTP.mockReset();
   verifierOTP.mockReset();
   auth.user = { id: "U1", role: "landlord", phone: "622000000", phone_verified: true };
@@ -324,5 +329,75 @@ describe("OwnerListingForm — vérification commencée avant le refus", () => {
     // … et la vérification reste à l'étape du code, saisie comprise.
     expect(champCode()?.value).toBe("12");
     expect(envoyerOTP).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("OwnerListingForm — modification refusée par le serveur", () => {
+  it("409 du changement de type : message du serveur, saisie conservée", async () => {
+    const message =
+      "Le type de transaction ne peut pas changer tant que des candidatures sont en attente ou acceptées sur cette annonce : refusez-les d'abord.";
+    detail.mockResolvedValue({
+      id: "L1",
+      title: "Villa de test",
+      description: "Une description de test assez longue.",
+      pays: "Guinée",
+      ville: "Conakry",
+      quartier: "Kaloum",
+      type_transaction: "location",
+      est_vente: false,
+      type_bien: "villa",
+      prix: 3_000_000,
+      charges: 0,
+      devise: "GNF",
+      nb_pieces: 4,
+      meuble: false,
+      equipements: {
+        generateur: false,
+        eau: true,
+        wifi: false,
+        securite: false,
+        parking: false,
+        climatisation: false,
+      },
+      certification_status: "none",
+      nb_documents: 0,
+      is_certified: false,
+      is_premium: false,
+      status: "active",
+      images: [],
+    });
+    documents.mockResolvedValue({ documents: [], total: 0 });
+    modifier.mockRejectedValue(new ApiError(message, 409, { error: message }));
+
+    const router = createMemoryRouter([{ path: "/owner/listings/:id", Component: OwnerListingForm }], {
+      initialEntries: ["/owner/listings/L1"],
+    });
+    const conteneur = document.createElement("div");
+    document.body.appendChild(conteneur);
+    racine = createRoot(conteneur);
+    act(() => racine!.render(<RouterProvider router={router} />));
+    await attendreUnPeu();
+
+    const versVente = [...conteneur.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Mettre en vente"),
+    )!;
+    act(() => versVente.click());
+    act(() => {
+      conteneur.querySelector("form")!.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      );
+    });
+    await attendreUnPeu();
+
+    expect(modifier).toHaveBeenCalledWith("L1", expect.objectContaining({ type_transaction: "vente" }));
+    expect(conteneur.textContent).toContain(message);
+    // Le formulaire est toujours là, avec la saisie : type « vente » et titre.
+    expect(conteneur.querySelector("form")).not.toBeNull();
+    expect(conteneur.textContent).toContain("aucun frais de mise en");
+    const titre = [...conteneur.querySelectorAll<HTMLInputElement>("input")].find(
+      (i) => i.value === "Villa de test",
+    );
+    expect(titre).toBeDefined();
+    expect(router.state.location.pathname).toBe("/owner/listings/L1");
   });
 });

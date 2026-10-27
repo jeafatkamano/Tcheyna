@@ -170,29 +170,16 @@ export function PaiementsPage() {
                       {formatMontantCourt(service.montant, tarifs.data?.devise)}
                     </span>
                   </div>
+                  {/* Frais de mise en relation (D1) : dus à un moment précis du parcours. */}
+                  {service.moment && (
+                    <p className="text-xs font-semibold mb-1" style={{ color: "#9A3412" }}>
+                      {service.moment}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-500 leading-relaxed">{service.description}</p>
                 </div>
               ))}
             </div>
-
-            {!estLocataire && tarifs.data?.commission && (
-              <div
-                className="mt-3 p-3.5 rounded-xl"
-                style={{ background: "#FFF7ED", border: "1px solid #FED7AA" }}
-              >
-                <div className="flex items-start justify-between gap-3 mb-1">
-                  <span className="font-semibold text-sm" style={{ color: "#9A3412" }}>
-                    {tarifs.data.commission.libelle}
-                  </span>
-                  <span className="font-bold text-sm flex-shrink-0" style={{ color: "#EA580C" }}>
-                    {Math.round(tarifs.data.commission.taux * 100)} %
-                  </span>
-                </div>
-                <p className="text-xs leading-relaxed" style={{ color: "#C2410C" }}>
-                  {tarifs.data.commission.description}
-                </p>
-              </div>
-            )}
           </div>
         )}
       </div>
