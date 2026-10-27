@@ -636,7 +636,7 @@ Ce sont des constats sur le code de `main`, pas des règles. La consigne du 27/1
 | 3 | #51 | 2.12 frais (backend) | — | — |
 | 4 | #52 | 2.12 frais (web) | #51 | — |
 | 5 | #53 | 1.24 Render hors Blueprint | — | en-têtes du site statique |
-| 6 | lot 1.22 | récupération d'un admin | — | — |
-| 7 | cette PR | 0.3 suite | — | — |
+| 6 | #55 | 1.22 récupération d'un admin | — | — |
+| 7 | #54 | 0.3 suite (ce document) | — | — |
 
 Après #50, toute PR qui change une réponse de l'API met à jour `backend/app/schemas/reponses.py`, puis lance `flask api spec` et `npm run api:types`. Les tests et la CI le vérifient.
