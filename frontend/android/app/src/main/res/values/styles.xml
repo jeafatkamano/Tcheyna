@@ -13,13 +13,19 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- Fond de fenêtre bleu nuit : visible un instant derrière la barre
+             d'état avant que la page ne s'affiche, au lieu du gris du thème
+             sombre d'Android. La page dessine ensuite sa propre bande sous la
+             barre d'état (index.css, « Barre d'état »). -->
+        <item name="android:windowBackground">@color/ic_launcher_background</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
         <!-- Android 12 et plus affichent leur propre écran de démarrage : l'icône
-             adaptative (« tcheyna. ») sur ce fond, bleu nuit comme l'icône. -->
+             adaptative (« t. ») sur ce fond, bleu nuit comme l'icône. -->
         <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
     </style>
 </resources>

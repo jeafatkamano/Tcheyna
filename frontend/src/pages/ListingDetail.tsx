@@ -475,8 +475,9 @@ export function ListingDetail() {
 
       {/* Barre d'action */}
       <div
-        className="sticky bottom-0 px-4 py-4 border-t border-gray-200"
-        style={{ background: "#F0F4FA" }}
+        className="sticky bottom-0 px-4 pt-4 border-t border-gray-200"
+        // Au-dessus de la barre de gestes du téléphone (index.css, --inset-bas).
+        style={{ background: "#F0F4FA", paddingBottom: "calc(1rem + var(--inset-bas))" }}
       >
         {listing.is_owner ? (
           <Link

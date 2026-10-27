@@ -707,7 +707,10 @@ export function ModaleVisite({
   return (
     <div className="fixed inset-0 z-50 flex items-end">
       <div className="absolute inset-0 bg-black/50" onClick={onFerme} />
-      <div className="relative w-full rounded-t-3xl p-6 space-y-5" style={{ background: "white" }}>
+      <div
+        className="relative w-full rounded-t-3xl p-6 space-y-5"
+        style={{ background: "white", paddingBottom: "calc(1.5rem + var(--inset-bas))" }}
+      >
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-lg" style={{ color: "#1E3A5F" }}>
             Planifier une visite
