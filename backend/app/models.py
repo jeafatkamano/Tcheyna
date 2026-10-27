@@ -127,6 +127,17 @@ class User(db.Model):
     def badge(self):
         return TRUST_LEVELS[self.trust_level or 0]["label"]
 
+    @property
+    def proprietaire_verifie(self):
+        """Badge « Propriétaire vérifié » (D3, lot 2.1) : bailleur ou agence
+        dont la pièce d'identité a été validée par un administrateur.
+
+        Calculé, jamais stocké ni lu dans une requête : il suit `cni_verified`,
+        que seule la décision admin (PUT /admin/verify-cni) met à vrai. Il ne
+        conditionne pas la publication, qui exige le téléphone vérifié
+        (`services.acces.peut_publier_annonce`)."""
+        return self.role in ("landlord", "agency") and bool(self.cni_verified)
+
     def update_trust_level(self):
         """Recalcule le niveau à partir des vérifications acquises.
 
@@ -189,6 +200,7 @@ class User(db.Model):
             "phone_verified": self.phone_verified,
             "cni_verified":   self.cni_verified,
             "income_verified": self.income_verified,
+            "proprietaire_verifie": self.proprietaire_verifie,
             "avatar_url":     self.avatar_url,
             "preferred_lang": self.preferred_lang,
             "note_moyenne":   note_moyenne,

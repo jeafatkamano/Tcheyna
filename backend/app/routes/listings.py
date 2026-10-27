@@ -37,7 +37,7 @@ from app.schemas.listings import (
     verifier_lieu,
 )
 from app.services import stockage
-from app.services.acces import peut_voir_annonce, visibilite_adresse
+from app.services.acces import peut_voir_annonce, publication_autorisee, visibilite_adresse
 from app.services.matching import score_compatibilite, trier_par_compatibilite
 
 listings_bp = Blueprint("listings", __name__)
@@ -329,6 +329,7 @@ def get_listing(listing_id):
 
 @listings_bp.route("/", methods=["POST"])
 @role_required("landlord", "agency")
+@publication_autorisee  # D3 : téléphone vérifié (services/acces.py)
 @valider_corps(CreationAnnonce)
 def create_listing(current_user, corps):
     valeurs = corps.model_dump()
