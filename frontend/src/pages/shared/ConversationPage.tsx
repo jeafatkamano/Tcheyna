@@ -367,7 +367,7 @@ function Bulle({
   message: Message;
   estMien: boolean;
   precedent?: Message;
-  interlocuteur?: User;
+  interlocuteur?: User | null;
 }) {
   const date = message.created_at ? new Date(message.created_at) : new Date();
   const nouveauJour =
