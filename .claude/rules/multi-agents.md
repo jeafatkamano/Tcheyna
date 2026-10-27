@@ -14,6 +14,7 @@
 - Ne jamais pousser sur `main`, ne jamais merger, ne jamais modifier `docs/BACKLOG.md`.
 - Aucune clé ni donnée réelle : Supabase, CinetPay, Africa's Talking et Expo sont mockés dans les tests. Pas de déploiement Render, pas de `eas build`.
 - Une règle métier manquante (prix, frais, fonctionnalité payante, durée de conservation) ne s'invente pas : la poser comme question dans la PR et s'arrêter sur ce point.
+- `render.yaml` n'est pas appliqué automatiquement (services Render créés sans Blueprint) : toute PR qui le modifie donne dans son corps l'action manuelle équivalente dans le tableau de bord Render (chemin du réglage, valeur exacte à copier, vérification). Voir `docs/RUNBOOK_PHASE1.md`, section 12.
 
 ## Avant de dire « terminé »
 

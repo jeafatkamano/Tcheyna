@@ -405,3 +405,140 @@ FROM fichiers_a_supprimer
 GROUP BY origine
 ORDER BY plus_ancien;
 ```
+
+## 12. Render : appliquer `render.yaml` à la main (lot 1.24)
+
+Les services Render de Tcheyna ont été créés sans Blueprint : **`render.yaml`
+n'est pas appliqué automatiquement**. Ce qu'une PR y change ne prend effet
+qu'une fois reporté à la main dans le tableau de bord. Constaté le 27/10/2026 :
+le site statique n'envoie ni la CSP ni les autres en-têtes de sécurité du lot
+1.17 (seuls `nosniff` et HSTS, posés d'office par Render, sont présents).
+
+Règle (`.claude/rules/multi-agents.md`) : toute PR qui modifie `render.yaml`
+donne dans son corps l'action manuelle équivalente.
+
+### a) En-têtes du site statique
+
+Render → service **`tcheyna`** (Static Site) → **Headers** (menu du service ;
+selon la version de l'interface, Settings → Headers). Pour chaque règle
+ci-dessous : ajoute une règle (bouton d'ajout de la page Headers), remplis
+Path, Name et Value **copiés tels quels**, puis enregistre. Les libellés
+exacts des boutons dépendent de la version de l'interface. Les valeurs viennent de `render.yaml` (service
+`tcheyna`, clé `headers`) ; elles ne contiennent aucun secret.
+
+Avant d'ajouter, supprime une éventuelle règle existante de même Path et de
+même Name, pour ne pas envoyer l'en-tête deux fois. `/*` couvre toutes les
+adresses du site, y compris celles réécrites vers `index.html`.
+
+**Règle 1 : cache long des fichiers du build**
+- Path : `/assets/*`
+- Name : `Cache-Control`
+- Value :
+  ```
+  public, max-age=31536000, immutable
+  ```
+
+**Règle 2 : service worker toujours revérifié**
+- Path : `/sw.js`
+- Name : `Cache-Control`
+- Value :
+  ```
+  no-cache
+  ```
+
+**Règle 3 : manifest toujours revérifié**
+- Path : `/manifest.webmanifest`
+- Name : `Cache-Control`
+- Value :
+  ```
+  no-cache
+  ```
+
+**Règle 4 : politique de sécurité du contenu (CSP)**, valeur sur une seule ligne :
+- Path : `/*`
+- Name : `Content-Security-Policy`
+- Value :
+  ```
+  default-src 'self'; script-src 'self' 'unsafe-hashes' 'sha256-9gOBGqEQINNDuds+tkXbNzih6klbz+KeCyxEj4KRLeM='; style-src 'self' https://fonts.googleapis.com 'sha256-4fLmxw9BupI3iooEXtTtNH0Cs3dvHVHAPY1IjcoaLJc='; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: https://*.supabase.co https://tcheyna-api.onrender.com; connect-src 'self' https://tcheyna-api.onrender.com https://*.supabase.co; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+  ```
+
+**Règle 5**
+- Path : `/*`
+- Name : `X-Content-Type-Options`
+- Value :
+  ```
+  nosniff
+  ```
+  Render pose déjà cet en-tête. Si la vérification (b) le montre en double
+  (`nosniff, nosniff`), supprime cette règle.
+
+**Règle 6**
+- Path : `/*`
+- Name : `Referrer-Policy`
+- Value :
+  ```
+  strict-origin-when-cross-origin
+  ```
+
+**Règle 7**
+- Path : `/*`
+- Name : `Permissions-Policy`
+- Value :
+  ```
+  camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), midi=(), display-capture=(), browsing-topics=()
+  ```
+
+Vérifie aussi, dans **Redirects/Rewrites** du même service, la règle de
+l'application monopage : Source `/*`, Destination `/index.html`, Action
+**Rewrite**. Sans elle, recharger `/tenant/dashboard` renvoie une 404.
+
+Si la valeur de la CSP change dans `render.yaml` (par exemple quand
+`node scripts/verifier-csp.mjs` signale une nouvelle empreinte de
+`public/hors-ligne.html`), recopie la nouvelle valeur dans la règle 4.
+
+### b) Vérifier
+
+Depuis PowerShell, sur le site en production :
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$site = "https://tcheyna.onrender.com"
+$noms = "content-security-policy|x-content-type-options|referrer-policy|permissions-policy|strict-transport-security|cache-control"
+function Entetes($url) {
+  $r = Invoke-WebRequest -Uri $url -UseBasicParsing
+  "--- $url"
+  $r.Headers.GetEnumerator() | Where-Object { $_.Key -match $noms } |
+    Sort-Object Key | Format-Table Key, Value -AutoSize -Wrap | Out-String -Width 400
+}
+Entetes "$site/"
+Entetes "$site/tenant/dashboard"   # page réécrite vers index.html
+Entetes "$site/sw.js"
+# Un fichier du build : son nom change à chaque déploiement, on le lit dans index.html.
+$page = (Invoke-WebRequest -Uri "$site/" -UseBasicParsing).Content
+$asset = [regex]::Match($page, '/assets/[^"'']+\.js').Value
+Entetes "$site$asset"
+```
+
+Attendu :
+- sur `/`, `/tenant/dashboard` et `sw.js` : `Content-Security-Policy` (la
+  valeur de la règle 4), `X-Content-Type-Options: nosniff` (une seule fois),
+  `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, et
+  `Strict-Transport-Security` (posé par Render) ;
+- `sw.js` : `Cache-Control: no-cache` ;
+- le fichier `/assets/…js` : `Cache-Control: public, max-age=31536000, immutable`.
+
+Ouvre ensuite le site dans un navigateur, F12 → Console, et parcours
+l'accueil, une annonce, la connexion et la messagerie. **Aucun message
+« Content Security Policy » ne doit apparaître.** S'il en apparaît un (page
+blanche, police ou photo absente), supprime la règle 4 pour rétablir le site,
+puis signale le message exact : la CSP sera corrigée dans `render.yaml`.
+
+### c) Variables d'environnement
+
+Une variable `sync: false` de `render.yaml` n'a jamais de valeur dans le
+dépôt : elle se saisit dans Render → le service → Environment. Celles qui
+restent à poser à la main sont listées dans le corps de la PR qui les ajoute
+(par exemple `TACHES_NOCTURNES_JETON`, lot 1.25, ou `AT_USERNAME`, lot 1.17).
+Une variable avec `value:` dans `render.yaml` doit avoir la même valeur dans le
+tableau de bord : en cas d'écart, c'est le tableau de bord qui fait foi pour
+le service en production.
