@@ -103,8 +103,11 @@ def create_app(config_class=Config):
     # Chaque `init_app` repart d'un stockage neuf : les compteurs ne fuient
     # pas d'une application (ou d'un test) à l'autre.
     limiter.init_app(app)
+    # Toutes les routes sauf /api/interne/ (lot 1.25) : aucune page web n'a à
+    # appeler une route interne, le navigateur la refuse donc à tout site.
     CORS(
         app,
+        resources=r"^(?!/api/interne/).*",
         origins=app.config["CORS_ORIGINS"],
         supports_credentials=True,
         allow_headers=["Content-Type", "Authorization"],
@@ -115,6 +118,7 @@ def create_app(config_class=Config):
     from app.routes.auth import auth_bp
     from app.routes.favorites import favorites_bp
     from app.routes.geo import geo_bp
+    from app.routes.interne import interne_bp
     from app.routes.listings import listings_bp
     from app.routes.matches import matches_bp
     from app.routes.messages import messages_bp
@@ -137,6 +141,7 @@ def create_app(config_class=Config):
     app.register_blueprint(payments_bp,      url_prefix="/api/payments")
     app.register_blueprint(geo_bp,           url_prefix="/api/geo")
     app.register_blueprint(admin_bp,         url_prefix="/api/admin")
+    app.register_blueprint(interne_bp,       url_prefix="/api/interne")
 
     from app.commandes import donnees_cli, visites_cli
     app.cli.add_command(donnees_cli)
