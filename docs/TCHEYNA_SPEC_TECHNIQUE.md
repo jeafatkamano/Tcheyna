@@ -46,9 +46,9 @@ stateDiagram-v2
 |---|---|---|---|---|
 | → `pending` | `POST /api/matches/` (`routes/matches.py:create_match`) | locataire (`tenant`) | niveau ≥ 1, sinon 403 `action_requise: verifier_telephone` ; annonce `active` et visible, sinon 400 ; pas sa propre annonce (400) ; annonce certifiée : niveau ≥ 2, sinon 403 `action_requise: verifier_identite` ; une seule candidature par annonce (409) | score de compatibilité figé (`services/matching.py:score_compatibilite`) ; notification `nouvelle_candidature` au bailleur |
 | `pending` → `accepted` | `PUT /api/matches/<id>/statut` `{"statut": "accepted"}` (`routes/matches.py:update_match_status`) | bailleur ou agence propriétaire de l'annonce (403 sinon) | statut courant `pending` ou `accepted`, sinon 409 | conversation créée si absente ; notification `candidature_acceptee` ; l'adresse exacte s'ouvre au locataire (`services/acces.py:STATUTS_OUVRANT_ADRESSE`) |
-| `pending`/`accepted` → `rejected` | même route, `{"statut": "rejected"}` | idem | idem | notification `candidature_refusee` ; le passeport du candidat se ferme au bailleur (`services/acces.py:STATUTS_OUVRANT_PASSEPORT`) |
-| `accepted` → `completed` | `PUT /api/matches/<id>/conclure` (`routes/matches.py:conclure_location`) | bailleur ou agence propriétaire | statut `accepted`, sinon 400 | `completed_at` ; annonce → `matched` ; les autres candidatures `pending`/`accepted` de l'annonce → `rejected`, chacune notifiée ; notification « Location conclue » (type `candidature_acceptee`) au locataire ; les avis s'ouvrent (`routes/reviews.py:create_review`) |
-| `pending`/`accepted`/`rejected` → `cancelled` | `DELETE /api/matches/<id>` (`routes/matches.py:retirer_candidature`) | le locataire auteur (403 sinon) | refusé seulement si `completed` (400) | aucune notification |
+| `pending`/`accepted` → `rejected` | même route, `{"statut": "rejected"}` | idem | idem | notification `candidature_refusee` ; le passeport du candidat se ferme au bailleur (`services/acces.py:STATUTS_OUVRANT_PASSEPORT`) ; frais de mise en relation déjà payés → `a_rembourser` (lot 2.12, 1.4), listés dans `frais_a_rembourser` de la réponse |
+| `accepted` → `completed` | `PUT /api/matches/<id>/conclure` (`routes/matches.py:conclure_location`) | bailleur ou agence propriétaire | statut `accepted`, sinon 400 | `completed_at` ; annonce → `matched` ; les autres candidatures `pending`/`accepted` de l'annonce → `rejected`, chacune notifiée, et leurs frais de mise en relation payés → `a_rembourser` (lot 2.12) ; notification « Location conclue » (type `candidature_acceptee`) au locataire ; les avis s'ouvrent (`routes/reviews.py:create_review`) |
+| `pending`/`accepted`/`rejected` → `cancelled` | `DELETE /api/matches/<id>` (`routes/matches.py:retirer_candidature`) | le locataire auteur (403 sinon) | refusé seulement si `completed` (400) ; verrous annonce, puis candidature, puis frais | retrait d'une candidature `accepted` : notification `candidature_retiree` au bailleur, qui précise que les frais payés ne sont pas remboursés (lot 2.12) ; sinon aucune notification |
 | `pending`/`accepted` → `cancelled` | suppression d'un compte (`services/donnees_personnelles.py:anonymiser_compte`) | titulaire du compte, locataire ou bailleur | — | candidatures du locataire supprimé (message effacé) et candidatures reçues sur les annonces du bailleur supprimé |
 
 Autres règles liées au statut :
@@ -151,6 +151,7 @@ stateDiagram-v2
     pending --> success : ACCEPTED, montant conforme, service dû
     pending --> failed : REFUSED
     pending --> a_rembourser : ACCEPTED mais hors plateforme ou doublon
+    success --> a_rembourser : frais d'une candidature écartée par le bailleur
     pending --> pending : statut inconnu ou montant non conforme
     a_rembourser --> rembourse : clôture par un admin
     success --> [*]
@@ -160,11 +161,12 @@ stateDiagram-v2
 
 | Transition | Déclencheur | Qui | Contrôles | Effets |
 |---|---|---|---|---|
-| → `pending` | `POST /api/payments/initier` (`routes/payments.py:initier_paiement`) | utilisateur connecté ; 10 par minute par compte | `caution` et `premier_loyer` refusés par le schéma (422 `hors_plateforme`, D2) ; match ou annonce d'autrui : 403 ; commission réglée par le bailleur seulement (403) ; commission : candidature `accepted` ou `completed` d'une location ; certification et mise en avant : `listing_id` requis ; abonnement : locataire sans abonnement en cours ; paiement en attente du même service revérifié d'abord (409 s'il vient d'être confirmé, ou s'il a moins de 30 min) ; service déjà réglé (commission, certification, abonnement) : 409 ; tarifs fixes en GNF seulement (400) | référence `TCH-XXXXXXXX` ; sans `CINETPAY_API_KEY` : reste `pending`, `mode: hors_ligne` ; CinetPay injoignable 503, illisible 502, refus d'initiation 400 |
+| → `pending` | `POST /api/payments/initier` (`routes/payments.py:initier_paiement`) | utilisateur connecté ; 10 par minute par compte | `caution` et `premier_loyer` refusés par le schéma (422 `hors_plateforme`, D2) ; match ou annonce d'autrui : 403 ; commission réglée par le bailleur seulement (403) ; commission : candidature `accepted` ou `completed` d'une location ; certification et mise en avant : `listing_id` requis ; abonnement : locataire sans abonnement en cours ; paiement en attente du même service revérifié d'abord (409 s'il vient d'être confirmé, ou s'il a moins de 30 min) ; service déjà réglé (commission, certification, abonnement) : 409 ; tarifs fixes en GNF seulement : annonce en XOF, GHS ou NGN → 422 `devise_non_prise_en_charge`, contrôlé avant toute reprise (lot 2.12) | référence `TCH-XXXXXXXX` ; sans `CINETPAY_API_KEY` : reste `pending`, `mode: hors_ligne` ; CinetPay injoignable 503, illisible 502, refus d'initiation 400 |
 | `pending` → `success` | `POST /api/payments/callback` (webhook), `POST /api/payments/<id>/verifier` (payeur), ou reprise à l'initiation | CinetPay | `ACCEPTED`, montant et devise conformes (`_montant_conforme`), aucun motif de remboursement | `paid_at` ; certification : annonce → `pending` ; mise en avant : `premium_until` prolongé de 30 jours ; notification `paiement_recu` |
 | `pending` → `failed` | idem | CinetPay | `REFUSED` explicite | — |
 | `pending` → `a_rembourser` | idem | CinetPay | `ACCEPTED` mais type hors plateforme, ou service déjà réglé (`_motif_remboursement`) | notification `paiement_a_rembourser` au payeur et à chaque admin |
 | `pending` reste `pending` | idem | — | statut inconnu, panne, ou montant non conforme (journalisé en erreur) | aucun ; un client a peut-être été débité |
+| `success` → `a_rembourser` | refus de la candidature, ou conclusion d'une autre location sur l'annonce (`routes/payments.py:rembourser_frais_ecartes`, lot 2.12) | bailleur | frais de mise en relation `success` de cette candidature, verrouillés après l'annonce et la candidature | motif `ecartee_par_le_bailleur` ; notification `paiement_a_rembourser` au bailleur et à chaque admin. Un retrait du locataire ne rembourse rien (décision du 27/10/2026) |
 | `a_rembourser` → `rembourse` | `PUT /api/admin/paiements/<id>/rembourse` (`routes/admin.py:marquer_rembourse`) | admin, après remboursement manuel dans le back-office CinetPay | statut `a_rembourser`, sinon 409 | notification `paiement_rembourse` |
 
 Tarifs (`routes/payments.py:TARIFS_GNF`) : certification 250 000 GNF, abonnement Passeport 150 000 GNF (un an, `models.py:DUREE_ABONNEMENT_PASSEPORT`), mise en avant 200 000 GNF (30 jours) ; commission 6 % du loyer.
@@ -362,7 +364,7 @@ Légende de la colonne Accès : **public** (sans jeton), **public+** (jeton facu
 | `GET /mes-demandes` | `landlord`, `agency` | `statut`, `listing_id` | passeport public du candidat tant que la candidature l'ouvre | — | `mes_demandes` |
 | `GET /candidats-suggeres` | `landlord`, `agency` | `listing_id` (requis, 400), `limite` (≤ 30) | 403 annonce d'autrui ; profils réduits, score ≥ 50, abonnés Passeport en tête | — | `candidats_suggeres` |
 | `GET /<id>` | les deux parties, `admin` | — | 404 pour tout autre lecteur (pas d'oracle) | — | `get_match` |
-| `PUT /<id>/statut` | `landlord`, `agency` propriétaire | `DecisionCandidature` | 403 ; 409 | — | `update_match_status` |
+| `PUT /<id>/statut` | `landlord`, `agency` propriétaire | `DecisionCandidature` | 403 ; 409 ; 402 frais à payer ; 422 `devise_non_prise_en_charge` (location hors GNF) ; refus : `frais_a_rembourser` | — | `update_match_status` |
 | `PUT /<id>/visite` | les deux parties | `Visite` | 403 ; 400 si non acceptée | — | `planifier_visite` |
 | `PUT /<id>/conclure` | `landlord`, `agency` propriétaire | — | 403 ; 400 si non acceptée | — | `conclure_location` |
 | `DELETE /<id>` | `tenant` auteur | — | 403 ; 400 si conclue | — | `retirer_candidature` |
@@ -412,7 +414,7 @@ Légende de la colonne Accès : **public** (sans jeton), **public+** (jeton facu
 
 | Méthode et chemin | Accès | Corps | Réponses notables | Débit | Fonction |
 |---|---|---|---|---|---|
-| `GET /tarifs` | public | — | services et commission | — | `tarifs` |
+| `GET /tarifs` | public | — | services, `devise`, `devises_prises_en_charge` (`["GNF"]`, lot 2.12) | — | `tarifs` |
 | `POST /initier` | connecté | `InitierPaiement` | voir 1.4 (400, 403, 409, 422, 502, 503) | 10/min par compte (sinon IP) | `initier_paiement` |
 | `POST /callback` | public (webhook CinetPay) | `CallbackCinetPay`, JSON ou formulaire, champs inconnus ignorés | 200 pour tout corps valide, transaction inconnue ou déjà traitée comprises ; 400 ou 422 si `cpm_trans_id` manque ou si le corps est illisible ; 429 au-delà de la limite ; statut revérifié auprès de CinetPay | 60/min par IP | `cinetpay_callback` |
 | `GET /mes-paiements` | connecté | `statut` | paiements du compte, `total_paye` | — | `mes_paiements` |
@@ -431,7 +433,7 @@ Légende de la colonne Accès : **public** (sans jeton), **public+** (jeton facu
 | `PUT /verify-revenus/<user_id>` | `Decision` | 404 sans passeport ; 422 `piece_absente` | `verify_revenus` |
 | `GET /certifications-pending` | — | annonces en examen, pièces en liens signés | `certifications_pending` |
 | `PUT /certifier/<listing_id>` | `Decision` | 400 refus sans motif | `certifier_annonce` |
-| `GET /paiements-a-rembourser` | — | motif `hors_plateforme` ou `doublon` | `paiements_a_rembourser` |
+| `GET /paiements-a-rembourser` | — | motif `hors_plateforme`, `doublon`, `candidature_close` ou `ecartee_par_le_bailleur` (lot 2.12) | `paiements_a_rembourser` |
 | `PUT /paiements/<id>/rembourse` | `Remboursement` | 404 ; 409 si pas `a_rembourser` | `marquer_rembourse` |
 | `GET /users` | paramètres `page`, `per_page` (≤ 200), `role`, `q` | — | `list_users` |
 | `PUT /users/<user_id>/statut` | `StatutCompte` | 400 sur soi-même ; 409 compte supprimé | `basculer_statut` |

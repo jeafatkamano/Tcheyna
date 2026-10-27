@@ -152,7 +152,7 @@ MOTIFS_REMBOURSEMENT = {
     "hors_plateforme": "la caution et le loyer ne se paient pas via Tcheyna",
     "doublon": "ce service était déjà réglé",
     "candidature_close": "la candidature n'était plus en attente (retirée ou refusée)",
-    "ecartee_par_le_bailleur": "vous avez écarté la candidature après avoir réglé les frais",
+    "ecartee_par_le_bailleur": "la candidature a été écartée après le paiement des frais",
 }
 
 

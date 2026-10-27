@@ -436,6 +436,11 @@ def retirer_candidature(current_user, match_id):
     match = Match.query.get_or_404(match_id)
     if match.tenant_id != current_user.id:
         return jsonify({"error": "Non autorisé"}), 403
+    # L'annonce, puis la candidature, puis ses paiements : le même ordre que le
+    # refus, la conclusion et la confirmation des frais. Sans ces verrous, un
+    # retrait lu « en attente » écraserait une acceptation confirmée entre-temps.
+    _annonce_verrouillee(match.listing_id)
+    match = db.session.execute(_requete_candidature_verrouillee(match_id)).scalar_one()
 
     if match.status == "completed":
         return jsonify({"error": "Une location conclue ne peut pas être retirée"}), 400
