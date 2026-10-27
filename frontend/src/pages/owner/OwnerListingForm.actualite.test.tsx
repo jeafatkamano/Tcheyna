@@ -7,11 +7,20 @@ import { createRoot } from "react-dom/client";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Listing } from "../../api";
+import type { Listing, User } from "../../api";
 
 const detail = vi.fn();
 const confirmer = vi.fn();
 const modifier = vi.fn();
+
+// Le formulaire lit le compte connecté depuis le lot 2.1 (téléphone vérifié
+// exigé pour publier, D3) : bailleur vérifié, pour tester la seule
+// confirmation d'actualité.
+const auth: { user: Partial<User> | null; rafraichir: () => Promise<null> } = {
+  user: { id: "U1", role: "landlord", phone: "622000000", phone_verified: true },
+  rafraichir: async () => null,
+};
+vi.mock("../../context/AuthContext", () => ({ useAuth: () => auth }));
 
 vi.mock("../../api", async (original) => {
   const reel = await original<typeof import("../../api")>();
