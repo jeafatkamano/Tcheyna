@@ -148,16 +148,26 @@ services:
 
     # 1. Reprise des suppressions de fichiers restées en échec ;
     # 2. purge des pièces sans décision depuis plus de
-    #    DUREE_CONSERVATION_PIECES_JOURS.
-    # La purge tourne MÊME si la reprise échoue (`;` et non `&&`) : il suffit
-    # d'un fichier que Supabase refuse durablement pour que la reprise sorte
-    # en erreur chaque nuit, et la purge, qui est l'engagement D5, ne
-    # tournerait alors plus jamais. Le code de sortie reste celui de la
-    # première commande en échec : Render marque l'exécution « Failed » et
-    # l'erreur se lit dans les journaux.
+    #    DUREE_CONSERVATION_PIECES_JOURS (D5) ;
+    # 3. validité de 3 mois des justificatifs de revenus (D12, lot 2.10) ;
+    # 4. expiration des annonces sans activité depuis 30 jours (D6, lot 2.3) ;
+    # 5. rappels des visites du jour et du lendemain (lot 2.7).
+    # Chaque étape tourne MÊME si une précédente échoue (`;` et non `&&`) : il
+    # suffit d'un fichier que Supabase refuse durablement pour que la reprise
+    # sorte en erreur chaque nuit, et la purge, qui est l'engagement D5, ne
+    # tournerait alors plus jamais. Le code de sortie est celui de la
+    # première étape en échec : Render marque l'exécution « Failed » et
+    # l'erreur se lit dans les journaux. Commande unique proposée par la
+    # spécification technique (lot 0.3, annexe), posée à l'intégration du
+    # 27/10/2026 qui réunit les lots 2.3, 2.7 et 2.10.
     startCommand: >-
       cd backend && flask donnees retenter-suppressions; reprise=$?;
-      flask donnees purger-pieces && exit $reprise
+      flask donnees purger-pieces; purge=$?;
+      flask donnees expirer-revenus; revenus=$?;
+      flask annonces expirer; annonces=$?;
+      flask visites rappeler; visites=$?;
+      for code in $reprise $purge $revenus $annonces $visites; do
+      [ "$code" -ne 0 ] && exit "$code"; done; exit 0
 
     # Les secrets ne sont saisis qu'une fois, sur tcheyna-api : `fromService`
     # en recopie la valeur à chaque synchronisation du Blueprint, et non en
