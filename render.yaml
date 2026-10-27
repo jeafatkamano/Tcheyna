@@ -97,8 +97,12 @@ services:
       # mode développement uniquement.
       - key: AT_API_KEY
         sync: false
+      # Nom d'utilisateur du compte Africa's Talking de production, à
+      # renseigner dans le tableau de bord (lot 1.17). « sandbox » n'envoie
+      # aucun SMS réel. Render ignore `sync: false` sur un Blueprint déjà
+      # créé : la valeur en place reste jusqu'à ce qu'on la change à la main.
       - key: AT_USERNAME
-        value: sandbox
+        sync: false
       - key: AT_SENDER_ID
         value: TCHEYNA
 
@@ -153,3 +157,47 @@ services:
       - path: /manifest.webmanifest
         name: Cache-Control
         value: no-cache
+
+      # En-têtes de sécurité (lot 1.17), sur toutes les routes, y compris
+      # index.html servi par la réécriture et sw.js (la CSP de sw.js régit
+      # les requêtes du service worker lui-même).
+      #
+      # CSP : rien d'inline dans le build Vite ; seules exceptions, la page
+      # public/hors-ligne.html, autorisée par empreinte (son bloc <style> et
+      # son onclick="location.reload()"). Toute modification de cette page
+      # change l'empreinte : `node scripts/verifier-csp.mjs`, lancé par la CI
+      # après le build, le signale avec la nouvelle valeur à recopier ici.
+      #   • fonts.googleapis.com / fonts.gstatic.com : police Plus Jakarta
+      #     Sans (src/styles/fonts.css).
+      #   • *.supabase.co : photos du stockage public (le dépôt est public,
+      #     le nom du projet n'y figure pas) ; aussi dans connect-src, car le
+      #     service worker les relit par fetch() pour le cache hors ligne.
+      #   • API : VITE_API_URL ci-dessus (même origine dans les deux).
+      #   • blob: : aperçus des photos avant téléversement.
+      - path: /*
+        name: Content-Security-Policy
+        value: >-
+          default-src 'self';
+          script-src 'self' 'unsafe-hashes' 'sha256-9gOBGqEQINNDuds+tkXbNzih6klbz+KeCyxEj4KRLeM=';
+          style-src 'self' https://fonts.googleapis.com 'sha256-4fLmxw9BupI3iooEXtTtNH0Cs3dvHVHAPY1IjcoaLJc=';
+          font-src 'self' https://fonts.gstatic.com;
+          img-src 'self' blob: https://*.supabase.co https://tcheyna-api.onrender.com;
+          connect-src 'self' https://tcheyna-api.onrender.com https://*.supabase.co;
+          manifest-src 'self';
+          worker-src 'self';
+          frame-ancestors 'none';
+          base-uri 'self';
+          form-action 'self';
+          object-src 'none'
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      # Fonctions du navigateur dont le site ne se sert pas. Restent permis :
+      # web-share et le presse-papiers (bouton « Partager » d'une annonce).
+      # Le choix d'une photo passe par <input type="file">, sans caméra.
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), midi=(), display-capture=(), browsing-topics=()
