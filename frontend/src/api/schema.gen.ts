@@ -1511,7 +1511,10 @@ export interface components {
          *       • `reessayer_dans` (429) : secondes avant de réessayer ;
          *       • `action_requise` (402, 403) : ce que l'utilisateur doit faire
          *         (`payer_frais_mise_en_relation`, `verifier_telephone`,
-         *         `verifier_identite`) ; `paiement` : le paiement attendu ;
+         *         `verifier_identite`) ; `paiement` : le paiement attendu (402), ou le
+         *         paiement précédent du même service, confirmé ou encore en attente
+         *         (409 de `POST /payments/initier`) ;
+         *       • `motif` (409 d'un envoi dans une conversation fermée, lot 2.8) ;
          *       • `paiement_requis` et `certification_resoumission` (402 d'une demande
          *         de certification, lot 2.2) ;
          *       • `code` et `plafond` (409, plafond de candidatures actives, D7).
@@ -1522,12 +1525,23 @@ export interface components {
             details?: components["schemas"]["DetailErreur"][];
             /** @default null */
             reessayer_dans?: number;
+            /**
+             * @default null
+             * @enum {string}
+             */
+            action_requise?: "payer_frais_mise_en_relation" | "verifier_telephone" | "verifier_identite";
             /** @default null */
-            action_requise?: string;
-            /** @default null */
-            paiement?: components["schemas"]["PaiementAttendu"];
-            /** @default null */
-            paiement_requis?: string;
+            paiement?: components["schemas"]["PaiementAttendu"] | components["schemas"]["Payment"];
+            /**
+             * @default null
+             * @constant
+             */
+            paiement_requis?: "certification";
+            /**
+             * @default null
+             * @enum {string}
+             */
+            motif?: "candidature_refusee" | "candidature_retiree" | "candidature_close";
             /** @default null */
             certification_resoumission?: components["schemas"]["CertificationResoumission"];
             /** @default null */

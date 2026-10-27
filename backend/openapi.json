@@ -3868,7 +3868,7 @@
       },
       "Erreur": {
         "additionalProperties": false,
-        "description": "Corps de toute réponse d'erreur. `details` : liste des erreurs par\nchamp (sur un 422 ; vide ou absente ailleurs). Champs propres à certaines\nréponses :\n  • `reessayer_dans` (429) : secondes avant de réessayer ;\n  • `action_requise` (402, 403) : ce que l'utilisateur doit faire\n    (`payer_frais_mise_en_relation`, `verifier_telephone`,\n    `verifier_identite`) ; `paiement` : le paiement attendu ;\n  • `paiement_requis` et `certification_resoumission` (402 d'une demande\n    de certification, lot 2.2) ;\n  • `code` et `plafond` (409, plafond de candidatures actives, D7).",
+        "description": "Corps de toute réponse d'erreur. `details` : liste des erreurs par\nchamp (sur un 422 ; vide ou absente ailleurs). Champs propres à certaines\nréponses :\n  • `reessayer_dans` (429) : secondes avant de réessayer ;\n  • `action_requise` (402, 403) : ce que l'utilisateur doit faire\n    (`payer_frais_mise_en_relation`, `verifier_telephone`,\n    `verifier_identite`) ; `paiement` : le paiement attendu (402), ou le\n    paiement précédent du même service, confirmé ou encore en attente\n    (409 de `POST /payments/initier`) ;\n  • `motif` (409 d'un envoi dans une conversation fermée, lot 2.8) ;\n  • `paiement_requis` et `certification_resoumission` (402 d'une demande\n    de certification, lot 2.2) ;\n  • `code` et `plafond` (409, plafond de candidatures actives, D7).",
         "properties": {
           "error": {
             "type": "string"
@@ -3886,14 +3886,36 @@
           },
           "action_requise": {
             "default": null,
+            "enum": [
+              "payer_frais_mise_en_relation",
+              "verifier_telephone",
+              "verifier_identite"
+            ],
             "type": "string"
           },
           "paiement": {
-            "$ref": "#/components/schemas/PaiementAttendu",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaiementAttendu"
+              },
+              {
+                "$ref": "#/components/schemas/Payment"
+              }
+            ],
             "default": null
           },
           "paiement_requis": {
+            "const": "certification",
             "default": null,
+            "type": "string"
+          },
+          "motif": {
+            "default": null,
+            "enum": [
+              "candidature_refusee",
+              "candidature_retiree",
+              "candidature_close"
+            ],
             "type": "string"
           },
           "certification_resoumission": {

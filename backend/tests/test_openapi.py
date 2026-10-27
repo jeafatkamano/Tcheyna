@@ -91,5 +91,5 @@ def test_les_routes_internes_ne_sont_pas_publiees(app):
 
 def test_erreurs_propres_a_certaines_routes_decrites(app):
     erreur = construire_spec(app)["components"]["schemas"]["Erreur"]["properties"]
-    for champ in ("reessayer_dans", "action_requise", "paiement", "code", "plafond"):
+    for champ in ("reessayer_dans", "action_requise", "paiement", "code", "plafond", "motif"):
         assert champ in erreur

@@ -315,16 +315,21 @@ class Erreur(Contrat):
       • `reessayer_dans` (429) : secondes avant de réessayer ;
       • `action_requise` (402, 403) : ce que l'utilisateur doit faire
         (`payer_frais_mise_en_relation`, `verifier_telephone`,
-        `verifier_identite`) ; `paiement` : le paiement attendu ;
+        `verifier_identite`) ; `paiement` : le paiement attendu (402), ou le
+        paiement précédent du même service, confirmé ou encore en attente
+        (409 de `POST /payments/initier`) ;
+      • `motif` (409 d'un envoi dans une conversation fermée, lot 2.8) ;
       • `paiement_requis` et `certification_resoumission` (402 d'une demande
         de certification, lot 2.2) ;
       • `code` et `plafond` (409, plafond de candidatures actives, D7)."""
     error: str
     details: list[DetailErreur] = None
     reessayer_dans: int = None
-    action_requise: str = None
-    paiement: PaiementAttendu = None
-    paiement_requis: str = None
+    action_requise: Literal["payer_frais_mise_en_relation", "verifier_telephone",
+                            "verifier_identite"] = None
+    paiement: PaiementAttendu | Payment = None
+    paiement_requis: Literal["certification"] = None
+    motif: MotifFermeture = None
     certification_resoumission: CertificationResoumission = None
     code: str = None
     plafond: int = None
