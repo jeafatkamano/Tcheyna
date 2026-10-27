@@ -70,3 +70,53 @@ def test_mes_demandes_cote_bailleur(client, match, bailleur, entetes):
     reponse = client.get("/api/matches/mes-demandes", headers=entetes(bailleur))
     assert reponse.status_code == 200
     assert reponse.get_json()["stats"]["acceptees"] == 1
+
+
+# ─── D7 : plafond de 5 candidatures actives ──────────────────
+
+def test_sixieme_candidature_active_refusee(client, fabrique, locataire, entetes):
+    for statut in ("pending", "pending", "pending", "pending", "accepted"):
+        fabrique.match(locataire, fabrique.annonce(), status=statut)
+    nouvelle = fabrique.annonce()
+
+    reponse = client.post("/api/matches/", headers=entetes(locataire),
+                          json={"listing_id": nouvelle.id})
+
+    assert reponse.status_code == 409
+    corps = reponse.get_json()
+    assert corps["code"] == "plafond_candidatures" and corps["plafond"] == 5
+    assert "Retirez-en une" in corps["error"]
+    assert Match.query.filter_by(listing_id=nouvelle.id).count() == 0
+
+
+def test_candidatures_closes_hors_plafond(client, fabrique, locataire, entetes):
+    for statut in ("rejected", "cancelled", "completed", "pending", "pending", "pending",
+                   "accepted"):
+        fabrique.match(locataire, fabrique.annonce(), status=statut)
+
+    reponse = client.post("/api/matches/", headers=entetes(locataire),
+                          json={"listing_id": fabrique.annonce().id})
+
+    assert reponse.status_code == 201
+
+
+def test_retrait_libere_une_place(client, fabrique, locataire, entetes):
+    candidatures = [fabrique.match(locataire, fabrique.annonce()) for _ in range(5)]
+    assert client.delete(f"/api/matches/{candidatures[0].id}",
+                         headers=entetes(locataire)).status_code == 200
+
+    reponse = client.post("/api/matches/", headers=entetes(locataire),
+                          json={"listing_id": fabrique.annonce().id})
+
+    assert reponse.status_code == 201
+
+
+def test_plafond_compte_par_locataire(client, fabrique, locataire, annonce, entetes):
+    autre = fabrique.locataire()
+    for _ in range(5):
+        fabrique.match(autre, fabrique.annonce())
+
+    reponse = client.post("/api/matches/", headers=entetes(locataire),
+                          json={"listing_id": annonce.id})
+
+    assert reponse.status_code == 201

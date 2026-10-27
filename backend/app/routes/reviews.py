@@ -4,7 +4,11 @@ routes/reviews.py — Avis croisés.
 Un avis n'est possible qu'après une location effectivement conclue via la
 plateforme : c'est ce qui rend l'historique de réputation crédible, et donc
 difficile à répliquer pour un concurrent.
+
+D8 : l'avis se laisse dans les 30 jours qui suivent la conclusion.
 """
+from datetime import datetime, timedelta
+
 from flask import Blueprint, jsonify
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -17,6 +21,15 @@ from app.schemas.reviews import Avis
 from app.services.acces import peut_voir_adresse
 
 reviews_bp = Blueprint("reviews", __name__)
+
+DELAI_AVIS = timedelta(days=30)
+
+
+def avis_encore_possible(match):
+    """Vrai tant que le délai D8 court. `updated_at` ne sert que pour une
+    location conclue sans `completed_at` (données antérieures à cette colonne)."""
+    conclu_le = match.completed_at or match.updated_at
+    return conclu_le is None or datetime.utcnow() <= conclu_le + DELAI_AVIS
 
 
 # ─── GET /api/reviews/user/<id> ──────────────────────────────
@@ -59,7 +72,7 @@ def avis_a_donner(current_user):
 
     en_attente = []
     for match in matches:
-        if match.id in deja_notes:
+        if match.id in deja_notes or not avis_encore_possible(match):
             continue
         cible = (match.listing.landlord if current_user.role == "tenant" else match.tenant)
         if not cible:
@@ -98,6 +111,10 @@ def create_review(current_user, corps):
         target_id, type_avis = match.tenant_id, "landlord_to_tenant"
     else:
         return jsonify({"error": "Vous n'êtes pas partie à cette location"}), 403
+
+    if not avis_encore_possible(match):
+        return jsonify({"error": "Le délai pour laisser un avis est dépassé : "
+                                 "30 jours après la conclusion de la location"}), 400
 
     if Review.query.filter_by(reviewer_id=current_user.id, match_id=match.id).first():
         return jsonify({"error": "Vous avez déjà laissé un avis pour cette location"}), 409
