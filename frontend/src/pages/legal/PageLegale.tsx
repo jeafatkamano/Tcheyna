@@ -23,7 +23,11 @@ export function PageLegale({
 }) {
   return (
     <div className="min-h-screen" style={{ background: "#F0F4FA" }}>
-      <div className="px-4 pt-6 pb-6" style={{ background: "#1E3A5F" }}>
+      <div
+        className="px-4 pt-6 pb-6"
+        // Fond sous la barre d'état (bord à bord, index.css), contenu en dessous.
+        style={{ background: "#1E3A5F", paddingTop: "calc(1.5rem + var(--inset-haut))" }}
+      >
         <Link to="/" className="inline-flex items-center gap-2 text-white/70 text-sm mb-4">
           <ArrowLeft size={17} />
           Retour

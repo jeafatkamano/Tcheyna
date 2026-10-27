@@ -49,7 +49,7 @@ export function Landing() {
   const { user, accueilDuRole } = useAuth();
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#0F2040" }}>
+    <div className="sous-barre-etat min-h-screen flex flex-col" style={{ background: "#0F2040" }}>
       <Hero />
 
       {/* Repères du marché — chiffres du recensement RGPH-4 2025 */}

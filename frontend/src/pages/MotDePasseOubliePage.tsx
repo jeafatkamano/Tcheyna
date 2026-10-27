@@ -239,7 +239,7 @@ export function MotDePasseOubliePage() {
 
   return (
     <div
-      className="min-h-screen flex flex-col"
+      className="sous-barre-etat min-h-screen flex flex-col"
       style={{ background: "linear-gradient(160deg, #0F2040 0%, #1E3A5F 60%, #0F2040 100%)" }}
     >
       <header className="flex items-center justify-between px-6 pt-8 pb-4">

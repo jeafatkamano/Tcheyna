@@ -135,7 +135,7 @@ export function ConversationPage() {
 
   if (conversation.chargement) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
+      <div className="sous-barre-etat min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
         <Chargement texte="Ouverture de la discussion…" />
       </div>
     );
@@ -143,7 +143,7 @@ export function ConversationPage() {
 
   if (conversation.erreur || !conversation.data) {
     return (
-      <div className="min-h-screen flex flex-col" style={{ background: "#F0F4FA" }}>
+      <div className="sous-barre-etat min-h-screen flex flex-col" style={{ background: "#F0F4FA" }}>
         <div className="px-4 pt-6">
           <button onClick={() => navigate(-1)} className="p-2 -ml-2" style={{ color: "#1E3A5F" }}>
             <ArrowLeft size={20} />
@@ -164,7 +164,8 @@ export function ConversationPage() {
       {/* En-tête */}
       <div
         className="flex items-center gap-3 px-4 py-3 shadow-sm flex-shrink-0"
-        style={{ background: "#1E3A5F" }}
+        // Fond sous la barre d'état (bord à bord, index.css), contenu en dessous.
+        style={{ background: "#1E3A5F", paddingTop: "calc(0.75rem + var(--inset-haut))" }}
       >
         <button
           onClick={() => navigate("/messages")}

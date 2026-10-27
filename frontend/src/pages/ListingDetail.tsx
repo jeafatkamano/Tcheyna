@@ -115,7 +115,7 @@ export function ListingDetail() {
 
   if (annonce.chargement) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
+      <div className="sous-barre-etat min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
         <Chargement texte="Chargement de l'annonce…" />
       </div>
     );
@@ -123,7 +123,7 @@ export function ListingDetail() {
 
   if (annonce.erreur || !listing) {
     return (
-      <div className="min-h-screen flex flex-col" style={{ background: "#F0F4FA" }}>
+      <div className="sous-barre-etat min-h-screen flex flex-col" style={{ background: "#F0F4FA" }}>
         <div className="px-4 pt-6">
           <button onClick={() => navigate(-1)} className="p-2 -ml-2" style={{ color: "#1E3A5F" }}>
             <ArrowLeft size={20} />
@@ -161,7 +161,10 @@ export function ListingDetail() {
         />
         <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-transparent pointer-events-none" />
 
-        <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
+        <div
+          className="absolute left-4 right-4 flex items-center justify-between"
+          style={{ top: "calc(1rem + var(--inset-haut))" }}
+        >
           <button
             onClick={() => navigate(-1)}
             className="p-2 rounded-xl backdrop-blur-sm"

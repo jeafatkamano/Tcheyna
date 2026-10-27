@@ -8,11 +8,10 @@ body {
 }
 
 /* ─── Barre d'état (application Android) ─────────────────────────────
-   L'application s'affiche bord à bord : sans rien, le haut de la page
-   passerait sous l'heure et les icônes du téléphone. Comme Telegram, une
-   bande bleu nuit fixe occupe exactement la hauteur de la barre d'état, et la
-   page commence juste en dessous ; au défilement, le contenu glisse sous
-   cette bande au lieu de se mêler aux icônes.
+   L'application s'affiche bord à bord, comme Telegram : chaque page passe
+   sous la barre d'état transparente avec sa propre couleur, sans bande.
+   Seul le contenu du haut (logo, boutons) est décalé de la hauteur de la
+   barre, par la classe .sous-barre-etat ou un padding-top calculé.
    --safe-area-inset-* : valeurs injectées par Capacitor (capacitor.config.ts,
    SystemBars) ; env() ailleurs. Dans un navigateur ordinaire comme dans la
    PWA installée, elles valent 0 : rien ne change sur le site. */
@@ -21,30 +20,8 @@ body {
   --inset-bas: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
 
-body {
+/* Conteneur racine d'une page : son fond monte sous la barre d'état et son
+   contenu commence en dessous. À ne poser que sur un élément sans pt-*. */
+.sous-barre-etat {
   padding-top: var(--inset-haut);
-}
-
-body::before {
-  content: "";
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--inset-haut);
-  background: #1e3a5f;
-  z-index: 60;
-  pointer-events: none;
-}
-
-/* Le décalage du body s'ajoute aux hauteurs « plein écran » : sans cette
-   correction, les pages courtes défileraient de la hauteur de la barre d'état
-   et la zone de saisie des messages sortirait de l'écran. Règles hors couche :
-   elles l'emportent sur les utilitaires Tailwind (@layer utilities). */
-.min-h-screen {
-  min-height: calc(100vh - var(--inset-haut));
-}
-
-.h-screen {
-  height: calc(100vh - var(--inset-haut));
 }

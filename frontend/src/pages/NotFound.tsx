@@ -8,7 +8,7 @@ export function NotFound() {
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center px-6 text-center"
+      className="sous-barre-etat min-h-screen flex flex-col items-center justify-center px-6 text-center"
       style={{ background: "linear-gradient(160deg, #0F2040 0%, #1E3A5F 60%, #0F2040 100%)" }}
     >
       <span className="text-white font-bold tracking-tight mb-8" style={{ fontSize: "24px" }}>

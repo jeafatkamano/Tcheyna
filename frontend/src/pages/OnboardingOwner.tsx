@@ -31,7 +31,11 @@ function ParcoursProprietaire({ onTermine }: { onTermine: () => void }) {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#F0F4FA" }}>
-      <div className="px-4 pt-6 pb-6" style={{ background: "#1E3A5F" }}>
+      <div
+        className="px-4 pt-6 pb-6"
+        // Fond sous la barre d'état (bord à bord, index.css), contenu en dessous.
+        style={{ background: "#1E3A5F", paddingTop: "calc(1.5rem + var(--inset-haut))" }}
+      >
         <div className="flex items-center justify-between mb-5">
           <button
             onClick={() => (etape > 2 ? setEtape(etape - 1) : onTermine())}

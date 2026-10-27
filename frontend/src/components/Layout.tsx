@@ -88,7 +88,7 @@ export function Layout() {
 
   if (chargement) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
+      <div className="sous-barre-etat min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
         <Chargement texte="Chargement de votre espace…" />
       </div>
     );
@@ -119,9 +119,9 @@ export function Layout() {
     <div className="min-h-screen flex flex-col" style={{ background: "#F0F4FA" }}>
       {/* Barre haute */}
       <header
-        className="sticky z-40 flex items-center justify-between px-4 py-3 shadow-sm"
-        // Collée sous la bande de la barre d'état (index.css), pas dessous.
-        style={{ background: "#1E3A5F", top: "var(--inset-haut)" }}
+        className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 shadow-sm"
+        // Fond sous la barre d'état (bord à bord, index.css), contenu en dessous.
+        style={{ background: "#1E3A5F", paddingTop: "calc(0.75rem + var(--inset-haut))" }}
       >
         <div className="flex items-center gap-2">
           <button
