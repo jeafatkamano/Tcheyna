@@ -19,7 +19,7 @@
 2. [Contrat d'API](#2-contrat-dapi)
 3. [Règles transverses](#3-règles-transverses)
 4. [Questions ouvertes](#4-questions-ouvertes)
-5. [Annexe : ordre de merge et conflits signalés](#5-annexe--ordre-de-merge-et-conflits-signalés)
+5. [Annexe : état de l'intégration et ordre de merge](#5-annexe--état-de-lintégration-et-ordre-de-merge)
 
 ---
 
@@ -459,169 +459,51 @@ Légende de la colonne Accès : **public** (sans jeton), **public+** (jeton facu
 
 ### 3.1 Décisions D1 à D13
 
-**Source.** D1, D3, D4, D6, D7, D8, D11, D12 et D13 viennent de la consigne de Kamano du 20/10/2026 aux agents. Elle n'est pas consignée dans `docs/BACKLOG.md`, que seul Kamano modifie ; #31, #33 et #37 la citent avec cette date. D2, D5 et D10 viennent de `docs/BACKLOG.md` (15/10/2026). `docs/BACKLOG.md` liste encore D1, D3, D4, D6, D7, D8, D11 et D12 comme ouvertes, et ne connaît pas D13.
+**Source.** D1, D3, D4, D6, D7, D8, D11, D12 et D13 viennent de la consigne de Kamano du 20/10/2026 aux agents ; D2, D5 et D10 de `docs/BACKLOG.md` (15/10/2026). La consigne du 27/10/2026 révise D13 et tranche les questions de la section 4.1. Ces consignes ne sont pas recopiées dans `docs/BACKLOG.md`, que seul Kamano modifie.
+
+État au 27/10/2026, après l'intégration des PR #19 à #48 (`main` = `f833a17`, déployé).
 
 | # | Décision | Dans le code de `main` | En PR |
 |---|---|---|---|
-| D1 | Frais fixes de mise en relation, 250 000 GNF, payés par le bailleur à l'acceptation ; remplacent les 6 % ; vente gratuite ; autres devises : question | commission de 6 % (`models.py:COMMISSION_RATE`, `routes/payments.py:_montant_attendu`, `tarifs`) | #33 (backend), #36 (web, CGU) |
+| D1 | Frais fixes de mise en relation, 250 000 GNF, payés par le bailleur à l'acceptation ; remplacent les 6 % ; vente gratuite. 27/10 : GNF seulement ; remboursés si le bailleur refuse après avoir payé, pas si le locataire se retire | appliquée : 402 à l'acceptation d'une location, acceptation à la confirmation du paiement (`routes/payments.py:FRAIS_MISE_EN_RELATION_GNF`, `refus_acceptation_sans_frais`, `_confirmer`) ; commission retirée | #51 (remboursement, 422 hors GNF), #52 (CGU, tarifs) |
 | D2 | A : caution et premier loyer hors plateforme | appliquée : refus à l'initiation (`schemas/payments.py:PAIEMENTS_HORS_PLATEFORME`), encaissement éventuel → `a_rembourser` | — |
-| D3 | Téléphone vérifié par OTP pour publier ; CNI validée = badge « Propriétaire vérifié », sans bloquer | aucun contrôle à la publication | #31 (backend), #34 (web), #37 (réactivation) |
-| D4 | Re-soumission d'une certification refusée gratuite une fois, payante ensuite | un paiement réussi couvre toute nouvelle demande (`routes/listings.py:demander_certification`) | #37 |
-| D5 | A : pièces supprimées dès la décision, 12 mois au plus sans décision | appliquée : suppression à la décision (`routes/admin.py:verify_cni`, `verify_revenus`), purge par `flask donnees purger-pieces` (`DUREE_CONSERVATION_PIECES_JOURS = 365`) ; rien n'est planifié | #28 (planification) |
-| D6 | Expiration après 30 jours sans activité, relance à J-7 | rien | appliquée en PR #39 |
-| D7 | 5 candidatures actives au plus par locataire | rien | aucune (lot 2.5, bloqué par la migration en attente #19) |
-| D8 | Avis possible 30 jours après la conclusion | avis possible sans limite de temps après `completed` (`routes/reviews.py:create_review`) | aucune (lot 2.5, bloqué par la migration en attente #19) |
-| D9 | Hébergement Render | ouverte au backlog | — |
-| D10 | A : un seul dépôt ; déploiement séparé (3.9) et contrat d'API (3.10) | un seul dépôt | #18 (3.10) ; #28 utilise `buildFilter` pour le cron |
+| D3 | Téléphone vérifié par OTP pour publier ; CNI validée = badge « Propriétaire vérifié », sans bloquer. 27/10 : annonces existantes de bailleurs non vérifiés masquées 14 jours après notification | appliquée pour les nouvelles annonces (403 `telephone_non_verifie`) et le badge (`proprietaire_verifie`) | lot 2.13 (migration, à venir) |
+| D4 | Re-soumission d'une certification refusée gratuite une fois, payante ensuite | appliquée (`routes/listings.py:RESOUMISSIONS_GRATUITES`, `certification_a_payer`) | — |
+| D5 | A : pièces supprimées dès la décision, 12 mois au plus sans décision | appliquée : suppression à la décision, purge par `flask donnees purger-pieces` (`DUREE_CONSERVATION_PIECES_JOURS = 365`) ; **rien ne la lance chaque nuit** (voir D13) | #49 |
+| D6 | Expiration après 30 jours sans activité, relance à J-7 | appliquée (`routes/listings.py:expirer_annonces`, `flask annonces expirer`) | — |
+| D7 | 5 candidatures actives au plus par locataire | appliquée (`routes/matches.py:PLAFOND_CANDIDATURES_ACTIVES`, 409 `plafond_candidatures`) | — |
+| D8 | Avis possible 30 jours après la conclusion | appliquée depuis `completed_at` (`routes/reviews.py:DELAI_AVIS`) | lot 2.5 suite (conclusion confirmée, migration, à venir) |
+| D9 | Hébergement Render | offre gratuite, réveil par UptimeRobot (`docs/RUNBOOK_PHASE1.md` §9) ; ouverte au backlog | — |
+| D10 | A : un seul dépôt ; déploiement séparé (3.9) et contrat d'API (3.10) | un seul dépôt, `buildFilter` par service | #50 (3.10, remplace #18) |
 | D11 | Éditeur légal Kamino, champs laissés vides. « Kamino » est le nom de l'éditeur légal choisi, à ne pas confondre avec Kamano, le porteur du projet. | `frontend/src/lib/editeur.ts` : tous les champs vides, affichés « à compléter » | — |
-| D12 | Justificatif de revenus valable 3 mois | aucune expiration | #35 |
-| D13 | Purge D5 par Render Cron Job | commandes présentes, non planifiées | #28 |
+| D12 | Justificatif de revenus valable 3 mois | appliquée (`services/donnees_personnelles.py:appliquer_validite_revenus`, 90 jours, `flask donnees expirer-revenus`) | — |
+| D13 | Révisée le 27/10 : pas de Render Cron Job (carte bancaire exigée). Tâches nocturnes par une route interne protégée par un jeton, appelée chaque nuit par cron-job.org (gratuit) ; les clés de la base restent sur Render | `render.yaml` décrit encore le cron `tcheyna-purge-pieces`, mais les services Render ne sont pas gérés par un Blueprint : il n'a jamais été créé, **aucune tâche ne tourne la nuit** | #49 (route et réglage de cron-job.org) |
 
 ### 3.2 Couloirs, socle, migrations
 
 - **Couloirs et socle partagé** : `docs/agents/LANES.md`. Une API qui change : la PR backend d'abord (changement additif, spécification à jour), la PR web ensuite avec « Dépend de #n ». #18 y ajoute au socle `schemas/reponses.py`, `openapi.py`, `backend/openapi.json` et `frontend/src/api/schema.gen.ts`.
 - **Migrations**. Source de ces règles : la consigne de Kamano du 20/10/2026, qui n'est écrite nulle part dans le dépôt. `LANES.md` n'a pas de section dédiée. `backend/migrations/README` ne décrit que la mise en œuvre technique ; seule la règle du RLS y est reprise, par #19.
-  - une seule tête Alembic, une seule migration ouverte à la fois. Tête sur `main` : `694ce1497b2e` (chaîne `d5a017c5d0f3` → `3b8e2c41f7a9` → `7c4f1d2e9a6b` → `694ce1497b2e`). #19 ajoute `4506c18d7fd6` ;
+  - une seule tête Alembic, une seule migration ouverte à la fois. Tête sur `main` et en production (27/10/2026) : `4506c18d7fd6` (chaîne `d5a017c5d0f3` → `3b8e2c41f7a9` → `7c4f1d2e9a6b` → `694ce1497b2e` → `4506c18d7fd6`, RLS sur toutes les tables) ;
   - révision additive, compatible avec le code déjà en production ;
-  - toute nouvelle table active le RLS dans sa révision (`ALTER TABLE … ENABLE ROW LEVEL SECURITY`), seulement si `op.get_context().dialect.name == "postgresql"`. Après #19, la CI et `backend/tests/test_migrations_rls.py` échouent sinon ;
+  - toute nouvelle table active le RLS dans sa révision (`ALTER TABLE … ENABLE ROW LEVEL SECURITY`), seulement si `op.get_context().dialect.name == "postgresql"`. La CI et `backend/tests/test_migrations_rls.py` échouent sinon ;
   - le corps de la PR donne le SQL à appliquer en production **avant** le merge (sortie de `flask db upgrade <précédente>:<nouvelle> --sql`, dialecte PostgreSQL) et une requête de contrôle en lecture seule (`SELECT version_num FROM alembic_version;`) ; titre préfixé `[MIGRATION]`.
-- **Migrations annoncées dans les PR, à ouvrir après #19** : confirmation des visites, colonnes sur `matches` (#38) ; dépôt de la pièce d'identité d'un bailleur (#31, point 2) ; index sur `otp_codes.created_at` et empreinte du numéro (#21, pistes).
+- **Migrations à venir, une à la fois, dans cet ordre (consigne du 27/10/2026)** : 1.14 unicité de `users.phone` parmi les numéros vérifiés ; 2.13 délai de 14 jours des annonces de bailleurs non vérifiés ; 2.5 suite, conclusion confirmée ; 2.7 suite, confirmation de visite ; 2.6 signalements ; 2.9 reçu de caution ; 3.2 compteur de vues ; 3.4 clé d'idempotence ; 3.7 notifications push. 3.6 (journal d'événements) attend le PRD. Pistes encore sans lot : dépôt de la pièce d'identité d'un bailleur (#31) ; index sur `otp_codes.created_at` et empreinte du numéro (#21).
 - **Matrice d'accès** : toutes les règles « qui voit quoi » vivent dans `services/acces.py` : passeport complet (le locataire, l'admin) ou public (un bailleur qui a reçu une candidature `pending`, `accepted` ou `completed`) ; adresse exacte (propriétaire, admin, locataire dont la candidature est `accepted` ou `completed`) ; annonce retirée (propriétaire, admin, candidats). Les sérialisations masquent par défaut (`models.py:Listing.to_dict`).
 
 ### 3.3 Tâches planifiées et commandes `flask`
 
-Aucune tâche ne se déclenche seule dans l'application (`commandes.py`). Sur `main`, aucune n'est planifiée.
+Aucune tâche ne se déclenche seule dans l'application (`commandes.py`). **Sur `main`, aucune ne tourne la nuit** (voir D13).
 
-| Commande | Rôle | Fréquence | Origine |
-|---|---|---|---|
-| `flask donnees retenter-suppressions` | reprend les suppressions de fichiers en échec (`fichiers_a_supprimer`) ; sort en erreur s'il en reste | quotidienne | `main` |
-| `flask donnees purger-pieces` | supprime les pièces sans décision au-delà de `DUREE_CONSERVATION_PIECES_JOURS` ; refuse sans valeur valide | quotidienne | `main` |
-| `flask donnees rattraper-pieces-decidees` | supprime les pièces validées avant le lot 1.5 | une fois | `main` |
-| `flask api spec [--check]` | écrit ou vérifie `backend/openapi.json` | à chaque changement d'API, et en CI | #18 |
-| `flask donnees expirer-revenus` | D12 : relance à J-7, puis expiration des revenus vérifiés | quotidienne | #35 |
-| `flask visites rappeler` | rappel des visites d'aujourd'hui et de demain aux deux parties, sans doublon | quotidienne | #38 |
-| `flask annonces expirer` | D6 : relance à J-7, puis retrait des annonces sans activité depuis 30 jours | quotidienne | #39 |
+| Commande | Rôle | Fréquence |
+|---|---|---|
+| `flask donnees retenter-suppressions` | reprend les suppressions de fichiers en échec (`fichiers_a_supprimer`) ; sort en erreur s'il en reste | quotidienne |
+| `flask donnees purger-pieces` | D5 : supprime les pièces sans décision au-delà de `DUREE_CONSERVATION_PIECES_JOURS` ; refuse sans valeur valide | quotidienne |
+| `flask donnees expirer-revenus` | D12 : relance à J-7, puis expiration des revenus vérifiés | quotidienne |
+| `flask annonces expirer` | D6 : relance à J-7, puis retrait des annonces sans activité depuis 30 jours | quotidienne |
+| `flask visites rappeler` | rappel des visites d'aujourd'hui et de demain aux deux parties, sans doublon | quotidienne |
+| `flask donnees rattraper-pieces-decidees` | supprime les pièces validées avant le lot 1.5 | une fois |
 
-> [!NOTE]
-> **Changements en PR (non mergés)**
-> - **#28** (D13) : Render Cron Job `tcheyna-purge-pieces` dans `render.yaml`, chaque jour à 03:00 UTC, plan `0.5c-512mb` (1 $ par mois au minimum), `buildFilter` sur `backend/**`, variables recopiées de `tcheyna-api` (`fromService`), clés propres. Commande : `retenter-suppressions`, puis `purger-pieces` même si la première échoue. Mise en place manuelle : `docs/RUNBOOK_PHASE1.md` §11 (ajoutée par #28).
-> - **#35**, **#38** et **#39** n'ajoutent pas leur commande au cron : chacune propose dans son corps un `startCommand` différent. Un `startCommand` unique qui les réunit est proposé en annexe (section 5).
-
----
-
-## 4. Questions ouvertes
-
-### 4.1 Questions posées à Kamano dans les PR ouvertes
-
-Une ligne par question, regroupées par thème. Le détail et les options sont dans le corps de chaque PR.
-
-**Comptes, connexion, SMS**
-- #21 : indicatifs acceptés pour l'OTP : seulement ceux des marchés ouverts (A), ou tous avec un plafond séparé plus bas hors marchés ouverts (B) ? (Et restreindre les pays de destination dans le tableau de bord Africa's Talking, action manuelle.)
-- #21 : plafonds globaux de 100 SMS par heure et 500 par 24 h : conviennent-ils ?
-- #22 : limites de connexion de 50 échecs par 15 min par IP et 30 par heure par e-mail : conviennent-elles, vu le CGNAT des réseaux mobiles ?
-- #22 : blocage ciblé d'un compte par la limite par e-mail acceptable ? Sinon, quelle parade d'abord : CAPTCHA, lien de déblocage, appareil reconnu ?
-- #22, #27 : la déconnexion ferme tous les appareils du compte : est-ce voulu, ou faut-il prévoir une déconnexion « cet appareil seulement » (migration) ?
-- #22 : action manuelle avant le déploiement : confirmer `TRUSTED_PROXY_HOPS` par `/api/admin/diagnostic`.
-- #25 : le repli `AT_USERNAME = "sandbox"` de `config.py` doit-il devenir `""`, pour qu'un oubli se voie ?
-- #32 : durée et essais du code de réinitialisation (10 min, 5 essais, comme la vérification) : à garder ?
-- #32 : faut-il un quota propre à la réinitialisation, ou une parade contre la privation de récupération (même code renvoyé tant qu'il est valide, CAPTCHA, délai croissant) ?
-- #32 : valeurs des limites : demande 10/h par IP et 5/h par numéro ; confirmation 10 échecs/h par numéro et 20/h par IP ; connexion par téléphone 30 échecs/h par numéro ?
-- #32 : confirmer l'exclusion des admins de la connexion par téléphone et de la récupération par SMS (un admin n'a alors aucune récupération en libre-service).
-- #32 : après une réinitialisation, ouvrir directement une session, ou exiger une connexion ?
-- #32 : prévenir le titulaire par SMS après une réinitialisation (SMS facturé) ?
-- #41 : faut-il afficher un texte pour les administrateurs, qui n'ont aucune récupération en libre-service, ou documenter un parcours manuel (support, commande d'administration) ?
-- #41 : laisser la page « Mot de passe oublié » accessible à un utilisateur connecté (choix du lot), ou le renvoyer vers le changement de mot de passe de son profil ?
-- #29 : HSTS de l'API à un an, ou plus court pour commencer, ou rien ?
-
-**Annonces et certification**
-- #20 : après une annulation de certification : nouvelle demande avec examen complet, et si oui gratuite ou payante (A), ou réexamen gratuit par l'admin, badge suspendu (B) ?
-- #20 : faut-il une action « renoncer à la certification » (pièce déposée par erreur sur une annonce certifiée, qu'on ne peut plus retirer) ?
-- #31 : annonces déjà publiées par des bailleurs au téléphone non vérifié : masquage immédiat (A) ou délai de 14 jours avec notification (B) ? Et faut-il fermer les passeports déjà ouverts par ces annonces ?
-- #31 : dépôt de la pièce d'identité d'un bailleur : table ou colonnes dédiées (migration, après #19), ou réutiliser `TenantPassport` (déconseillé) ?
-- #31, #34 : libellé du badge pour une agence (« Agence vérifiée » ?).
-- #37 : D4 : une seule re-soumission gratuite par annonce, toutes les suivantes payantes (lecture retenue), ou une re-soumission gratuite par paiement ?
-- #37 : certification accordée puis annulée par une modification : la redemande reste gratuite (B, actuel) ou l'approbation consomme un examen (A) ?
-- #37 : au retrait d'une annonce, refuser ou annuler les candidatures en cours et prévenir les locataires ? Et à la réactivation ?
-- #37 : un bien déjà loué se republie par une nouvelle annonce, avec une nouvelle certification payante : est-ce voulu ?
-- #37 : suspendre la mise en avant payée pendant un retrait ?
-- #39 : définition de l'activité (publication, écriture du propriétaire, dernière candidature) : y ajouter le traitement des candidatures et la visite, ou les messages échangés ? Ou n'en garder que les actions explicites du propriétaire ?
-- #39 : annonce en mise en avant payée : épargnée jusqu'à la fin de la mise en avant (choix du lot) ? Ou elle expire comme les autres (remboursement ?) ? Ou la fin, ou le paiement, de la mise en avant compte comme une activité ?
-- #39 : préavis garanti de 7 jours après la relance : au déploiement, les annonces sans activité depuis plus de 23 jours sont relancées le premier soir, puis retirées 7 jours plus tard. Est-ce l'intention de D6 ?
-- #39 : candidatures en attente d'une annonce expirée : les laisser (choix du lot), les clore, ou prévenir les candidats ?
-- #39 : exiger le téléphone vérifié (D3) pour confirmer une annonce en ligne ? La relecture recommande que non ; à décider en même temps pour `PUT /<id>`.
-- #39 : relance d'expiration par SMS ?
-
-**Frais de mise en relation (D1)**
-- #33, #36 : montants hors GNF (frais, certification, mise en avant, Passeport) en XOF, GHS, NGN ?
-- #33, #36 : frais remboursés si le bailleur refuse après avoir accepté et payé, ou si le locataire se retire juste après ? (Aujourd'hui : non.)
-- #33, #36 : délai pour payer, ou expiration d'une candidature en attente ? (Aujourd'hui : aucun.)
-- #33, #36 : agences : mêmes frais par candidature acceptée, ou abonnement agence ?
-- #33 : candidatures de location déjà acceptées avant le déploiement : restent acceptées sans frais ? Commissions de 6 % déjà payées ou en attente : conservées telles quelles ?
-- #33, #36 : conclusion avec un autre candidat pendant un paiement de frais : le paiement passe « à rembourser » ; à confirmer.
-- #36 : article 8 des CGU : viser aussi la poursuite hors plateforme, sans l'accepter, d'une candidature reçue sur Tcheyna ?
-- #36 : commissions de l'ancien barème encore dues sur d'anciennes locations : les abandonner, ou prévoir un moyen de les régler ?
-
-**Passeport, avis, revenus**
-- #24 : niveau 4 exigé de 3 auteurs distincts : à valider (requête de contrôle en lecture seule dans la PR).
-- #24 : recalculer tout de suite le niveau des comptes concernés, ou attendre le recalcul naturel ?
-- #24 : moyenne par auteur, ou note la plus récente de chaque auteur ?
-- #35 : 3 mois comptés depuis le dépôt (choix du lot) ou depuis la validation ?
-- #35 : demander la date du justificatif lui-même (migration) et compter depuis elle ?
-- #35 : 90 jours (choix du lot) ou 3 mois calendaires ?
-- #35 : préavis de 7 jours pour un justificatif sans date ou déjà échu au premier passage : suffisant ? Et `flask donnees rattraper-pieces-decidees` a-t-il déjà tourné en production ?
-- #35 : relance par SMS en plus de la notification ?
-- #35 : garder la validation en cours jusqu'à la décision sur un nouveau justificatif déposé avant l'échéance ?
-
-**Messagerie et visites**
-- #30 : texte des modèles de messages à valider ; versions anglaises ; textes côté API ou côté web ?
-- #30 : écriture après une location conclue : la fermer après un délai (aligné sur D8 ?) ou jamais ?
-- #30 : prévenir l'autre partie par une notification quand une discussion se ferme ?
-- #40 : les puces de messages types disparaissent dès qu'on écrit : faut-il plutôt les laisser visibles, et leur faire ajouter leur texte à la suite ?
-- #38 : marge minimale avant une visite (1 h, 2 h ?) ?
-- #38 : borne haute de 365 jours : la garder, la changer, l'enlever ?
-- #38 : rappel de visite par SMS ? Pour qui, à quel coût ?
-- #38 : rappel dans le cron de 03:00 UTC, ou un second cron vers 08:00 (1 $ par mois de plus) ?
-- #38 : après la confirmation (migration), rappeler aussi les visites non confirmées ?
-- #38 : pas de rappel pour une candidature conclue : voulu ?
-
-**Exploitation et lots**
-- #28 : les services Render existants ont-ils été créés par un Blueprint lié au dépôt ? Sinon, créer le cron à la main.
-- #23 : passage de Pillow 12 à 13 (version majeure, seule corrigée) dans ce lot : à garder ?
-- #18 : ouvrir un lot 3.11 qui décrit les réponses de succès route par route ?
-- #20, #21 : inscrire au backlog les numéros de lot proposés 1.20 et 1.21. Les lots 1.12, 1.13, 1.15 à 1.19 et 2.10 des autres PR sont eux aussi absents de `docs/BACKLOG.md`.
-
-### 4.2 Constats relevés en écrivant ce document
-
-Aucune PR ouverte ne les traite. Ce sont des constats sur le code de `main`, pas des règles.
-
-1. La désactivation d'un compte par un admin (`routes/admin.py:basculer_statut`) ne retire pas ses annonces, contrairement à la désactivation par le titulaire (`routes/users.py:desactiver_compte`). Elles restent dans la recherche et ouvertes aux candidatures (`routes/matches.py:create_match` ne regarde pas le bailleur), alors que son profil répond 404.
-2. `PUT /api/admin/certifier/<id>` ne vérifie pas que l'annonce est en examen : un admin peut certifier ou refuser une annonce `none`.
-3. La confirmation d'un paiement de certification met l'annonce en examen sans vérifier pièces et photos (`routes/payments.py:_confirmer`), contrairement à `routes/listings.py:demander_certification`.
-4. Une candidature refusée peut encore être « retirée » par le locataire (`rejected` → `cancelled`) : `retirer_candidature` ne refuse que `completed`.
-5. Le format d'erreur n'est pas uniforme : beaucoup d'erreurs de route n'ont pas de `details` (2.1).
-
----
-
-## 5. Annexe : ordre de merge et conflits signalés
-
-Relevé dans le corps des PR ouvertes jusqu'à #41 au 22/10/2026, sans vérification supplémentaire.
-
-| Contrainte | PR |
-|---|---|
-| L'étape CI « Migrations sur PostgreSQL 16 » échoue sur `main` depuis le lot 1.10 ; #18 et #19 la corrigent par les mêmes 4 lignes | #18, #19 |
-| #19 est la migration ouverte : toute migration suivante attend son merge | #19 → #31 (suite), #38 (suite) |
-| #32 contient #21 : merger #21 d'abord | #21 → #32 |
-| #37 contient #31, et #39 contient #37 ; #34 (web) suit #31 | #31 → #37 → #39 ; #31 → #34 |
-| #27 (web) suit #22 | #22 → #27 |
-| #40 (web du lot 2.8 : conversation fermée, pagination, modèles) suit #30 | #30 → #40 |
-| #41 (web du lot 3.8 : connexion par téléphone, mot de passe oublié) suit #32, qui suit #21 | #21 → #32 → #41 |
-| #33 et #36 se mergent ensemble (le 402 bloque l'acceptation d'une location depuis le web actuel) | #33 + #36 |
-| Après les PR qui changent l'API, #18 met à jour `schemas/reponses.py` (`proprietaire_verifie` de #31, champs de #30, 402 de #33…) et régénère `openapi.json` et `schema.gen.ts` | #18 |
-| Conflits triviaux annoncés : `models.py` (#33 et #24), `payments.py:_service_deja_regle` (#37 et #33), `CODES_LIBRES` (#38, #33, #32), `commandes.py` (#38 et #35), `__init__.py` (#38 et #18), `frontend/src/api/types.ts` (#34, #36 et #18) | voir chaque PR |
-| `render.yaml` est modifié par #25 et #28, sans conflit | #25, #28 |
-| #35, #38 et #39 proposent chacune une ligne à ajouter au cron de #28, avec trois `startCommand` différents : il en faut un seul (ci-dessous) | #28, #35, #38, #39 |
-
-**Proposition de `startCommand` unique** pour le cron `tcheyna-purge-pieces` de #28, à poser au merge de la dernière des PR #35, #38 et #39. Elle garde la règle de #28 : chaque étape tourne même si la précédente échoue (`;` et non `&&`), et le code de sortie est celui de la première étape en échec. Une étape dont la PR n'est pas encore mergée ne doit pas y figurer : la commande n'existerait pas.
+`startCommand` du cron `tcheyna-purge-pieces`, tel qu'il figure dans `render.yaml` sur `main` depuis l'intégration du 27/10 (commande unique de l'ancienne annexe). Chaque étape tourne même si la précédente échoue, et le code de sortie est celui de la première étape en échec. **Ce service n'existe pas chez Render** : les services n'étant pas gérés par un Blueprint, `render.yaml` n'est pas appliqué, et la consigne du 27/10 abandonne le Render Cron Job (D13 révisée).
 
 ```yaml
     startCommand: >-
@@ -633,3 +515,126 @@ Relevé dans le corps des PR ouvertes jusqu'à #41 au 22/10/2026, sans vérifica
       for code in $reprise $purge $revenus $annonces $visites; do
       [ "$code" -ne 0 ] && exit "$code"; done; exit 0
 ```
+
+> [!NOTE]
+> **Changements en PR (non mergés)**
+> - **#49** (lot 1.25, D13 révisée) : `POST /api/interne/taches-nocturnes`, protégée par l'en-tête `X-Taches-Jeton` (`TACHES_NOCTURNES_JETON` ; absente : 404), 5 appels par heure et par IP, sans CORS. Elle enchaîne les cinq tâches quotidiennes ci-dessus dans le même ordre, par les mêmes fonctions, chacune même si une précédente échoue, avec un budget de 5 s par étape. Elle répond 200, ou 500 si une étape échoue. Appelée chaque nuit à 03:00 (Africa/Conakry) par cron-job.org. Le service `type: cron` sort de `render.yaml`. Réglage : `docs/RUNBOOK_PHASE1.md` §11.
+> - **#50** (lot 3.10) : `flask api spec [--check]` écrit ou vérifie `backend/openapi.json`, à chaque changement d'API et en CI.
+> - **Lot 1.22** : `flask admin reinitialiser-mot-de-passe <email>`, récupération manuelle d'un compte administrateur.
+
+---
+
+## 4. Questions ouvertes
+
+### 4.1 Questions posées à Kamano dans les PR #18 à #41 (tranchées le 27/10/2026)
+
+Une ligne par question, regroupées par thème. Kamano les a tranchées le 27/10/2026 : décision explicite, ou « choix du lot retenu ». Le détail et les options sont dans le corps de chaque PR (toutes fermées, leur contenu est dans `main`).
+
+**Comptes, connexion, SMS**
+- #21 : indicatifs acceptés pour l'OTP : seulement les marchés ouverts (A), ou tous avec un plafond séparé plus bas hors marchés ouverts (B) ? **Tranché le 27/10 : choix du lot retenu** — tous les indicatifs restent acceptés, sans plafond séparé (`PHONE_RE` inchangé). Restreindre les pays de destination dans le tableau de bord Africa's Talking : action manuelle, reste à faire par Kamano.
+- #21 : plafonds globaux de 100 SMS par heure et 500 par 24 h ? **Tranché le 27/10 : choix du lot retenu** — 100 par heure et 500 par 24 h, alerte dans les journaux à 80 % (`routes/auth.py:OTP_PLAFOND_GLOBAL_*`).
+- #22 : limites de connexion de 50 échecs par 15 min par IP et 30 par heure par e-mail ? **Tranché le 27/10 :** limites gardées.
+- #22 : blocage ciblé d'un compte par la limite par e-mail ? **Tranché le 27/10 : choix du lot retenu** — risque accepté, aucune parade ajoutée : le blocage ne touche que la connexion par mot de passe et dure au plus une heure.
+- #22, #27 : la déconnexion ferme tous les appareils du compte ? **Tranché le 27/10 :** voulu.
+- #22 : confirmer `TRUSTED_PROXY_HOPS` par `/api/admin/diagnostic`. **Action manuelle, reste à faire par Kamano** (aussi demandée par #49 avant la mise en service des tâches nocturnes).
+- #25 : le repli `AT_USERNAME = "sandbox"` de `config.py` doit-il devenir `""` ? **Tranché le 27/10 : choix du lot retenu** — le repli `"sandbox"` est gardé ; `render.yaml` passe `AT_USERNAME` en `sync: false`.
+- #32 : durée et essais du code de réinitialisation ? **Tranché le 27/10 : choix du lot retenu** — 10 min et 5 essais, comme la vérification du téléphone.
+- #32 : quota propre à la réinitialisation, ou parade contre la privation de récupération ? **Tranché le 27/10 : choix du lot retenu** — ni l'un ni l'autre : quotas partagés avec la vérification (5 codes par compte et par numéro sur 24 h), plus le plafond global.
+- #32 : valeurs des limites de la réinitialisation et de la connexion par téléphone ? **Tranché le 27/10 : choix du lot retenu** — demande 10/h par IP et 5/h par numéro ; confirmation 10 échecs/h par numéro et 20/h par IP ; connexion par téléphone 30 échecs/h par numéro.
+- #32 : exclure les admins de la connexion par téléphone et de la récupération par SMS ? **Tranché le 27/10 :** oui. Récupération d'un admin : parcours manuel (lot 1.22, commande `flask admin reinitialiser-mot-de-passe`).
+- #32 : après une réinitialisation, ouvrir une session ou exiger une connexion ? **Tranché le 27/10 : choix du lot retenu** — aucune session ouverte d'office : tous les jetons sont révoqués, l'utilisateur se reconnecte.
+- #32 : prévenir le titulaire par SMS après une réinitialisation ? **Tranché le 27/10 : choix du lot retenu** — non (chaque SMS est facturé).
+- #41 : texte pour les administrateurs, ou parcours manuel documenté ? **Tranché le 27/10 :** parcours manuel documenté (lot 1.22).
+- #41 : page « Mot de passe oublié » accessible à un utilisateur connecté ? **Tranché le 27/10 : choix du lot retenu** — oui ; la session de l'appareil est vidée quand la réinitialisation réussit.
+- #29 : HSTS de l'API ? **Tranché le 27/10 : choix du lot retenu** — `max-age=31536000` (un an), sans `includeSubDomains` ni `preload`.
+
+**Annonces et certification**
+- #20 : après une annulation de certification : nouvel examen complet (A) ou réexamen gratuit (B) ? **Tranché le 27/10 : choix du lot retenu** — l'annonce repasse à `none`, puis nouvelle demande avec examen complet, sans nouveau paiement (voir #37, option B).
+- #20 : action « renoncer à la certification » ? **Tranché le 27/10 : choix du lot retenu** — pas d'action dédiée ; une pièce ne se retire pas d'une annonce certifiée (409).
+- #31 : annonces déjà publiées par des bailleurs au téléphone non vérifié ? **Tranché le 27/10 :** notification, puis masquage au bout de 14 jours s'ils n'ont pas vérifié (lot 2.13, avec migration). **Non tranché :** faut-il fermer les passeports déjà ouverts par ces annonces ? À décider avec le lot 2.13.
+- #31 : dépôt de la pièce d'identité d'un bailleur ? **Tranché le 27/10 : choix du lot retenu** — table dédiée avec RLS, créée par une migration à venir ; pas de réutilisation de `TenantPassport`.
+- #31, #34 : libellé du badge pour une agence ? **Tranché le 27/10 : choix du lot retenu** — « Propriétaire vérifié » partout, agence comprise (`BadgeVerification.tsx:LIBELLE_PROPRIETAIRE_VERIFIE`).
+- #37 : D4 : une re-soumission gratuite par annonce, ou une par paiement ? **Tranché le 27/10 : choix du lot retenu** — une seule par annonce (`RESOUMISSIONS_GRATUITES = 1`) ; chaque paiement suivant couvre un examen.
+- #37 : certification accordée puis annulée par une modification ? **Tranché le 27/10 : choix du lot retenu** — B : la redemande reste gratuite, seuls les refus consomment un examen.
+- #37 : au retrait d'une annonce, que deviennent les candidatures en cours ? **Tranché le 27/10 : choix du lot retenu** — elles restent en l'état, sans notification, au retrait comme à la réactivation.
+- #37 : un bien déjà loué se republie par une nouvelle annonce, avec une nouvelle certification payante ? **Tranché le 27/10 : choix du lot retenu** — oui : une annonce conclue ne se réactive pas (409 `annonce_conclue`).
+- #37 : suspendre la mise en avant pendant un retrait ? **Tranché le 27/10 : choix du lot retenu** — non, elle continue de courir.
+- #39 : définition de l'activité ? **Tranché le 27/10 : choix du lot retenu** — publication, écriture du propriétaire sur l'annonce (y compris un enregistrement sans changement et `PUT /confirmer`), dernière candidature reçue. Les vues, la décision de certification et la mise en avant ne comptent pas.
+- #39 : annonce en mise en avant payée ? **Tranché le 27/10 : choix du lot retenu** — épargnée jusqu'à la fin de la mise en avant, puis relancée, puis retirée 7 jours après.
+- #39 : préavis garanti de 7 jours après la relance, y compris au premier passage ? **Tranché le 27/10 : choix du lot retenu** — oui, jamais de retrait moins de 7 jours après la relance.
+- #39 : candidatures en attente d'une annonce expirée ? **Tranché le 27/10 : choix du lot retenu** — laissées en l'état ; le propriétaire est informé, pas les candidats.
+- #39 : exiger le téléphone vérifié pour confirmer une annonce ? **Tranché le 27/10 : choix du lot retenu** — non ; seule la remise en ligne (`/reactiver`) l'exige.
+- #39 : relance d'expiration par SMS ? **Tranché le 27/10 : choix du lot retenu** — non, notification dans l'application seulement.
+
+**Frais de mise en relation (D1)**
+- #33, #36 : montants hors GNF ? **Tranché le 27/10 :** GNF seulement pour l'instant ; services payants refusés sur une annonce en XOF, GHS ou NGN, avec un message clair (lot 2.12, #51).
+- #33, #36 : remboursement si le bailleur refuse après avoir payé, ou si le locataire se retire ? **Tranché le 27/10 :** remboursés si le bailleur refuse ou annule après avoir payé ; pas remboursés si le locataire se retire (lot 2.12, #51).
+- #33, #36 : délai pour payer ? **Tranché le 27/10 : choix du lot retenu** — aucun ; un paiement en attente bloque seulement un nouvel essai pendant 30 min.
+- #33, #36 : agences ? **Tranché le 27/10 : choix du lot retenu** — mêmes frais, 250 000 GNF par candidature de location acceptée.
+- #33 : candidatures acceptées avant le déploiement, commissions de 6 % déjà payées ou en attente ? **Tranché le 27/10 : choix du lot retenu** — les candidatures restent acceptées sans frais ; les commissions sont conservées telles quelles (lisibles, une commission en attente reste confirmable).
+- #33, #36 : conclusion avec un autre candidat pendant un paiement de frais ? **Tranché le 27/10 : choix du lot retenu** — le paiement passe « à rembourser » (motif `candidature_close`).
+- #36 : article 8 des CGU : viser aussi la poursuite hors plateforme d'une candidature reçue sur Tcheyna ? **Tranché le 27/10 : choix du lot retenu** — non ; l'article vise la soustraction aux frais (présenter une location comme une vente).
+- #36 : commissions de l'ancien barème encore dues ? **Tranché le 27/10 : choix du lot retenu** — abandonnées : elles ne peuvent plus être payées (type `commission` refusé).
+
+**Passeport, avis, revenus**
+- #24 : niveau 4 exigé de 3 auteurs distincts ? **Tranché le 27/10 :** validé.
+- #24 : recalculer tout de suite le niveau des comptes concernés ? **Tranché le 27/10 : choix du lot retenu** — non ; le niveau se recalcule au prochain événement (avis reçu, décision admin, changement de passeport).
+- #24 : moyenne par auteur, ou note la plus récente ? **Tranché le 27/10 : choix du lot retenu** — moyenne par auteur, puis moyenne des auteurs.
+- #35 : 3 mois depuis le dépôt ou depuis la validation ? **Tranché le 27/10 : choix du lot retenu** — depuis le dépôt (`revenus_deposes_le`).
+- #35 : demander la date du justificatif lui-même ? **Tranché le 27/10 : choix du lot retenu** — non.
+- #35 : 90 jours ou 3 mois calendaires ? **Tranché le 27/10 : choix du lot retenu** — 90 jours (`VALIDITE_REVENUS_JOURS`).
+- #35 : préavis de 7 jours au premier passage ? **Tranché le 27/10 : choix du lot retenu** — oui, 7 jours après la relance. Vérifier si `flask donnees rattraper-pieces-decidees` a déjà tourné en production : **action manuelle, reste à faire par Kamano** (requête en lecture seule dans #35).
+- #35 : relance par SMS ? **Tranché le 27/10 : choix du lot retenu** — non.
+- #35 : garder la validation en cours jusqu'à la décision sur un nouveau justificatif ? **Tranché le 27/10 : choix du lot retenu** — non : un nouveau dépôt annule la validation jusqu'à la décision de l'admin.
+
+**Messagerie et visites**
+- #30 : modèles de messages ? **Tranché le 27/10 : choix du lot retenu** — les textes de #30, en français seulement, servis par l'API (`GET /api/messages/modeles`).
+- #30 : écriture après une location conclue ? **Tranché le 27/10 : choix du lot retenu** — reste ouverte, sans délai.
+- #30 : prévenir l'autre partie quand une discussion se ferme ? **Tranché le 27/10 : choix du lot retenu** — non.
+- #40 : puces de messages types masquées dès qu'on écrit ? **Tranché le 27/10 : choix du lot retenu** — oui, elles restent masquées tant que la saisie contient du texte.
+- #38 : marge minimale avant une visite ? **Tranché le 27/10 : choix du lot retenu** — aucune : la date doit être strictement future.
+- #38 : borne haute de 365 jours ? **Tranché le 27/10 : choix du lot retenu** — gardée.
+- #38 : rappel de visite par SMS ? **Tranché le 27/10 : choix du lot retenu** — non.
+- #38 : rappel à 03:00 ou second cron vers 08:00 ? **Tranché le 27/10 :** dans l'appel de 03:00, pas de second appel (D13 révisée, #49).
+- #38 : après la confirmation des visites, rappeler aussi les visites non confirmées ? **Sans objet pour l'instant** : la confirmation n'existe pas encore (lot 2.7 suite, avec migration). À décider avec ce lot.
+- #38 : pas de rappel pour une candidature conclue ? **Tranché le 27/10 : choix du lot retenu** — voulu : seules les candidatures acceptées sont rappelées.
+
+**Exploitation et lots**
+- #28 : services Render créés par un Blueprint ? **Tranché le 27/10 :** non. D13 révisée : pas de Render Cron Job (carte bancaire exigée) ; tâches nocturnes par une route interne protégée par un jeton, appelée par cron-job.org (lot 1.25, #49). En-têtes du site posés à la main (lot 1.24, #53).
+- #23 : Pillow 13 ? **Tranché le 27/10 : choix du lot retenu** — gardé (`pillow==13.0.0`).
+- #18 : lot 3.11 qui décrit les réponses de succès route par route ? **Tranché le 27/10 : choix du lot retenu** — oui, à ouvrir après #50 (qui remplace #18).
+- #20, #21 : inscrire au backlog les numéros de lots proposés (1.12, 1.13, 1.15 à 1.21, 2.10, et ceux de la file du 27/10 : 1.22 à 1.25, 2.12, 2.13). **Action manuelle, reste à faire par Kamano** (seul Kamano modifie `docs/BACKLOG.md`).
+
+### 4.2 Constats relevés en écrivant ce document
+
+Ce sont des constats sur le code de `main`, pas des règles. La consigne du 27/10/2026 les confie au lot 1.23, un commit par constat.
+
+1. La désactivation d'un compte par un admin (`routes/admin.py:basculer_statut`) ne retire pas ses annonces, contrairement à la désactivation par le titulaire (`routes/users.py:desactiver_compte`). Elles restent dans la recherche et ouvertes aux candidatures (`routes/matches.py:create_match` ne regarde pas le bailleur), alors que son profil répond 404.
+2. `PUT /api/admin/certifier/<id>` ne vérifie pas que l'annonce est en examen : un admin peut certifier ou refuser une annonce `none`.
+3. La confirmation d'un paiement de certification met l'annonce en examen sans vérifier pièces et photos (`routes/payments.py:_confirmer`), contrairement à `routes/listings.py:demander_certification`.
+4. Une candidature refusée peut encore être « retirée » par le locataire (`rejected` → `cancelled`) : `retirer_candidature` ne refuse que `completed`.
+5. Le format d'erreur n'est pas uniforme : beaucoup d'erreurs de route n'ont pas de `details` (2.1).
+
+---
+
+## 5. Annexe : état de l'intégration et ordre de merge
+
+**Intégration du 27/10/2026, faite.** Les PR #19 à #48 ont été réunies dans la branche `claude/integration-2026-10-27`, avec trois commits d'intégration (test du lot 2.10 aligné sur la règle des auteurs distincts, test d'actualité qui simule le compte connecté, `startCommand` unique du cron). `main` = `f833a17`, déployé (Render `live`). Contrôles après déploiement : `/health`, recherche (dont le tri « match »), connexion, `/payments/tarifs`, en-têtes de sécurité de l'API, aucune erreur dans les journaux. Base de production à la révision `4506c18d7fd6`, RLS actif sur toutes les tables. Les PR #2 à #17 et #19 à #48 sont fermées ; #18 est remplacée par #50.
+
+**Écarts constatés en production** :
+- `render.yaml` n'est pas appliqué (pas de Blueprint). Le site statique n'envoie que `nosniff` et HSTS, posés par Render ; les en-têtes de la #25 (CSP, `Referrer-Policy`, `Permissions-Policy`, cache) sont à poser à la main (#53, `docs/RUNBOOK_PHASE1.md` §12).
+- Le cron `tcheyna-purge-pieces` n'existe pas : aucune tâche nocturne ne tourne, purge D5 comprise (#49).
+
+**PR ouvertes au 27/10/2026, dans l'ordre de merge proposé.** Aucune ne contient de migration. L'essai de fusion deux à deux (`git merge-tree`) passe sans conflit.
+
+| Ordre | PR | Lot | Dépend de | Action manuelle |
+|---|---|---|---|---|
+| 1 | #49 | 1.25 tâches nocturnes | — | jeton sur Render, tâche cron-job.org, `TRUSTED_PROXY_HOPS` |
+| 2 | #50 | 3.10 contrat d'API | — | — |
+| 3 | #51 | 2.12 frais (backend) | — | — |
+| 4 | #52 | 2.12 frais (web) | #51 | — |
+| 5 | #53 | 1.24 Render hors Blueprint | — | en-têtes du site statique |
+| 6 | lot 1.22 | récupération d'un admin | — | — |
+| 7 | cette PR | 0.3 suite | — | — |
+
+Après #50, toute PR qui change une réponse de l'API met à jour `backend/app/schemas/reponses.py`, puis lance `flask api spec` et `npm run api:types`. Les tests et la CI le vérifient.
