@@ -109,6 +109,14 @@ Vérifiée sur PostgreSQL 16 avec des comptes et des OTP en clair existants
 (montée, `flask db check`, retour arrière). La suppression de
 `otp_codes.code` viendra dans une révision ultérieure, après déploiement.
 
+Révision 4506c18d7fd6 (lot 1.18) : active le RLS, sans policy, sur toutes les
+tables du schéma public qui ne l'ont pas encore (`alembic_version` comprise).
+Sans effet sur la production, déjà protégée à la main ; elle sert aux bases
+créées par `flask db upgrade`. Son retour arrière ne désactive rien. Toute
+révision qui crée une table doit désormais activer le RLS elle-même
+(seulement si `op.get_context().dialect.name == "postgresql"`) : la CI et
+tests/test_migrations_rls.py échouent sinon.
+
 
 2. Nouvelle base (développement, CI, nouvel environnement)
 ---------------------------------------------------------

@@ -65,6 +65,10 @@ jobs:
 
       - name: Tests (pytest)
         # Couverture affichée pour suivi, sans seuil bloquant.
+        env:
+          # Base d'administration du service postgres : tests/test_migrations_rls.py
+          # y crée sa propre base jetable, puis la supprime (ignoré sans elle).
+          TCHEYNA_TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/postgres
         run: pytest -q --cov=app --cov-report=term
 
       - name: Migrations sur PostgreSQL 16
@@ -80,11 +84,26 @@ jobs:
           export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
           export JWT_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
           flask db upgrade
+          # Échoue si une table de public est sans RLS (lot 1.18) : toute
+          # révision qui crée une table doit l'activer.
+          verifier_rls() {
+            sans_rls="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc "
+              SELECT string_agg(c.relname, ', ') FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+                AND NOT c.relrowsecurity")"
+            if [ -n "$sans_rls" ]; then
+              echo "::error::Tables de public sans RLS : $sans_rls"
+              return 1
+            fi
+          }
+          verifier_rls
           # Échoue si un modèle a changé sans révision correspondante.
           flask db check
           # Les révisions doivent rester réversibles.
           flask db downgrade base
           flask db upgrade
+          verifier_rls
 
   frontend:
     name: Frontend (lint, typecheck, build)
