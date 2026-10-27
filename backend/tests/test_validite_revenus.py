@@ -73,8 +73,10 @@ def test_justificatif_de_plus_de_3_mois_expire(fabrique):
 def test_locataire_recommande_redescend_au_niveau_identifie(fabrique, bailleur):
     # Niveaux cumulatifs : sans revenus vérifiés, les avis ne suffisent plus.
     user = _solvable(fabrique, depose_il_y_a=91)
-    for _ in range(3):
-        fabrique.avis(bailleur, user, note=5, type_avis="landlord_to_tenant")
+    # Trois auteurs distincts : le niveau 4 ne compte plus qu'un avis par
+    # auteur (lot 1.15).
+    for auteur in (bailleur, fabrique.bailleur(), fabrique.bailleur()):
+        fabrique.avis(auteur, user, note=5, type_avis="landlord_to_tenant")
     user.update_trust_level()
     db.session.commit()
     assert user.trust_level == 4
