@@ -390,6 +390,13 @@ def certifier_annonce(current_user, listing_id, corps):
 def _motif_remboursement(paiement):
     if paiement.type_paiement in PAIEMENTS_HORS_PLATEFORME:
         return "hors_plateforme"
+    # Frais de mise en relation (D1) : sans autre paiement réussi pour la même
+    # candidature, c'est que celle-ci a été retirée ou refusée pendant le paiement.
+    if paiement.type_paiement == "frais_mise_en_relation" and not Payment.query.filter(
+            Payment.match_id == paiement.match_id, Payment.id != paiement.id,
+            Payment.type_paiement == paiement.type_paiement,
+            Payment.statut == "success").first():
+        return "candidature_close"
     return "doublon"
 
 

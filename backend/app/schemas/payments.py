@@ -16,17 +16,29 @@ METHODES = ("orange_money", "mtn_momo", "wave", "moov", "carte")
 PAIEMENTS_HORS_PLATEFORME = ("caution", "premier_loyer")
 MESSAGE_HORS_PLATEFORME = ("La caution et le loyer ne se paient pas via Tcheyna : ils se "
                            "règlent directement entre le bailleur et le locataire.")
-# Encaissé par CinetPay mais non dû (caution, loyer, doublon) : jamais
+# Encaissé par CinetPay mais non dû (caution, loyer, doublon, frais d'une
+# candidature retirée ou refusée pendant le paiement) : jamais
 # confirmé. Un admin rembourse à la main puis passe le paiement à REMBOURSE.
 A_REMBOURSER = "a_rembourser"
 REMBOURSE = "rembourse"
 
-TYPES_PAYABLES = tuple(t for t in PAYMENT_TYPES if t not in PAIEMENTS_HORS_PLATEFORME)
+# La commission de 6 % est remplacée par les frais fixes de mise en relation
+# (décision D1, 20/10/2026). Le type reste dans PAYMENT_TYPES pour relire les
+# commissions déjà enregistrées (reçus, historique, admin).
+TYPES_RETIRES = ("commission",)
+MESSAGE_TYPE_RETIRE = ("La commission de 6 % n'existe plus : Tcheyna facture des frais de "
+                       "mise en relation fixes, réglés quand vous acceptez une candidature "
+                       "de location.")
+
+TYPES_PAYABLES = tuple(t for t in PAYMENT_TYPES
+                       if t not in PAIEMENTS_HORS_PLATEFORME and t not in TYPES_RETIRES)
 
 
 def _payable_via_tcheyna(valeur):
     if isinstance(valeur, str) and valeur.strip() in PAIEMENTS_HORS_PLATEFORME:
         raise PydanticCustomError("hors_plateforme", MESSAGE_HORS_PLATEFORME)
+    if isinstance(valeur, str) and valeur.strip() in TYPES_RETIRES:
+        raise PydanticCustomError("type_retire", MESSAGE_TYPE_RETIRE)
     return valeur
 
 

@@ -144,10 +144,11 @@ STATUTS_OUVRANT_ADRESSE = ("accepted", "completed")
 def adresse_ouverte_par_candidature(candidature):
     """La candidature `candidature` donne-t-elle au locataire l'adresse du bien ?
 
-    POINT D'EXTENSION D1 (PRD §8.1 option B, lot 2.4) : si le déblocage de
-    l'adresse est lié au paiement des frais d'acceptation, c'est ici, et
-    seulement ici, qu'il faut ajouter la condition « frais payés ». Toutes
-    les sorties de l'adresse vers un locataire passent par cette fonction.
+    Frais de mise en relation (D1, lot 2.4) : aucune condition à ajouter ici.
+    Une candidature de location ne passe `accepted` qu'à la confirmation du
+    paiement des frais (`routes.payments._confirmer`) ; avant, elle reste
+    `pending` et l'adresse reste masquée. Toutes les sorties de l'adresse vers
+    un locataire passent par cette fonction.
     """
     return candidature is not None and candidature.status in STATUTS_OUVRANT_ADRESSE
 

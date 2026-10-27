@@ -9,7 +9,7 @@ Les règles testées vivent dans app/services/acces.py.
 import pytest
 
 from app import create_app, db
-from app.models import Conversation, Listing
+from app.models import Conversation, Listing, Payment
 from app.services.acces import (
     STATUTS_OUVRANT_ADRESSE,
     STATUTS_OUVRANT_PASSEPORT,
@@ -390,19 +390,32 @@ def test_adresse_toujours_servie_au_proprietaire_et_a_l_admin(client, fabrique, 
 
 def test_adresse_masquee_a_la_candidature_puis_ouverte_a_l_acceptation(client, fabrique,
                                                                        bailleur, annonce,
-                                                                       entetes):
+                                                                       entetes, cinetpay):
     candidat = fabrique.locataire()
     creee = client.post("/api/matches/", headers=entetes(candidat),
                         json={"listing_id": annonce.id}).get_json()["match"]
     _verifier_adresse(creee["listing"], annonce, False)
 
-    decision = client.put(f"/api/matches/{creee['id']}/statut", headers=entetes(bailleur),
-                          json={"statut": "accepted"}).get_json()["match"]
-    _verifier_adresse(decision["listing"], annonce, True)
+    def relue():
+        (candidature,) = client.get("/api/matches/mes-candidatures",
+                                    headers=entetes(candidat)).get_json()["matches"]
+        return candidature["listing"]
 
-    (relue,) = client.get("/api/matches/mes-candidatures",
-                          headers=entetes(candidat)).get_json()["matches"]
-    _verifier_adresse(relue["listing"], annonce, True)
+    # Location (D1) : la décision attend les frais de mise en relation, et
+    # l'adresse reste masquée tant que leur paiement n'est pas confirmé.
+    decision = client.put(f"/api/matches/{creee['id']}/statut", headers=entetes(bailleur),
+                          json={"statut": "accepted"})
+    assert decision.status_code == 402
+    _verifier_adresse(relue(), annonce, False)
+
+    paiement = client.post("/api/payments/initier", headers=entetes(bailleur), json={
+        "type_paiement": "frais_mise_en_relation", "match_id": creee["id"],
+    }).get_json()["paiement"]
+    _verifier_adresse(relue(), annonce, False)
+
+    client.post("/api/payments/callback", json={
+        "cpm_trans_id": Payment.query.get(paiement["id"]).cinetpay_transaction_id})
+    _verifier_adresse(relue(), annonce, True)
 
 
 @pytest.mark.parametrize("statut_courant", ["accepted", "completed", "rejected", "cancelled"])

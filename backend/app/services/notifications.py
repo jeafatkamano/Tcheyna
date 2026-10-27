@@ -138,6 +138,7 @@ def paiement_confirme(user_id, montant, devise, type_label, payment_id):
 MOTIFS_REMBOURSEMENT = {
     "hors_plateforme": "la caution et le loyer ne se paient pas via Tcheyna",
     "doublon": "ce service était déjà réglé",
+    "candidature_close": "la candidature n'était plus en attente (retirée ou refusée)",
 }
 
 

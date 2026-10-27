@@ -438,6 +438,11 @@ def _annuler_certification(listing, motif):
     listing.certification_note = f"Certification annulée : {motif}."
 
 
+# Candidatures dont la décision dépend du type de transaction (frais de mise
+# en relation d'une location, D1) : tant qu'il en existe, il ne change pas.
+STATUTS_BLOQUANT_TYPE_TRANSACTION = ("pending", "accepted")
+
+
 @listings_bp.route("/<string:listing_id>", methods=["PUT"])
 @role_required("landlord", "agency")
 @valider_corps(MajAnnonce)
@@ -475,6 +480,17 @@ def update_listing(current_user, listing_id, corps):
             raise erreur_champ("ville", exc.type, exc.message(), final["ville"]) from None
     if change("prix") or change("type_transaction"):
         _verifier_loyer(final["type_transaction"], final["prix"])
+    # D1 (lot 2.4) : les frais de mise en relation ne portent que sur une
+    # location. Basculer en « vente » le temps d'accepter gratuitement des
+    # candidatures, puis revenir en location, les contournerait. Les
+    # candidatures sont lues après le verrou de l'annonce, que prennent aussi
+    # la candidature, la décision et la confirmation des frais : aucune ne
+    # s'intercale entre cette lecture et l'écriture du nouveau type.
+    if change("type_transaction") and any(
+            m.status in STATUTS_BLOQUANT_TYPE_TRANSACTION for m in listing.matches):
+        return jsonify({"error": "Le type de transaction ne peut pas changer tant que "
+                                 "des candidatures sont en attente ou acceptées sur "
+                                 "cette annonce : refusez-les d'abord."}), 409
     # Une annonce hors marché ouvert (créée avant ce contrôle) garde sa devise.
     devise = _devise(final["pays"]) or listing.devise
     _verifier_devise(devise_envoyee, devise)
