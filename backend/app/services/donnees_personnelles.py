@@ -237,7 +237,13 @@ def anonymiser_compte(user):
 
     user.favorites.delete()
     user.notifications.delete()
-    OTPCode.query.filter_by(user_id=user.id).delete()
+    # Les codes envoyés restent, vidés du numéro et de tout secret : ils
+    # comptent dans le plafond global des SMS (routes/auth.py). Les effacer
+    # laisserait des comptes jetables, supprimés après usage, faire envoyer
+    # des SMS sans fin.
+    OTPCode.query.filter_by(user_id=user.id).update(
+        {"phone": None, "code": None, "code_hash": None, "is_used": True},
+        synchronize_session=False)
 
     # L'adresse e-mail et le numéro sont libérés : la personne peut ouvrir
     # un nouveau compte, sans lien avec l'ancien.
