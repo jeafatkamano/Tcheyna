@@ -4,6 +4,8 @@
 >
 > **Lecture.** Chaque section décrit `main`, puis liste dans un encadré « Changements en PR (non mergés) » ce que chaque PR ouverte y change, avec son numéro. Relevé arrêté aux PR ouvertes jusqu'à #41, au 22/10/2026. **À chaque merge**, on déplace la ligne de la PR depuis l'encadré vers le corps de la section. L'encadré sert ainsi de liste de contrôle.
 >
+> **Mise à jour du 27/10/2026.** Les sections 3 à 5 décrivent `main` après l'intégration des PR #19 à #48 (`f833a17`) et les décisions de Kamano du 27/10. Dans les sections 1 et 2, les encadrés « Changements en PR » des PR #19 à #48 décrivent désormais du code mergé : ils restent à reporter dans le corps de chaque section (lot de suivi). Les lots 2.12 (#51) et 3.10 (#50) mettent à jour les lignes qu'ils changent.
+>
 > **Renvois.** `fichier:fonction` désigne un chemin relatif à `backend/app/` (par exemple `routes/matches.py:create_match`), sauf mention contraire. Toutes les dates sont en UTC naïf (`datetime.utcnow()`), ce qui correspond à l'heure de Conakry (UTC+0, sans heure d'été).
 
 ## Sommaire
