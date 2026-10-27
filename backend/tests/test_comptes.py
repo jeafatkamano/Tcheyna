@@ -144,6 +144,94 @@ def test_diagnostic_expose_le_reglage_proxy(client, admin, entetes):
     assert reseau["limites_stockage"] == "memory"
 
 
+# Chaque test crée sa propre application : `limiter.init_app` repart alors
+# d'un stockage neuf, et aucun compteur ne passe d'un test à l'autre.
+
+def _quota(limite):
+    """Nombre d'essais permis par une limite « N per … »."""
+    return int(limite.split()[0])
+
+
+def test_limite_par_ip_sur_plusieurs_emails(client, mot_de_passe_toujours_faux):
+    # Pulvérisation : un mot de passe essayé sur beaucoup d'e-mails depuis
+    # une même IP. Le couple IP + e-mail ne voit qu'un essai par e-mail.
+    codes = [_connexion(client, f"cible{i}@exemple.test", xff="1.1.1.1").status_code
+             for i in range(_quota(auth.LIMITE_CONNEXION_PAR_IP))]
+    assert set(codes) == {401}
+
+    reponse = _connexion(client, "encore-une@exemple.test", xff="1.1.1.1")
+
+    assert reponse.status_code == 429
+    assert reponse.get_json()["error"].startswith("Trop de tentatives. Réessayez dans ")
+    assert 0 < int(reponse.headers["Retry-After"]) <= 15 * 60 + 1
+    # Une autre IP n'est pas touchée.
+    assert _connexion(client, "encore-une@exemple.test", xff="2.2.2.2").status_code == 401
+
+
+def test_limite_par_email_sur_plusieurs_ip(client, fabrique, locataire, monkeypatch):
+    # Force brute répartie : une IP différente par essai, le couple IP +
+    # e-mail ne voit jamais plus d'un échec.
+    with monkeypatch.context() as patch:
+        patch.setattr(auth, "check_password_hash", lambda *_: False)
+        codes = [_connexion(client, locataire.email, xff=f"10.0.{i // 250}.{i % 250}").status_code
+                 for i in range(_quota(auth.LIMITE_CONNEXION_PAR_EMAIL))]
+        assert set(codes) == {401}
+
+        # Même écrit autrement (casse, espaces), c'est le même compte.
+        reponse = _connexion(client, f" {locataire.email.upper()}", xff="10.9.9.9")
+        assert reponse.status_code == 429
+        assert 0 < int(reponse.headers["Retry-After"]) <= 60 * 60 + 1
+        # Un autre compte, depuis la même IP, n'est pas touché.
+        assert _connexion(client, fabrique.bailleur().email, xff="10.9.9.9").status_code == 401
+
+    # Comme pour les autres limites, le bon mot de passe est refusé aussi.
+    assert _connexion(client, locataire.email, xff="10.9.9.8",
+                      password=MOT_DE_PASSE).status_code == 429
+
+
+def test_connexions_reussies_ne_consomment_aucune_limite(client, locataire, monkeypatch):
+    # Plus de succès que la plus large des trois limites, même IP, même
+    # e-mail : aucun n'est décompté. (Hachage court-circuité : seul le
+    # nombre de réponses compte ici.)
+    monkeypatch.setattr(auth, "check_password_hash", lambda *_: True)
+    nombre = max(_quota(limite) for limite in (
+        auth.LIMITE_CONNEXION, auth.LIMITE_CONNEXION_PAR_IP, auth.LIMITE_CONNEXION_PAR_EMAIL)) + 5
+
+    codes = [_connexion(client, locataire.email, xff="1.1.1.1").status_code
+             for _ in range(nombre)]
+
+    assert set(codes) == {200}
+
+
+# ─── Limitation de débit : changement de mot de passe ────────
+
+def _changer_mot_de_passe(client, en_tetes, ancien="pas-le-bon"):
+    return client.put("/api/auth/password", headers=en_tetes, json={
+        "ancien_mot_de_passe": ancien, "nouveau_mot_de_passe": "nouveau-mdp-123"})
+
+
+def test_changement_mot_de_passe_limite_par_compte(client, fabrique, entetes):
+    premier, second = fabrique.locataire(), fabrique.locataire()
+    quota = _quota(auth.LIMITE_MOT_DE_PASSE)
+
+    # Sans jeton valide, rien n'est décompté (le jeton précède la limite).
+    for _ in range(quota + 1):
+        assert _changer_mot_de_passe(client, {}).status_code == 401
+
+    codes = [_changer_mot_de_passe(client, entetes(premier)).status_code for _ in range(quota)]
+    assert codes == [422] * quota
+
+    reponse = _changer_mot_de_passe(client, entetes(premier), ancien=MOT_DE_PASSE)
+    assert reponse.status_code == 429
+    assert reponse.get_json()["details"] == []
+    assert 0 < int(reponse.headers["Retry-After"]) <= 60 * 60 + 1
+    # Rien n'a changé : le refus tombe avant la vérification.
+    assert db.session.get(User, premier.id).password_hash == HASH_MOT_DE_PASSE
+
+    # Même IP (client de test), autre compte : quota intact.
+    assert _changer_mot_de_passe(client, entetes(second)).status_code == 422
+
+
 # ─── OTP ─────────────────────────────────────────────────────
 
 def test_otp_genere_par_secrets(monkeypatch):
@@ -731,6 +819,72 @@ def test_controle_de_version_sans_requete_sql_supplementaire(client, locataire, 
     # l'identity map au lieu de le relire.
     lectures_users = [r for r in requetes if re.search(r"FROM users\s+WHERE users\.id", r)]
     assert len(lectures_users) == 1, requetes
+
+
+# ─── Déconnexion (lot 1.12) ──────────────────────────────────
+
+def test_deconnexion_revoque_acces_et_rafraichissement(client, fabrique, locataire, entetes):
+    acces, rafraichissement = entetes(locataire), entetes(locataire, refresh=True)
+    autre = fabrique.bailleur()
+    acces_autre, rafraichissement_autre = entetes(autre), entetes(autre, refresh=True)
+
+    reponse = client.post("/api/auth/logout", headers=acces)
+
+    assert reponse.status_code == 200
+    assert reponse.get_json() == {"message": "Déconnexion réussie"}
+    revoque = client.get("/api/auth/me", headers=acces)
+    assert revoque.status_code == 401
+    assert revoque.get_json() == {"error": "Session révoquée, veuillez vous reconnecter",
+                                  "details": []}
+    assert client.post("/api/auth/refresh", headers=rafraichissement).status_code == 401
+    # Un jeton déjà révoqué ne déconnecte plus rien.
+    assert client.post("/api/auth/logout", headers=acces).status_code == 401
+
+    # Les sessions d'un autre compte ne sont pas touchées.
+    assert client.get("/api/auth/me", headers=acces_autre).status_code == 200
+    assert client.post("/api/auth/refresh", headers=rafraichissement_autre).status_code == 200
+
+    # Une nouvelle connexion redonne des jetons valides.
+    connexion = client.post("/api/auth/login",
+                            json={"email": locataire.email, "password": MOT_DE_PASSE})
+    assert client.get("/api/auth/me",
+                      headers=_bearer(connexion.get_json()["access_token"])).status_code == 200
+
+
+def test_deconnexion_ferme_toutes_les_sessions_du_compte(client, locataire, entetes):
+    # `token_version` est par compte : se déconnecter d'un appareil ferme
+    # aussi les autres.
+    telephone, ordinateur = entetes(locataire), entetes(locataire, refresh=True)
+
+    assert client.post("/api/auth/logout", headers=telephone).status_code == 200
+
+    assert client.post("/api/auth/refresh", headers=ordinateur).status_code == 401
+
+
+def test_deconnexion_avec_le_jeton_de_rafraichissement(client, locataire, entetes):
+    # Le jeton d'accès a pu expirer : le jeton de rafraîchissement suffit.
+    acces, rafraichissement = entetes(locataire), entetes(locataire, refresh=True)
+
+    assert client.post("/api/auth/logout", headers=rafraichissement).status_code == 200
+
+    assert client.post("/api/auth/refresh", headers=rafraichissement).status_code == 401
+    assert client.get("/api/auth/me", headers=acces).status_code == 401
+
+
+def test_deconnexion_sans_jeton_refusee(client):
+    reponse = client.post("/api/auth/logout")
+
+    assert reponse.status_code == 401
+    assert reponse.get_json() == {"error": "Authentification requise", "details": []}
+
+
+def test_deconnexion_d_un_compte_supprime_refusee(client, fabrique, entetes):
+    user = fabrique.locataire(niveau=0, passeport=False)
+    en_tetes = entetes(user)
+    db.session.delete(user)
+    db.session.commit()
+
+    assert client.post("/api/auth/logout", headers=en_tetes).status_code == 401
 
 
 # ─── Back-office (R1, R1 bis) ────────────────────────────────

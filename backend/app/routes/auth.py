@@ -66,6 +66,22 @@ OTP_ANTISPAM_SECONDES = 60
 # les réponses comptent, ce qui freine aussi l'énumération d'e-mails (409).
 LIMITE_CONNEXION = "10 per 15 minutes"
 LIMITE_INSCRIPTION = "5 per hour"
+# Connexion, deux limites de plus (lot 1.12), elles aussi sur les seuls
+# échecs. Par IP, tous e-mails confondus : borne la pulvérisation d'un même
+# mot de passe sur des milliers d'e-mails, que le couple IP + e-mail laisse
+# passer. Large, car un cybercafé ou un réseau mobile en CGNAT met beaucoup
+# d'utilisateurs légitimes derrière une IP, et seuls leurs échecs comptent.
+LIMITE_CONNEXION_PAR_IP = "50 per 15 minutes"
+# Par e-mail, toutes IP confondues : borne la force brute répartie sur
+# beaucoup d'IP contre un compte. Revers : un tiers peut épuiser ce quota
+# avec de faux mots de passe et bloquer le titulaire jusqu'à une heure après
+# son dernier essai ; il lui faut au moins trois IP pour le faire en moins de
+# 45 minutes (le couple IP + e-mail l'arrête à 10 échecs par IP).
+LIMITE_CONNEXION_PAR_EMAIL = "30 per hour"
+# Changement de mot de passe, par compte (toutes les réponses) : l'ancien
+# mot de passe y est vérifié, et un jeton volé ne doit pas permettre de le
+# deviner hors des limites de /auth/login.
+LIMITE_MOT_DE_PASSE = "5 per hour"
 
 
 # ─── Helpers ──────────────────────────────────────────────────
@@ -116,14 +132,39 @@ def hacher_otp(otp_id, code):
     return hmac.new(_cle_otp(), f"{otp_id}:{code}".encode(), hashlib.sha256).hexdigest()
 
 
+def _email_saisi():
+    """E-mail du corps de la connexion, normalisé comme le compare la route
+    (espaces retirés, minuscules). Relu du corps brut : le schéma n'est pas
+    encore passé. Vide si le corps est illisible."""
+    corps = request.get_json(silent=True)
+    email = corps.get("email") if isinstance(corps, dict) else None
+    return email.strip().lower() if isinstance(email, str) else ""
+
+
+def _cle_connexion_email():
+    """Clé de la limite par e-mail, toutes IP confondues. Le préfixe la
+    distingue d'une clé par IP. Un corps sans e-mail partage la clé
+    « email: », sans effet : le schéma le refuse (422), qui ne compte pas."""
+    return f"email:{_email_saisi()}"
+
+
+def _echec_connexion(reponse):
+    """Seules les connexions refusées consomment les limites de connexion :
+    identifiants incorrects (401) ou compte désactivé (403)."""
+    return reponse.status_code in (401, 403)
+
+
+def _cle_compte():
+    """Clé par compte connecté (identifiant du jeton déjà vérifié), et non
+    par IP : deux comptes derrière la même IP ont chacun leur quota."""
+    return f"compte:{get_jwt_identity()}"
+
+
 def _cle_connexion():
     """Clé de la limite de connexion : IP + e-mail saisi. L'e-mail est relu
     du corps brut (le schéma n'est pas encore passé) ; un corps illisible
     donne une clé par IP seule."""
-    corps = request.get_json(silent=True)
-    email = corps.get("email") if isinstance(corps, dict) else None
-    email = email.strip().lower() if isinstance(email, str) else ""
-    return f"{get_remote_address()}|{email}"
+    return f"{get_remote_address()}|{_email_saisi()}"
 
 
 def masquer_numero(phone):
@@ -228,8 +269,13 @@ def register(corps):
 @auth_bp.route("/login", methods=["POST"])
 # Le 429 tombe avant la vérification du mot de passe : une fois la limite
 # atteinte, même le bon mot de passe est refusé jusqu'à la fin de la fenêtre.
-@limiter.limit(LIMITE_CONNEXION, key_func=_cle_connexion,
-               deduct_when=lambda reponse: reponse.status_code in (401, 403))
+# Trois limites, chacune sur les seuls échecs : couple IP + e-mail, IP seule
+# (`get_remote_address`, l'IP rendue fiable par ProxyFix), e-mail seul.
+@limiter.limit(LIMITE_CONNEXION, key_func=_cle_connexion, deduct_when=_echec_connexion)
+@limiter.limit(LIMITE_CONNEXION_PAR_IP, key_func=get_remote_address,
+               deduct_when=_echec_connexion)
+@limiter.limit(LIMITE_CONNEXION_PAR_EMAIL, key_func=_cle_connexion_email,
+               deduct_when=_echec_connexion)
 @valider_corps(Connexion)
 def login(corps):
     user = User.query.filter_by(email=corps.email.lower()).first()
@@ -269,6 +315,26 @@ def refresh():
         identity=user.id, additional_claims={"tv": user.token_version})}), 200
 
 
+# ─── POST /api/auth/logout ────────────────────────────────────
+
+@auth_bp.route("/logout", methods=["POST"])
+# Jeton d'accès ou de rafraîchissement : le second, valable 30 jours, est
+# celui qu'il importe le plus de révoquer, et il reste le seul utilisable
+# quand le jeton d'accès a expiré. Un jeton déjà révoqué est refusé (401)
+# par `jeton_revoque`. Pas de limite de débit : chaque déconnexion révoque
+# le jeton qui l'a demandée, et en obtenir un autre passe par /auth/login.
+@jwt_required(verify_type=False)
+def logout():
+    user = db.session.get(User, get_jwt_identity())
+    if user is None:
+        return jsonify({"error": "Utilisateur introuvable", "details": []}), 401
+    # `token_version` est propre au compte : la déconnexion ferme toutes ses
+    # sessions, sur tous les appareils, et non le seul appareil appelant.
+    user.revoquer_jetons()
+    db.session.commit()
+    return jsonify({"message": "Déconnexion réussie"}), 200
+
+
 # ─── GET /api/auth/me ─────────────────────────────────────────
 
 @auth_bp.route("/me", methods=["GET"])
@@ -284,6 +350,9 @@ def me(current_user):
 
 @auth_bp.route("/password", methods=["PUT"])
 @current_user_required
+# Sous l'authentification : le jeton est vérifié quand la clé (le compte) est
+# calculée, et une requête sans jeton valide ne consomme rien.
+@limiter.limit(LIMITE_MOT_DE_PASSE, key_func=_cle_compte)
 @valider_corps(ChangementMotDePasse)
 def change_password(current_user, corps):
     if not check_password_hash(current_user.password_hash, corps.ancien_mot_de_passe):
