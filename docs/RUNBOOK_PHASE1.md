@@ -197,6 +197,46 @@ corriger (étape 1).
 | Initier un paiement `caution` ou `premier_loyer` | Refusé (D2 = A) |
 | Téléverser une photo d'annonce | Acceptée, ré-encodée en WebP |
 
+## 6 bis. Récupérer un compte administrateur (lot 1.22)
+
+Un administrateur n'a aucune récupération en libre-service : ni connexion par
+téléphone, ni « Mot de passe oublié » par SMS (décision du 27/10/2026). Si
+un administrateur a perdu son mot de passe, ou s'il faut le changer d'urgence
+(fuite), on le réinitialise depuis un poste qui a la base de production.
+
+```powershell
+cd backend
+$env:FLASK_APP = "run.py"; $env:FLASK_ENV = "production"
+$env:DATABASE_URL = $env:PGPROD
+# ProductionConfig exige aussi des secrets forts ; pour cette commande, des
+# valeurs jetables suffisent (elle ne signe rien).
+$env:SECRET_KEY = python -c "import secrets; print(secrets.token_urlsafe(48))"
+$env:JWT_SECRET_KEY = python -c "import secrets; print(secrets.token_urlsafe(48))"
+
+flask admin reinitialiser-mot-de-passe admin@exemple.com
+# Le nouveau mot de passe est demandé deux fois, sans s'afficher
+# (8 caractères minimum). Attendu :
+# « Mot de passe de admin@exemple.com réinitialisé ; toutes ses sessions sont fermées. »
+
+Remove-Item Env:DATABASE_URL, Env:PGPROD, Env:SECRET_KEY, Env:JWT_SECRET_KEY
+cd ..
+```
+
+`$env:PGPROD` est la chaîne de connexion saisie à la section 2. Ne la colle pas
+dans la ligne de commande : elle resterait dans l'historique du terminal.
+
+- Le mot de passe ne se passe **jamais** en argument : la commande le refuse,
+  et il resterait dans l'historique du terminal.
+- Toutes les sessions du compte sont fermées, sur tous les appareils, et
+  tout code OTP encore valide est annulé.
+- La commande refuse un compte qui n'est pas administrateur (il passe par
+  « Mot de passe oublié ») et un e-mail inconnu. Pour créer un administrateur
+  ou en promouvoir un : `python create_admin.py`.
+- Si le compte est désactivé, la commande le signale : un autre administrateur
+  doit le réactiver (Admin → Utilisateurs).
+- La commande tourne sur ton poste : sa trace est le message affiché dans ton
+  terminal, pas les journaux Render.
+
 ## 7. Retour arrière
 
 1. **Code** : Render → Deploys → déploiement précédent → « Rollback ». Les

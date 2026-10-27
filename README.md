@@ -181,6 +181,19 @@ python create_admin.py
 Une base existante, créée avant les migrations par `create_all`, ne doit pas
 recevoir `flask db upgrade` : voir la procédure de `backend/migrations/README`.
 
+**Administrateur qui a perdu son mot de passe** : les comptes administrateurs
+n'ont pas de récupération par SMS. Depuis un poste qui a la `DATABASE_URL` de
+production :
+
+```bash
+cd backend
+flask admin reinitialiser-mot-de-passe admin@exemple.com
+```
+
+Le nouveau mot de passe est demandé au clavier (jamais en argument) et toutes
+les sessions du compte sont fermées. Pas à pas complet, variables comprises :
+`docs/RUNBOOK_PHASE1.md`, section 6 bis.
+
 Un disque persistant est monté sur `/var/data` : les CNI et justificatifs
 téléversés survivent aux redéploiements.
 
