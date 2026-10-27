@@ -1,5 +1,6 @@
 import {
   Bell,
+  CalendarClock,
   CheckCheck,
   Home,
   MessageSquare,
@@ -27,6 +28,8 @@ const ICONES: Record<string, { icone: LucideIcon; couleur: string; fond: string 
   paiement_recu: { icone: Receipt, couleur: "#8B5CF6", fond: "#F5F3FF" },
   nouvel_avis: { icone: Star, couleur: "#F59E0B", fond: "#FFFBEB" },
   niveau_confiance: { icone: ShieldCheck, couleur: "#1E3A5F", fond: "#EFF6FF" },
+  // Rappel la veille (lot 2.7) ; le lien ouvre la conversation de la candidature.
+  rappel_visite: { icone: CalendarClock, couleur: "#1D4ED8", fond: "#EFF6FF" },
 };
 
 const PAR_DEFAUT = { icone: Bell, couleur: "#64748B", fond: "#F1F5F9" };
