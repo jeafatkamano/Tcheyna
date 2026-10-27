@@ -369,7 +369,8 @@ def test_tarif_refuse_hors_gnf(client, fabrique, bailleur, entetes, cinetpay, ty
     reponse = client.post("/api/payments/initier", headers=entetes(bailleur),
                           json={"type_paiement": type_paiement, "listing_id": annonce_xof.id})
 
-    assert reponse.status_code == 400
+    assert reponse.status_code == 422
+    assert reponse.get_json()["details"][0]["code"] == "devise_non_prise_en_charge"
     assert Payment.query.count() == 0
     assert cinetpay.reseau.appels_vers(cinetpay.url_init) == []
 
@@ -997,10 +998,13 @@ def test_frais_hors_gnf_refuses(client, fabrique, locataire, bailleur, entetes, 
     acceptation = _accepter(client, entetes, bailleur, candidature)
     initiation = _initier_frais(client, entetes, bailleur, candidature)
 
-    assert acceptation.status_code == 400
+    assert acceptation.status_code == 422
     assert "GNF" in acceptation.get_json()["error"]
-    assert initiation.status_code == 400
-    assert initiation.get_json()["error"] == "Ce service n'est proposé qu'en GNF pour le moment"
+    assert acceptation.get_json()["details"][0]["code"] == "devise_non_prise_en_charge"
+    assert initiation.status_code == 422
+    assert initiation.get_json()["error"] == (
+        "Les services payants de Tcheyna ne sont proposés qu'en francs guinéens (GNF) "
+        "pour le moment, et cette annonce est en XOF.")
     assert Payment.query.count() == 0
     assert cinetpay.reseau.appels == []
     _rien_n_est_debloque(client, entetes, candidature)

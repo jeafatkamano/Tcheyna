@@ -42,7 +42,7 @@ from app.models import (
 )
 from app.routes import current_user_required
 from app.routes.listings import certification_a_payer
-from app.schemas import valider_corps
+from app.schemas import erreur_champ, valider_corps
 from app.schemas.payments import (
     A_REMBOURSER,
     PAIEMENTS_HORS_PLATEFORME,
@@ -62,10 +62,13 @@ CINETPAY_CHECK_URL = "https://api-checkout.cinetpay.com/v2/payment/check"
 FRAIS_MISE_EN_RELATION = "frais_mise_en_relation"
 FRAIS_MISE_EN_RELATION_GNF = 250_000
 
-# Tarifs des services Tcheyna, en GNF (base : Conakry). Ouvrir un marché
-# dans une autre devise demandera une grille par devise : aucun montant n'est
-# encore fixé en XOF, GHS ou NGN.
+# Tarifs des services Tcheyna, en GNF (base : Conakry). Décision du
+# 27/10/2026 : GNF seulement pour l'instant. Sur une annonce en XOF, GHS ou
+# NGN, les services payants (frais, certification, mise en avant) sont
+# refusés (422 `devise_non_prise_en_charge`) ; ouvrir un marché demandera
+# une grille par devise.
 DEVISE_TARIFS = "GNF"
+CODE_DEVISE_NON_PRISE_EN_CHARGE = "devise_non_prise_en_charge"
 TARIFS_GNF = {
     "certification":        250_000,
     "abonnement_passeport": 150_000,
@@ -103,6 +106,15 @@ REPRISE_FENETRE = timedelta(days=1)
 
 # Chaque initiation crée une ligne et appelle CinetPay : plafond par compte.
 LIMITE_INITIATION = "10 per minute"
+
+
+def erreur_devise(champ, devise):
+    """422 d'un service payant demandé sur une annonce hors GNF."""
+    return erreur_champ(
+        champ, CODE_DEVISE_NON_PRISE_EN_CHARGE,
+        "Les services payants de Tcheyna ne sont proposés qu'en francs guinéens "
+        "(GNF) pour le moment, et cette annonce est en {devise}.",
+        devise, devise=devise)
 
 
 def _reference():
@@ -265,14 +277,13 @@ def refus_acceptation_sans_frais(match):
 
     La candidature reste en attente : c'est la confirmation du paiement
     (`_confirmer`) qui l'accepte. Hors GNF, aucun montant n'est fixé : le
-    service n'est pas proposé, comme les autres tarifs.
+    service n'est pas proposé, comme les autres tarifs (lève l'erreur 422
+    `devise_non_prise_en_charge`).
     """
     if not frais_mise_en_relation_a_regler(match):
         return None
     if match.listing.devise != DEVISE_TARIFS:
-        return {"error": f"Les frais de mise en relation ne sont proposés qu'en "
-                         f"{DEVISE_TARIFS} pour le moment : cette candidature ne peut "
-                         "pas encore être acceptée."}, 400
+        raise erreur_devise("statut", match.listing.devise)
     montant = f"{FRAIS_MISE_EN_RELATION_GNF:,}".replace(",", " ")
     return {
         "error": f"Pour accepter cette candidature, réglez les frais de mise en relation "
@@ -295,6 +306,8 @@ def tarifs():
     """Grille tarifaire publique."""
     return jsonify({
         "devise": DEVISE_TARIFS,
+        # Seule devise où les services payants sont proposés (27/10/2026).
+        "devises_prises_en_charge": [DEVISE_TARIFS],
         "services": [
             {"type": FRAIS_MISE_EN_RELATION, "libelle": PAYMENT_TYPES[FRAIS_MISE_EN_RELATION],
              "montant": FRAIS_MISE_EN_RELATION_GNF, "payeur": "Propriétaire",
@@ -344,6 +357,17 @@ def initier_paiement(current_user, corps):
     if erreur:
         return jsonify({"error": erreur}), 400
 
+    # La devise n'est jamais choisie par le client : celle de l'annonce, ou,
+    # pour un service sans annonce (abonnement Passeport), celle des tarifs.
+    devise = (match.listing.devise if match and match.listing
+              else listing.devise if listing
+              else DEVISE_TARIFS)
+    # Les tarifs fixes n'existent qu'en GNF : appliqués à une annonce dans une
+    # autre devise, ils factureraient 250 000 XOF au lieu de 250 000 GNF.
+    # Contrôlé avant toute reprise d'un paiement en attente (appel sortant).
+    if type_paiement in TARIFS_GNF and devise != DEVISE_TARIFS:
+        raise erreur_devise("match_id" if match else "listing_id", devise)
+
     # Callback perdu, réseau coupé : le client a peut-être déjà payé ce
     # service. On le revérifie avant de lui faire payer une seconde fois.
     match_id = match.id if match else None
@@ -382,17 +406,6 @@ def initier_paiement(current_user, corps):
                                      "sa certification"}), 409
     if not montant or montant <= 0:
         return jsonify({"error": "Montant à payer indéterminé"}), 400
-
-    # La devise n'est jamais choisie par le client : celle de l'annonce, ou,
-    # pour un service sans annonce (abonnement Passeport), celle des tarifs.
-    devise = (match.listing.devise if match and match.listing
-              else listing.devise if listing
-              else DEVISE_TARIFS)
-
-    # Les tarifs fixes n'existent qu'en GNF : appliqués à une annonce dans une
-    # autre devise, ils factureraient 250 000 XOF au lieu de 250 000 GNF.
-    if type_paiement in TARIFS_GNF and devise != DEVISE_TARIFS:
-        return jsonify({"error": f"Ce service n'est proposé qu'en {DEVISE_TARIFS} pour le moment"}), 400
 
     transaction_id = uuid.uuid4().hex[:20].upper()
 
@@ -622,6 +635,7 @@ def _verrouiller_service(paiement):
 
 
 MOTIF_CANDIDATURE_CLOSE = "candidature_close"
+MOTIF_ECARTEE_PAR_LE_BAILLEUR = "ecartee_par_le_bailleur"
 
 
 def _motif_remboursement(paiement):
@@ -647,6 +661,29 @@ def _marquer_a_rembourser(paiement, motif):
                                paiement.id, paiement.type_paiement, motif)
     notify.paiement_a_rembourser(paiement, motif,
                                  [u.id for u in User.query.filter_by(role="admin").all()])
+
+
+def frais_regles(match):
+    """Frais de mise en relation encaissés et gardés pour `match`, sous
+    verrou de leur ligne."""
+    return (Payment.query.filter_by(match_id=match.id, type_paiement=FRAIS_MISE_EN_RELATION,
+                                    statut="success")
+            .with_for_update().populate_existing().all())
+
+
+def rembourser_frais_ecartes(match):
+    """Décision du 27/10/2026 : le bailleur qui refuse ou écarte une
+    candidature dont il a payé les frais de mise en relation est remboursé.
+    Le paiement passe « à rembourser » : les administrateurs sont prévenus et
+    remboursent depuis CinetPay (même circuit que le lot 1.3b), le bailleur
+    est prévenu. Un retrait du locataire, lui, ne rembourse rien.
+
+    À appeler sous le verrou de la candidature, dans la transaction qui
+    l'écarte. Retourne les paiements concernés."""
+    paiements = frais_regles(match)
+    for paiement in paiements:
+        _marquer_a_rembourser(paiement, MOTIF_ECARTEE_PAR_LE_BAILLEUR)
+    return paiements
 
 
 def _confirmer(paiement):

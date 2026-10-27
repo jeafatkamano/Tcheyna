@@ -55,6 +55,17 @@ def candidature_traitee(tenant_id, acceptee, listing_title, match_id):
     )
 
 
+def candidature_retiree(landlord_id, tenant_name, listing_title, match_id, frais_regles):
+    """Retrait par le locataire d'une candidature acceptée. Décision du
+    27/10/2026 : les frais de mise en relation ne sont pas remboursés."""
+    contenu = f"{tenant_name} a retiré sa candidature pour « {listing_title} »."
+    if frais_regles:
+        contenu += (" Les frais de mise en relation réglés ne sont pas remboursés : "
+                    "la mise en relation a eu lieu (conditions générales, article 6).")
+    return notifier(landlord_id, "candidature_retiree", "Candidature retirée", contenu,
+                    f"/owner/matches?match={match_id}")
+
+
 def nouveau_message(destinataire_id, expediteur_name, extrait, match_id):
     # Le fil s'ouvre par la candidature (/messages/:matchId), pas par la conversation.
     return notifier(
@@ -141,6 +152,7 @@ MOTIFS_REMBOURSEMENT = {
     "hors_plateforme": "la caution et le loyer ne se paient pas via Tcheyna",
     "doublon": "ce service était déjà réglé",
     "candidature_close": "la candidature n'était plus en attente (retirée ou refusée)",
+    "ecartee_par_le_bailleur": "vous avez écarté la candidature après avoir réglé les frais",
 }
 
 

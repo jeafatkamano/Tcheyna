@@ -169,7 +169,7 @@ def _message(erreur):
 CODES_LIBRES = {"email_invalide", "code_invalide", "lieu_invalide", "montant_trop_eleve",
                 "devise_incoherente", "budget_incoherent", "mot_de_passe_incorrect",
                 "piece_absente", "hors_plateforme", "telephone_invalide", "type_retire",
-                "date_passee", "date_trop_lointaine"}
+                "date_passee", "date_trop_lointaine", "devise_non_prise_en_charge"}
 
 
 def reponse_422(exc):
