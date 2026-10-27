@@ -331,8 +331,9 @@ donne dans son corps l'action manuelle équivalente.
 
 Render → service **`tcheyna`** (Static Site) → **Headers** (menu du service ;
 selon la version de l'interface, Settings → Headers). Pour chaque règle
-ci-dessous : « Add Header », puis Path, Name et Value **copiés tels quels**,
-puis « Save Changes ». Les valeurs viennent de `render.yaml` (service
+ci-dessous : ajoute une règle (bouton d'ajout de la page Headers), remplis
+Path, Name et Value **copiés tels quels**, puis enregistre. Les libellés
+exacts des boutons dépendent de la version de l'interface. Les valeurs viennent de `render.yaml` (service
 `tcheyna`, clé `headers`) ; elles ne contiennent aucun secret.
 
 Avant d'ajouter, supprime une éventuelle règle existante de même Path et de
