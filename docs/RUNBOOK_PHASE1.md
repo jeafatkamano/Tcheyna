@@ -410,6 +410,7 @@ Si la valeur de la CSP change dans `render.yaml` (par exemple quand
 Depuis PowerShell, sur le site en production :
 
 ```powershell
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $site = "https://tcheyna.onrender.com"
 $noms = "content-security-policy|x-content-type-options|referrer-policy|permissions-policy|strict-transport-security|cache-control"
 function Entetes($url) {
