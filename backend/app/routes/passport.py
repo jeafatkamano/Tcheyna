@@ -9,7 +9,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 
 from app import db
-from app.models import TRUST_LEVELS, TenantPassport, abonnements_passeport
+from app.models import AUTEURS_POSITIFS_NIVEAU_4, TRUST_LEVELS, TenantPassport, abonnements_passeport
 from app.routes import current_user_required, role_required
 from app.schemas import erreur_champ, valider_corps
 from app.schemas.passport import Criteres, MajPasseport
@@ -83,7 +83,9 @@ def _etapes_verification(user, passport):
         {
             "niveau": 4, "titre": "Historique locatif et avis de bailleurs",
             "fait": (user.trust_level or 0) >= 4,
-            "detail": f"{user.reviews_received.filter_by(is_positive=True).count()}/3 avis positifs",
+            # Auteurs distincts, comme le calcul du niveau (lot 1.15).
+            "detail": (f"{user.nb_auteurs_positifs()}/{AUTEURS_POSITIFS_NIVEAU_4} "
+                       "avis positifs de bailleurs différents"),
             "action": "obtenir_avis",
         },
     ]
