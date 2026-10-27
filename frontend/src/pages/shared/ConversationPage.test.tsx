@@ -48,7 +48,7 @@ function conversation(extra: Partial<Conversation> = {}): Conversation {
     interlocuteur: { id: "autre", full_name: "Awa Camara" } as User,
     messages: plage(1, 3),
     ...extra,
-  };
+  } as Conversation;
 }
 
 function page(messages: Message[], plusAnciens: boolean): Conversation {

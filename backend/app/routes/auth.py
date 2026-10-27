@@ -422,6 +422,10 @@ def logout():
     return jsonify({"message": "Déconnexion réussie"}), 200
 
 
+# Lu par app/openapi.py : jeton d'accès ou de rafraîchissement.
+logout.jeton_acces_ou_refresh = True
+
+
 # ─── GET /api/auth/me ─────────────────────────────────────────
 
 @auth_bp.route("/me", methods=["GET"])

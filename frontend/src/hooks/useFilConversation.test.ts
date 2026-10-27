@@ -38,7 +38,7 @@ function page(messages: Message[], plusAnciens: boolean): Conversation {
       plus_anciens: plusAnciens,
       curseur: plusAnciens ? messages[0].id : null,
     },
-  };
+  } as Conversation;
 }
 
 const ids = (messages: Message[]) => messages.map((m) => m.id);
@@ -88,8 +88,8 @@ describe("integrerDernierePage", () => {
   });
 
   it("serveur sans pagination : le fil complet remplace le fil", () => {
-    let etat = integrerDernierePage(FIL_VIDE, { id: "c1", match_id: "M1", nb_non_lus: 0, messages: plage(1, 3) });
-    etat = integrerDernierePage(etat, { id: "c1", match_id: "M1", nb_non_lus: 0, messages: plage(1, 4) });
+    let etat = integrerDernierePage(FIL_VIDE, { id: "c1", match_id: "M1", nb_non_lus: 0, messages: plage(1, 3) } as Conversation);
+    etat = integrerDernierePage(etat, { id: "c1", match_id: "M1", nb_non_lus: 0, messages: plage(1, 4) } as Conversation);
     expect(ids(etat.messages)).toEqual(ids(plage(1, 4)));
     expect(etat.curseur).toBeNull();
   });

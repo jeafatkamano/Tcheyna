@@ -34,7 +34,7 @@ export type DetailCompatibilite = Schemas["DetailCompatibilite"];
 export type TypeTransaction = Schemas["Listing"]["type_transaction"];
 
 /** `adresse` vaut `null` pour qui n'y a pas droit (voir `adresse_masquee`). */
-export type Listing = Schemas["Listing"] & VueProprietaireAnnonce;
+export type Listing = Schemas["Listing"];
 
 export type MatchStatus = Schemas["Match"]["status"];
 
@@ -65,30 +65,16 @@ export type TenantPassport = Schemas["TenantPassport"] &
 
 export type Message = Schemas["Message"];
 
-export type Conversation = Schemas["Conversation"] & {
-  messages?: Message[];
-  /*
-   * Messagerie bornée (lot 2.8, PR #30). Champs facultatifs : absents tant
-   * que le serveur ne les envoie pas, ce qui vaut « écriture ouverte » et
-   * « fil complet ».
-   */
-  /** Vrai quand la candidature est refusée, retirée ou close : lecture seule. */
-  ecriture_fermee?: boolean;
-  motif_fermeture?: MotifFermeture | null;
-  /** Présent seulement si le fil a été demandé par page (`limite`, `avant`). */
-  pagination?: PaginationMessages;
-};
+/**
+ * Messagerie bornée (lot 2.8) : `ecriture_fermee`, `motif_fermeture` et, pour
+ * un fil demandé par page, `pagination`. Champs facultatifs : absents, ils
+ * valent « écriture ouverte » et « fil complet ».
+ */
+export type Conversation = Schemas["Conversation"];
 
 /** Code stable du motif de fermeture d'une conversation. */
-export type MotifFermeture = "candidature_refusee" | "candidature_retiree" | "candidature_close";
-
-export interface PaginationMessages {
-  limite: number;
-  /** Il reste des messages plus anciens que ceux de la page. */
-  plus_anciens: boolean;
-  /** Valeur à passer en `avant` pour la page plus ancienne (`null` à la fin). */
-  curseur: string | null;
-}
+export type MotifFermeture = NonNullable<Schemas["Conversation"]["motif_fermeture"]>;
+export type PaginationMessages = Schemas["PaginationMessages"];
 
 export interface PageConversations {
   conversations: Conversation[];
@@ -154,16 +140,10 @@ export interface Tarif {
  * candidature de location (D1) : la candidature reste en attente, et
  * l'acceptation prend effet à la confirmation de ce paiement.
  */
-export interface FraisMiseEnRelationRequis {
-  error: string;
+export type FraisMiseEnRelationRequis = Schemas["Erreur"] & {
   action_requise: "payer_frais_mise_en_relation";
-  paiement: {
-    type_paiement: "frais_mise_en_relation";
-    match_id: string;
-    montant: number;
-    devise: string;
-  };
-}
+  paiement: Schemas["PaiementAttendu"] & { type_paiement: "frais_mise_en_relation" };
+};
 
 export interface DocumentPiece {
   /** Référence interne, utilisée pour supprimer la pièce. */
@@ -205,22 +185,11 @@ export interface CandidatSuggere {
  * calcule. Elle vaut hors examen en cours : le web ne la lit que pour une
  * annonce « none » ou « rejected ».
  */
-export interface CertificationResoumission {
-  nb_refus: number;
-  nb_paiements: number;
-  /** Une nouvelle demande exige un nouveau paiement (402 sinon). */
-  paiement_requis: boolean;
-  /** La prochaine demande est la re-soumission gratuite. */
-  resoumission_gratuite: boolean;
-}
+export type CertificationResoumission = Schemas["CertificationResoumission"];
 
 /**
  * Champs que seul le propriétaire reçoit (`mes-annonces`, détail, retrait et
  * remise en ligne). Absents d'un serveur antérieur au lot 2.2 : `undefined`
  * ne vaut ni « retirée » ni « gratuite ».
  */
-export interface VueProprietaireAnnonce {
-  /** Annonce retirée par son propriétaire : absente de la recherche. */
-  retiree?: boolean;
-  certification_resoumission?: CertificationResoumission;
-}
+export type VueProprietaireAnnonce = Pick<Listing, "retiree" | "certification_resoumission">;

@@ -499,6 +499,31 @@
         }
       }
     },
+    "/api/auth/logout": {
+      "post": {
+        "operationId": "auth_logout",
+        "tags": [
+          "auth"
+        ],
+        "summary": "auth.logout",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          },
+          {
+            "jwtRefresh": []
+          }
+        ]
+      }
+    },
     "/api/auth/me": {
       "get": {
         "operationId": "auth_me",
@@ -522,6 +547,60 @@
             "jwt": []
           }
         ]
+      }
+    },
+    "/api/auth/mot-de-passe-oublie": {
+      "post": {
+        "operationId": "auth_mot_de_passe_oublie",
+        "tags": [
+          "auth"
+        ],
+        "summary": "auth.mot_de_passe_oublie",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DemandeReinitialisation"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/mot-de-passe-oublie/confirmer": {
+      "post": {
+        "operationId": "auth_confirmer_mot_de_passe_oublie",
+        "tags": [
+          "auth"
+        ],
+        "summary": "auth.confirmer_mot_de_passe_oublie",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "422": {
+            "$ref": "#/components/responses/CorpsInvalide"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmationReinitialisation"
+              }
+            }
+          }
+        }
       }
     },
     "/api/auth/niveaux": {
@@ -1109,6 +1188,48 @@
         ]
       }
     },
+    "/api/listings/{listing_id}/confirmer": {
+      "put": {
+        "operationId": "listings_confirmer_annonce",
+        "tags": [
+          "listings"
+        ],
+        "summary": "Le propriétaire confirme que son annonce en ligne est toujours",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ]
+      }
+    },
     "/api/listings/{listing_id}/documents": {
       "post": {
         "operationId": "listings_televerser_documents",
@@ -1390,13 +1511,97 @@
         }
       }
     },
+    "/api/listings/{listing_id}/reactiver": {
+      "put": {
+        "operationId": "listings_reactiver_annonce",
+        "tags": [
+          "listings"
+        ],
+        "summary": "Remet en ligne une annonce retirée. Idempotent",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ]
+      }
+    },
+    "/api/listings/{listing_id}/retirer": {
+      "put": {
+        "operationId": "listings_retirer_annonce",
+        "tags": [
+          "listings"
+        ],
+        "summary": "Masque une annonce sans la supprimer. Idempotent",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "404": {
+            "$ref": "#/components/responses/Introuvable"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "parameters": [
+          {
+            "name": "listing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "jwt": []
+          }
+        ],
+        "x-roles": [
+          "landlord",
+          "agency"
+        ]
+      }
+    },
     "/api/listings/mes-annonces": {
       "get": {
         "operationId": "listings_mes_annonces",
         "tags": [
           "listings"
         ],
-        "summary": "listings.mes_annonces",
+        "summary": "Annonces en ligne du propriétaire. `?inclure_retirees=1` y ajoute ses",
         "responses": {
           "2XX": {
             "description": "Succès"
@@ -1805,7 +2010,7 @@
         "tags": [
           "messages"
         ],
-        "summary": "messages.liste_conversations",
+        "summary": "Sans paramètre : toutes les conversations, comme avant le lot 2.8",
         "responses": {
           "2XX": {
             "description": "Succès"
@@ -1830,7 +2035,7 @@
         "tags": [
           "messages"
         ],
-        "summary": "Retourne le fil complet et marque comme lus les messages reçus",
+        "summary": "Retourne le fil (complet, ou une page) et marque comme lus les messages",
         "responses": {
           "2XX": {
             "description": "Succès"
@@ -1909,6 +2114,31 @@
             }
           }
         }
+      }
+    },
+    "/api/messages/modeles": {
+      "get": {
+        "operationId": "messages_modeles_messages",
+        "tags": [
+          "messages"
+        ],
+        "summary": "Messages types du côté de l'appelant. Un compte qui ne participe à",
+        "responses": {
+          "2XX": {
+            "description": "Succès"
+          },
+          "401": {
+            "$ref": "#/components/responses/NonAuthentifie"
+          },
+          "403": {
+            "$ref": "#/components/responses/Interdit"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          }
+        ]
       }
     },
     "/api/messages/non-lus": {
@@ -2893,6 +3123,32 @@
         "title": "Candidature",
         "type": "object"
       },
+      "CertificationResoumission": {
+        "additionalProperties": false,
+        "description": "Ce qu'une nouvelle demande de certification coûterait (D4, lot 2.2).",
+        "properties": {
+          "nb_refus": {
+            "type": "integer"
+          },
+          "nb_paiements": {
+            "type": "integer"
+          },
+          "paiement_requis": {
+            "type": "boolean"
+          },
+          "resoumission_gratuite": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "nb_refus",
+          "nb_paiements",
+          "paiement_requis",
+          "resoumission_gratuite"
+        ],
+        "title": "CertificationResoumission",
+        "type": "object"
+      },
       "ChangementMotDePasse": {
         "additionalProperties": false,
         "properties": {
@@ -2912,6 +3168,33 @@
           "nouveau_mot_de_passe"
         ],
         "title": "ChangementMotDePasse",
+        "type": "object"
+      },
+      "ConfirmationReinitialisation": {
+        "additionalProperties": false,
+        "properties": {
+          "phone": {
+            "maxLength": 30,
+            "minLength": 1,
+            "type": "string"
+          },
+          "code": {
+            "maxLength": 6,
+            "minLength": 1,
+            "type": "string"
+          },
+          "nouveau_mot_de_passe": {
+            "maxLength": 128,
+            "minLength": 8,
+            "type": "string"
+          }
+        },
+        "required": [
+          "phone",
+          "code",
+          "nouveau_mot_de_passe"
+        ],
+        "title": "ConfirmationReinitialisation",
         "type": "object"
       },
       "Connexion": {
@@ -2937,7 +3220,7 @@
       },
       "Conversation": {
         "additionalProperties": false,
-        "description": "`interlocuteur` et `nb_non_lus` : seulement quand la conversation est\nlue par l'un de ses participants (`to_dict(user_id=…)`).",
+        "description": "`interlocuteur` et `nb_non_lus` : seulement quand la conversation est\nlue par l'un de ses participants (`to_dict(user_id=…)`). Messagerie\nbornée (lot 2.8) : `ecriture_fermee`, `motif_fermeture`, et, pour un fil\ndemandé par page, `messages` et `pagination`.",
         "properties": {
           "id": {
             "type": "string"
@@ -2999,6 +3282,37 @@
           "nb_non_lus": {
             "default": null,
             "type": "integer"
+          },
+          "ecriture_fermee": {
+            "default": null,
+            "type": "boolean"
+          },
+          "motif_fermeture": {
+            "anyOf": [
+              {
+                "enum": [
+                  "candidature_refusee",
+                  "candidature_retiree",
+                  "candidature_close"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "messages": {
+            "default": null,
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "type": "array"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/PaginationMessages",
+            "default": null
           }
         },
         "required": [
@@ -3413,6 +3727,21 @@
         "title": "DecisionCandidature",
         "type": "object"
       },
+      "DemandeReinitialisation": {
+        "additionalProperties": false,
+        "properties": {
+          "phone": {
+            "maxLength": 30,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "phone"
+        ],
+        "title": "DemandeReinitialisation",
+        "type": "object"
+      },
       "DetailCompatibilite": {
         "additionalProperties": false,
         "properties": {
@@ -3539,7 +3868,7 @@
       },
       "Erreur": {
         "additionalProperties": false,
-        "description": "Corps de toute réponse d'erreur. `details` : seulement sur un 422.",
+        "description": "Corps de toute réponse d'erreur. `details` : liste des erreurs par\nchamp (sur un 422 ; vide ou absente ailleurs). Champs propres à certaines\nréponses :\n  • `reessayer_dans` (429) : secondes avant de réessayer ;\n  • `action_requise` (402, 403) : ce que l'utilisateur doit faire\n    (`payer_frais_mise_en_relation`, `verifier_telephone`,\n    `verifier_identite`) ; `paiement` : le paiement attendu ;\n  • `paiement_requis` et `certification_resoumission` (402 d'une demande\n    de certification, lot 2.2) ;\n  • `code` et `plafond` (409, plafond de candidatures actives, D7).",
         "properties": {
           "error": {
             "type": "string"
@@ -3550,6 +3879,34 @@
               "$ref": "#/components/schemas/DetailErreur"
             },
             "type": "array"
+          },
+          "reessayer_dans": {
+            "default": null,
+            "type": "integer"
+          },
+          "action_requise": {
+            "default": null,
+            "type": "string"
+          },
+          "paiement": {
+            "$ref": "#/components/schemas/PaiementAttendu",
+            "default": null
+          },
+          "paiement_requis": {
+            "default": null,
+            "type": "string"
+          },
+          "certification_resoumission": {
+            "$ref": "#/components/schemas/CertificationResoumission",
+            "default": null
+          },
+          "code": {
+            "default": null,
+            "type": "string"
+          },
+          "plafond": {
+            "default": null,
+            "type": "integer"
           }
         },
         "required": [
@@ -3564,7 +3921,7 @@
         "properties": {
           "type_paiement": {
             "enum": [
-              "commission",
+              "frais_mise_en_relation",
               "certification",
               "abonnement_passeport",
               "mise_en_avant"
@@ -3934,6 +4291,14 @@
           "ajoute_le": {
             "default": null,
             "type": "string"
+          },
+          "retiree": {
+            "default": null,
+            "type": "boolean"
+          },
+          "certification_resoumission": {
+            "$ref": "#/components/schemas/CertificationResoumission",
+            "default": null
           }
         },
         "required": [
@@ -4653,6 +5018,70 @@
         "title": "OrdrePhotos",
         "type": "object"
       },
+      "PaginationMessages": {
+        "additionalProperties": false,
+        "description": "Fil demandé par page (`limite`, `avant`), lot 2.8.",
+        "properties": {
+          "limite": {
+            "type": "integer"
+          },
+          "plus_anciens": {
+            "type": "boolean"
+          },
+          "curseur": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "limite",
+          "plus_anciens",
+          "curseur"
+        ],
+        "title": "PaginationMessages",
+        "type": "object"
+      },
+      "PaiementAttendu": {
+        "additionalProperties": false,
+        "description": "Paiement à faire pour que la demande aboutisse (402 des frais de mise\nen relation, D1).",
+        "properties": {
+          "type_paiement": {
+            "enum": [
+              "caution",
+              "premier_loyer",
+              "commission",
+              "frais_mise_en_relation",
+              "certification",
+              "abonnement_passeport",
+              "mise_en_avant"
+            ],
+            "type": "string"
+          },
+          "match_id": {
+            "type": "string"
+          },
+          "montant": {
+            "type": "integer"
+          },
+          "devise": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type_paiement",
+          "match_id",
+          "montant",
+          "devise"
+        ],
+        "title": "PaiementAttendu",
+        "type": "object"
+      },
       "Payment": {
         "additionalProperties": false,
         "properties": {
@@ -4667,6 +5096,7 @@
               "caution",
               "premier_loyer",
               "commission",
+              "frais_mise_en_relation",
               "certification",
               "abonnement_passeport",
               "mise_en_avant"
@@ -5307,6 +5737,9 @@
           "income_verified": {
             "type": "boolean"
           },
+          "proprietaire_verifie": {
+            "type": "boolean"
+          },
           "avatar_url": {
             "anyOf": [
               {
@@ -5361,6 +5794,7 @@
           "phone_verified",
           "cni_verified",
           "income_verified",
+          "proprietaire_verifie",
           "avatar_url",
           "preferred_lang",
           "note_moyenne",
@@ -5444,6 +5878,9 @@
           "income_verified": {
             "type": "boolean"
           },
+          "proprietaire_verifie": {
+            "type": "boolean"
+          },
           "avatar_url": {
             "anyOf": [
               {
@@ -5517,6 +5954,7 @@
           "phone_verified",
           "cni_verified",
           "income_verified",
+          "proprietaire_verifie",
           "avatar_url",
           "preferred_lang",
           "note_moyenne",

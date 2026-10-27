@@ -55,6 +55,10 @@ def test_corps_et_authentification_viennent_des_decorateurs(app):
     rafraichir = chemins["/api/auth/refresh"]["post"]
     assert rafraichir["security"] == [{"jwtRefresh": []}] and "401" in rafraichir["responses"]
 
+    # La déconnexion accepte l'un ou l'autre jeton (lot 1.12).
+    deconnexion = chemins["/api/auth/logout"]["post"]
+    assert deconnexion["security"] == [{"jwt": []}, {"jwtRefresh": []}]
+
     # Le webhook CinetPay accepte aussi un formulaire.
     callback = chemins["/api/payments/callback"]["post"]["requestBody"]["content"]
     assert set(callback) == {"application/json", "application/x-www-form-urlencoded"}
@@ -75,3 +79,17 @@ def test_identifiants_uniques_et_references_resolues(app):
 
 def test_les_fichiers_de_developpement_ne_sont_pas_publies(app):
     assert not any(chemin.startswith("/uploads") for chemin in construire_spec(app)["paths"])
+
+
+def test_les_routes_internes_ne_sont_pas_publiees(app):
+    @app.route("/api/interne/essai", methods=["POST"])
+    def route_interne_d_essai():
+        return "", 204
+
+    assert not any(chemin.startswith("/api/interne/") for chemin in construire_spec(app)["paths"])
+
+
+def test_erreurs_propres_a_certaines_routes_decrites(app):
+    erreur = construire_spec(app)["components"]["schemas"]["Erreur"]["properties"]
+    for champ in ("reessayer_dans", "action_requise", "paiement", "code", "plafond"):
+        assert champ in erreur

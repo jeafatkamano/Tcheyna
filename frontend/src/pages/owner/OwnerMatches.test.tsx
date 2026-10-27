@@ -49,7 +49,7 @@ function candidature(vente = false): Match {
       type_transaction: vente ? "vente" : "location",
       images: [],
     } as unknown as Match["listing"],
-  };
+  } as Match;
 }
 
 function paiementFrais(statut: Payment["statut"]): Payment {
@@ -63,7 +63,7 @@ function paiementFrais(statut: Payment["statut"]): Payment {
     devise: "GNF",
     statut,
     match_id: "M1",
-  };
+  } as Payment;
 }
 
 const ERREUR_402 = new ApiError(MESSAGE_402, 402, {

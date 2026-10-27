@@ -4,7 +4,8 @@ app/openapi.py — Spécification OpenAPI de l'API, générée depuis le code (l
 Rien n'est écrit à la main : la spécification se déduit
   • des routes Flask (`app.url_map`) : chemins, méthodes, paramètres ;
   • de `role_required` : route authentifiée et rôles admis (et de
-    l'attribut `jeton_refresh` pour POST /api/auth/refresh) ;
+    l'attribut `jeton_refresh` pour POST /api/auth/refresh,
+    `jeton_acces_ou_refresh` pour POST /api/auth/logout) ;
   • de `valider_corps` : schéma Pydantic du corps de requête ;
   • de app/schemas/reponses.py : les objets que l'API renvoie.
 
@@ -33,6 +34,9 @@ REF = "#/components/schemas/{model}"
 
 # Routes hors API publique : fichiers servis en développement seulement.
 ENDPOINTS_IGNORES = {"static", "uploaded_file"}
+# Routes internes (lot 1.25, tâches nocturnes appelées par cron-job.org) :
+# protégées par un jeton propre, jamais appelées par le site.
+PREFIXES_IGNORES = ("/api/interne/",)
 
 _PARAM = re.compile(r"<(?:(?P<conv>[a-z]+):)?(?P<nom>\w+)>")
 _TYPES_PARAM = {"int": "integer", "float": "number"}
@@ -103,6 +107,11 @@ def _operation(vue, endpoint: str, parametres: list, composants: dict, origine: 
         operation["responses"]["401"] = _erreur("NonAuthentifie")
         operation["responses"]["403"] = _erreur("Interdit")
 
+    # POST /api/auth/logout : jeton d'accès ou de rafraîchissement, au choix.
+    if getattr(vue, "jeton_acces_ou_refresh", False):
+        operation["security"] = [{"jwt": []}, {"jwtRefresh": []}]
+        operation["responses"]["401"] = _erreur("NonAuthentifie")
+
     schema = getattr(vue, "schema_corps", None)
     if schema is not None:
         ref = _ajouter_schema(composants, schema, origine)
@@ -126,7 +135,7 @@ def construire_spec(app: Flask) -> dict:
 
     chemins: dict = {}
     for regle in sorted(app.url_map.iter_rules(), key=lambda r: r.rule):
-        if regle.endpoint in ENDPOINTS_IGNORES:
+        if regle.endpoint in ENDPOINTS_IGNORES or regle.rule.startswith(PREFIXES_IGNORES):
             continue
         parametres = [
             {

@@ -225,6 +225,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** auth.logout */
+        post: operations["auth_logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/me": {
         parameters: {
             query?: never;
@@ -236,6 +253,40 @@ export interface paths {
         get: operations["auth_me"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/mot-de-passe-oublie": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** auth.mot_de_passe_oublie */
+        post: operations["auth_mot_de_passe_oublie"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/mot-de-passe-oublie/confirmer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** auth.confirmer_mot_de_passe_oublie */
+        post: operations["auth_confirmer_mot_de_passe_oublie"];
         delete?: never;
         options?: never;
         head?: never;
@@ -501,6 +552,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/listings/{listing_id}/confirmer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Le propriétaire confirme que son annonce en ligne est toujours */
+        put: operations["listings_confirmer_annonce"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/listings/{listing_id}/documents": {
         parameters: {
             query?: never;
@@ -555,6 +623,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/listings/{listing_id}/reactiver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Remet en ligne une annonce retirée. Idempotent */
+        put: operations["listings_reactiver_annonce"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/listings/{listing_id}/retirer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Masque une annonce sans la supprimer. Idempotent */
+        put: operations["listings_retirer_annonce"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/listings/mes-annonces": {
         parameters: {
             query?: never;
@@ -562,7 +664,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** listings.mes_annonces */
+        /** Annonces en ligne du propriétaire. `?inclure_retirees=1` y ajoute ses */
         get: operations["listings_mes_annonces"];
         put?: never;
         post?: never;
@@ -733,7 +835,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** messages.liste_conversations */
+        /** Sans paramètre : toutes les conversations, comme avant le lot 2.8 */
         get: operations["messages_liste_conversations"];
         put?: never;
         post?: never;
@@ -750,11 +852,28 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Retourne le fil complet et marque comme lus les messages reçus */
+        /** Retourne le fil (complet, ou une page) et marque comme lus les messages */
         get: operations["messages_get_conversation"];
         put?: never;
         /** messages.envoyer_message */
         post: operations["messages_envoyer_message"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/messages/modeles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Messages types du côté de l'appelant. Un compte qui ne participe à */
+        get: operations["messages_modeles_messages"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1211,9 +1330,25 @@ export interface components {
             /** @default null */
             message?: string | null;
         };
+        /**
+         * CertificationResoumission
+         * @description Ce qu'une nouvelle demande de certification coûterait (D4, lot 2.2).
+         */
+        CertificationResoumission: {
+            nb_refus: number;
+            nb_paiements: number;
+            paiement_requis: boolean;
+            resoumission_gratuite: boolean;
+        };
         /** ChangementMotDePasse */
         ChangementMotDePasse: {
             ancien_mot_de_passe: string;
+            nouveau_mot_de_passe: string;
+        };
+        /** ConfirmationReinitialisation */
+        ConfirmationReinitialisation: {
+            phone: string;
+            code: string;
             nouveau_mot_de_passe: string;
         };
         /** Connexion */
@@ -1224,7 +1359,9 @@ export interface components {
         /**
          * Conversation
          * @description `interlocuteur` et `nb_non_lus` : seulement quand la conversation est
-         *     lue par l'un de ses participants (`to_dict(user_id=…)`).
+         *     lue par l'un de ses participants (`to_dict(user_id=…)`). Messagerie
+         *     bornée (lot 2.8) : `ecriture_fermee`, `motif_fermeture`, et, pour un fil
+         *     demandé par page, `messages` et `pagination`.
          */
         Conversation: {
             id: string;
@@ -1237,6 +1374,14 @@ export interface components {
             interlocuteur?: components["schemas"]["User"] | null;
             /** @default null */
             nb_non_lus?: number;
+            /** @default null */
+            ecriture_fermee?: boolean;
+            /** @default null */
+            motif_fermeture?: ("candidature_refusee" | "candidature_retiree" | "candidature_close") | null;
+            /** @default null */
+            messages?: components["schemas"]["Message"][];
+            /** @default null */
+            pagination?: components["schemas"]["PaginationMessages"];
         };
         /** CreationAnnonce */
         CreationAnnonce: {
@@ -1320,6 +1465,10 @@ export interface components {
             /** @enum {string} */
             statut: "accepted" | "rejected";
         };
+        /** DemandeReinitialisation */
+        DemandeReinitialisation: {
+            phone: string;
+        };
         /** DetailCompatibilite */
         DetailCompatibilite: {
             critere: string;
@@ -1356,12 +1505,35 @@ export interface components {
         };
         /**
          * Erreur
-         * @description Corps de toute réponse d'erreur. `details` : seulement sur un 422.
+         * @description Corps de toute réponse d'erreur. `details` : liste des erreurs par
+         *     champ (sur un 422 ; vide ou absente ailleurs). Champs propres à certaines
+         *     réponses :
+         *       • `reessayer_dans` (429) : secondes avant de réessayer ;
+         *       • `action_requise` (402, 403) : ce que l'utilisateur doit faire
+         *         (`payer_frais_mise_en_relation`, `verifier_telephone`,
+         *         `verifier_identite`) ; `paiement` : le paiement attendu ;
+         *       • `paiement_requis` et `certification_resoumission` (402 d'une demande
+         *         de certification, lot 2.2) ;
+         *       • `code` et `plafond` (409, plafond de candidatures actives, D7).
          */
         Erreur: {
             error: string;
             /** @default null */
             details?: components["schemas"]["DetailErreur"][];
+            /** @default null */
+            reessayer_dans?: number;
+            /** @default null */
+            action_requise?: string;
+            /** @default null */
+            paiement?: components["schemas"]["PaiementAttendu"];
+            /** @default null */
+            paiement_requis?: string;
+            /** @default null */
+            certification_resoumission?: components["schemas"]["CertificationResoumission"];
+            /** @default null */
+            code?: string;
+            /** @default null */
+            plafond?: number;
         };
         /**
          * InitierPaiement
@@ -1370,7 +1542,7 @@ export interface components {
          */
         InitierPaiement: {
             /** @enum {string} */
-            type_paiement: "commission" | "certification" | "abonnement_passeport" | "mise_en_avant";
+            type_paiement: "frais_mise_en_relation" | "certification" | "abonnement_passeport" | "mise_en_avant";
             /** @default null */
             methode?: ("orange_money" | "mtn_momo" | "wave" | "moov" | "carte") | null;
             /** @default null */
@@ -1457,6 +1629,10 @@ export interface components {
             ma_candidature?: components["schemas"]["MaCandidature"] | null;
             /** @default null */
             ajoute_le?: string;
+            /** @default null */
+            retiree?: boolean;
+            /** @default null */
+            certification_resoumission?: components["schemas"]["CertificationResoumission"];
         };
         /** MaCandidature */
         MaCandidature: {
@@ -1626,12 +1802,33 @@ export interface components {
         OrdrePhotos: {
             images: string[];
         };
+        /**
+         * PaginationMessages
+         * @description Fil demandé par page (`limite`, `avant`), lot 2.8.
+         */
+        PaginationMessages: {
+            limite: number;
+            plus_anciens: boolean;
+            curseur: string | null;
+        };
+        /**
+         * PaiementAttendu
+         * @description Paiement à faire pour que la demande aboutisse (402 des frais de mise
+         *     en relation, D1).
+         */
+        PaiementAttendu: {
+            /** @enum {string} */
+            type_paiement: "caution" | "premier_loyer" | "commission" | "frais_mise_en_relation" | "certification" | "abonnement_passeport" | "mise_en_avant";
+            match_id: string;
+            montant: number;
+            devise: string;
+        };
         /** Payment */
         Payment: {
             id: string;
             reference: string;
             /** @enum {string} */
-            type_paiement: "caution" | "premier_loyer" | "commission" | "certification" | "abonnement_passeport" | "mise_en_avant";
+            type_paiement: "caution" | "premier_loyer" | "commission" | "frais_mise_en_relation" | "certification" | "abonnement_passeport" | "mise_en_avant";
             type_label: string;
             description: string | null;
             montant: number;
@@ -1741,6 +1938,7 @@ export interface components {
             phone_verified: boolean;
             cni_verified: boolean;
             income_verified: boolean;
+            proprietaire_verifie: boolean;
             avatar_url: string | null;
             /** @enum {string} */
             preferred_lang: "fr" | "en";
@@ -1766,6 +1964,7 @@ export interface components {
             phone_verified: boolean;
             cni_verified: boolean;
             income_verified: boolean;
+            proprietaire_verifie: boolean;
             avatar_url: string | null;
             /** @enum {string} */
             preferred_lang: "fr" | "en";
@@ -2135,6 +2334,25 @@ export interface operations {
             };
         };
     };
+    auth_logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            401: components["responses"]["NonAuthentifie"];
+            /** @description Succès */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     auth_me: {
         parameters: {
             query?: never;
@@ -2146,6 +2364,52 @@ export interface operations {
         responses: {
             401: components["responses"]["NonAuthentifie"];
             403: components["responses"]["Interdit"];
+            /** @description Succès */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    auth_mot_de_passe_oublie: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DemandeReinitialisation"];
+            };
+        };
+        responses: {
+            422: components["responses"]["CorpsInvalide"];
+            /** @description Succès */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    auth_confirmer_mot_de_passe_oublie: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmationReinitialisation"];
+            };
+        };
+        responses: {
+            422: components["responses"]["CorpsInvalide"];
             /** @description Succès */
             "2XX": {
                 headers: {
@@ -2574,6 +2838,29 @@ export interface operations {
             };
         };
     };
+    listings_confirmer_annonce: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                listing_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            401: components["responses"]["NonAuthentifie"];
+            403: components["responses"]["Interdit"];
+            404: components["responses"]["Introuvable"];
+            /** @description Succès */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     listings_lister_documents: {
         parameters: {
             query?: never;
@@ -2718,6 +3005,52 @@ export interface operations {
             403: components["responses"]["Interdit"];
             404: components["responses"]["Introuvable"];
             422: components["responses"]["CorpsInvalide"];
+            /** @description Succès */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listings_reactiver_annonce: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                listing_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            401: components["responses"]["NonAuthentifie"];
+            403: components["responses"]["Interdit"];
+            404: components["responses"]["Introuvable"];
+            /** @description Succès */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listings_retirer_annonce: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                listing_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            401: components["responses"]["NonAuthentifie"];
+            403: components["responses"]["Interdit"];
+            404: components["responses"]["Introuvable"];
             /** @description Succès */
             "2XX": {
                 headers: {
@@ -3039,6 +3372,26 @@ export interface operations {
             403: components["responses"]["Interdit"];
             404: components["responses"]["Introuvable"];
             422: components["responses"]["CorpsInvalide"];
+            /** @description Succès */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    messages_modeles_messages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            401: components["responses"]["NonAuthentifie"];
+            403: components["responses"]["Interdit"];
             /** @description Succès */
             "2XX": {
                 headers: {

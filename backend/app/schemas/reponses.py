@@ -62,6 +62,9 @@ class User(Contrat):
     phone_verified: bool
     cni_verified: bool
     income_verified: bool
+    # Badge « Propriétaire vérifié » (lot 2.1) : bailleur ou agence dont la
+    # pièce d'identité a été validée.
+    proprietaire_verifie: bool
     avatar_url: str | None
     preferred_lang: Literal["fr", "en"]
     note_moyenne: float | None
@@ -98,6 +101,14 @@ class DetailCompatibilite(Contrat):
 class MaCandidature(Contrat):
     id: str
     status: StatutMatch
+
+
+class CertificationResoumission(Contrat):
+    """Ce qu'une nouvelle demande de certification coûterait (D4, lot 2.2)."""
+    nb_refus: int
+    nb_paiements: int
+    paiement_requis: bool
+    resoumission_gratuite: bool
 
 
 class Listing(Contrat):
@@ -143,6 +154,10 @@ class Listing(Contrat):
     details_compatibilite: list[DetailCompatibilite] = None
     ma_candidature: MaCandidature | None = None
     ajoute_le: str = None
+    # Propriétaire seulement (lot 2.2) : annonce retirée, et coût d'une
+    # nouvelle demande de certification.
+    retiree: bool = None
+    certification_resoumission: CertificationResoumission = None
 
 
 # ─── Passeport locataire ─────────────────────────────────────
@@ -208,9 +223,22 @@ class Message(Contrat):
     created_at: str | None
 
 
+MotifFermeture = Literal["candidature_refusee", "candidature_retiree", "candidature_close"]
+
+
+class PaginationMessages(Contrat):
+    """Fil demandé par page (`limite`, `avant`), lot 2.8."""
+    limite: int
+    plus_anciens: bool
+    # Valeur à passer en `avant` pour la page plus ancienne ; null à la fin.
+    curseur: str | None
+
+
 class Conversation(Contrat):
     """`interlocuteur` et `nb_non_lus` : seulement quand la conversation est
-    lue par l'un de ses participants (`to_dict(user_id=…)`)."""
+    lue par l'un de ses participants (`to_dict(user_id=…)`). Messagerie
+    bornée (lot 2.8) : `ecriture_fermee`, `motif_fermeture`, et, pour un fil
+    demandé par page, `messages` et `pagination`."""
     id: str
     match_id: str
     listing: Listing | None
@@ -219,6 +247,10 @@ class Conversation(Contrat):
     created_at: str | None
     interlocuteur: User | None = None
     nb_non_lus: int = None
+    ecriture_fermee: bool = None
+    motif_fermeture: MotifFermeture | None = None
+    messages: list[Message] = None
+    pagination: PaginationMessages = None
 
 
 class Notification(Contrat):
@@ -267,10 +299,35 @@ class DetailErreur(Contrat):
     message: str
 
 
+class PaiementAttendu(Contrat):
+    """Paiement à faire pour que la demande aboutisse (402 des frais de mise
+    en relation, D1)."""
+    type_paiement: TypePaiement
+    match_id: str
+    montant: int
+    devise: str
+
+
 class Erreur(Contrat):
-    """Corps de toute réponse d'erreur. `details` : seulement sur un 422."""
+    """Corps de toute réponse d'erreur. `details` : liste des erreurs par
+    champ (sur un 422 ; vide ou absente ailleurs). Champs propres à certaines
+    réponses :
+      • `reessayer_dans` (429) : secondes avant de réessayer ;
+      • `action_requise` (402, 403) : ce que l'utilisateur doit faire
+        (`payer_frais_mise_en_relation`, `verifier_telephone`,
+        `verifier_identite`) ; `paiement` : le paiement attendu ;
+      • `paiement_requis` et `certification_resoumission` (402 d'une demande
+        de certification, lot 2.2) ;
+      • `code` et `plafond` (409, plafond de candidatures actives, D7)."""
     error: str
     details: list[DetailErreur] = None
+    reessayer_dans: int = None
+    action_requise: str = None
+    paiement: PaiementAttendu = None
+    paiement_requis: str = None
+    certification_resoumission: CertificationResoumission = None
+    code: str = None
+    plafond: int = None
 
 
 # Modèle de chaque `to_dict()`, selon ses arguments. Sert à la spécification
@@ -297,7 +354,7 @@ MODELES_PAR_CLASSE: dict[type, type[Contrat]] = {
 # Composants publiés dans la spécification, dans cet ordre.
 COMPOSANTS: tuple[type[Contrat], ...] = (
     Niveau, User, UserPrive, Equipements, DetailCompatibilite, MaCandidature,
-    Listing, DocumentsPasseport, TenantPassport, TenantPassportPrive, Match,
-    Message, Conversation, Notification, Review, Payment,
-    DetailErreur, Erreur,
+    CertificationResoumission, Listing, DocumentsPasseport, TenantPassport,
+    TenantPassportPrive, Match, Message, PaginationMessages, Conversation,
+    Notification, Review, Payment, DetailErreur, PaiementAttendu, Erreur,
 )

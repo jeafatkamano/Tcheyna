@@ -43,7 +43,7 @@ function bailleur(champs: Partial<User> = {}): User {
     preferred_lang: "fr",
     nb_avis: 0,
     ...champs,
-  };
+  } as User;
 }
 
 function annonce(landlord?: User): Listing {
@@ -79,7 +79,7 @@ function annonce(landlord?: User): Listing {
     nb_candidatures: 0,
     images: [],
     landlord,
-  };
+  } as unknown as Listing;
 }
 
 describe("BadgeProprietaireVerifie", () => {
