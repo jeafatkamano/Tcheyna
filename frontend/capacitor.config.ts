@@ -24,6 +24,9 @@ const config: CapacitorConfig = {
     SystemBars: {
       insetsHandling: "css",
       style: "DARK",
+      // index.html déclare viewport-fit=cover : le dire d'emblée évite un
+      // saut de mise en page au premier affichage.
+      initialViewportFitValueHint: "cover",
     },
   },
 };

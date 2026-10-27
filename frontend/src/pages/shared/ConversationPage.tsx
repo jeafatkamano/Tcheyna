@@ -288,8 +288,9 @@ export function ConversationPage() {
 
       {/* Saisie */}
       <div
-        className="flex-shrink-0 px-4 py-3 border-t border-gray-200"
-        style={{ background: "white" }}
+        className="flex-shrink-0 px-4 pt-3 border-t border-gray-200"
+        // Au-dessus de la barre de gestes du téléphone (index.css, --inset-bas).
+        style={{ background: "white", paddingBottom: "calc(0.75rem + var(--inset-bas))" }}
       >
         <MessageErreur message={erreurEnvoi} />
         {/* Messages types : proposés sur une saisie vide, insérés sans envoi. */}
