@@ -15,6 +15,20 @@ const config: CapacitorConfig = {
     // L'API est en HTTPS : aucune ressource HTTP ne doit se charger.
     allowMixedContent: false,
   },
+  plugins: {
+    // Android 15+ (cible 36) impose l'affichage bord à bord : la page passe
+    // sous la barre d'état. Capacitor 8 injecte les vraies marges dans
+    // --safe-area-inset-* (WebView < 140 donne de fausses valeurs à env()) ;
+    // index.css s'en sert pour poser une bande bleu nuit sous la barre, comme
+    // Telegram. DARK = icônes et heure en clair, pour un fond sombre.
+    SystemBars: {
+      insetsHandling: "css",
+      style: "DARK",
+      // index.html déclare viewport-fit=cover : le dire d'emblée évite un
+      // saut de mise en page au premier affichage.
+      initialViewportFitValueHint: "cover",
+    },
+  },
 };
 
 export default config;

@@ -178,7 +178,7 @@ function Coquille({ children, onFerme }: { children: React.ReactNode; onFerme: (
       <div className="absolute inset-0 bg-black/50" onClick={onFerme} />
       <div
         className="relative w-full rounded-t-3xl p-6"
-        style={{ background: "white", maxHeight: "90vh", overflowY: "auto" }}
+        style={{ background: "white", maxHeight: "90vh", overflowY: "auto", paddingBottom: "calc(1.5rem + var(--inset-bas))" }}
       >
         <button
           onClick={onFerme}

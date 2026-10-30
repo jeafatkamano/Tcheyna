@@ -88,7 +88,7 @@ export function Layout() {
 
   if (chargement) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
+      <div className="sous-barre-etat min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
         <Chargement texte="Chargement de votre espace…" />
       </div>
     );
@@ -120,7 +120,8 @@ export function Layout() {
       {/* Barre haute */}
       <header
         className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 shadow-sm"
-        style={{ background: "#1E3A5F" }}
+        // Fond sous la barre d'état (bord à bord, index.css), contenu en dessous.
+        style={{ background: "#1E3A5F", paddingTop: "calc(0.75rem + var(--inset-haut))" }}
       >
         <div className="flex items-center gap-2">
           <button
@@ -167,7 +168,11 @@ export function Layout() {
           <div className="absolute inset-0 bg-black/50" onClick={() => setMenuOuvert(false)} />
           <div
             className="relative w-72 max-w-full h-full flex flex-col shadow-xl"
-            style={{ background: "#1E3A5F" }}
+            style={{
+              background: "#1E3A5F",
+              paddingTop: "var(--inset-haut)",
+              paddingBottom: "var(--inset-bas)",
+            }}
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
               <span className="text-white font-bold text-xl tracking-tight">tcheyna</span>
@@ -239,14 +244,14 @@ export function Layout() {
         </div>
       )}
 
-      <main className="flex-1 pb-24">
+      <main className="flex-1" style={{ paddingBottom: "calc(6rem + var(--inset-bas))" }}>
         <Outlet />
       </main>
 
-      {/* Navigation basse */}
+      {/* Navigation basse : au-dessus de la barre de gestes du téléphone. */}
       <nav
         className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t border-white/10 shadow-lg"
-        style={{ background: "#1E3A5F" }}
+        style={{ background: "#1E3A5F", paddingBottom: "var(--inset-bas)" }}
       >
         {nav.map((item) => {
           const actif = estActif(item.path);

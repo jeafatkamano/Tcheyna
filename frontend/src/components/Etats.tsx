@@ -87,7 +87,7 @@ export function Erreur({ message, onReessayer }: ErreurProps) {
  */
 export function ErreurRoute() {
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
+    <div className="sous-barre-etat min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
       <Erreur
         message="La page n'a pas pu s'afficher. Vérifiez votre connexion, puis rechargez."
         onReessayer={() => window.location.reload()}

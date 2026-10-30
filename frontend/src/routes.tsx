@@ -70,7 +70,7 @@ function RequireAuth({ roles, children }: { roles?: Role[]; children: ReactNode 
 
   if (chargement) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
+      <div className="sous-barre-etat min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
         <Chargement />
       </div>
     );
@@ -79,7 +79,7 @@ function RequireAuth({ roles, children }: { roles?: Role[]; children: ReactNode 
   if (!user && erreurSession) {
     // Réseau absent ou serveur endormi : la session n'est pas perdue.
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
+      <div className="sous-barre-etat min-h-screen flex items-center justify-center" style={{ background: "#F0F4FA" }}>
         <Erreur message={erreurSession} onReessayer={reessayerSession} />
       </div>
     );

@@ -226,7 +226,7 @@ export function ListingsPage() {
           <div className="absolute inset-0 bg-black/50" onClick={() => setFiltresOuverts(false)} />
           <div
             className="relative w-full rounded-t-3xl p-6 space-y-5"
-            style={{ background: "white", maxHeight: "85vh", overflowY: "auto" }}
+            style={{ background: "white", maxHeight: "85vh", overflowY: "auto", paddingBottom: "calc(1.5rem + var(--inset-bas))" }}
           >
             <div className="flex items-center justify-between sticky top-0 bg-white pb-2">
               <h3 className="font-bold text-lg" style={{ color: "#1E3A5F" }}>

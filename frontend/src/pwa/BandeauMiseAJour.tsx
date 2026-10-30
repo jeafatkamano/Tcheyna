@@ -13,9 +13,10 @@ export function BandeauMiseAJour({ onRecharger, onFermer }: Props) {
   return (
     <div
       role="status"
-      // bottom-20 : au-dessus de la barre de navigation basse (Layout).
-      className="fixed inset-x-3 bottom-20 z-50 mx-auto flex max-w-md items-center gap-3 rounded-xl px-4 py-3 text-sm text-white shadow-lg"
-      style={{ background: "#1E3A5F" }}
+      // Au-dessus de la barre de navigation basse (Layout), elle-même
+      // rehaussée de la barre de gestes du téléphone.
+      className="fixed inset-x-3 z-50 mx-auto flex max-w-md items-center gap-3 rounded-xl px-4 py-3 text-sm text-white shadow-lg"
+      style={{ background: "#1E3A5F", bottom: "calc(5rem + var(--inset-bas))" }}
     >
       <span className="flex-1">Nouvelle version disponible.</span>
       <button
