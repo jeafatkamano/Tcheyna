@@ -12,7 +12,8 @@ import { Chargement, Erreur, ErreurRoute } from "./components/Etats";
 import { Layout } from "./components/Layout";
 import { useAuth } from "./context/AuthContext";
 
-import { Landing } from "./pages/Landing";
+import { Bienvenue } from "./pages/Bienvenue";
+import { Entree } from "./pages/Entree";
 import { ListingDetail } from "./pages/ListingDetail";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFound } from "./pages/NotFound";
@@ -120,7 +121,10 @@ function EspaceProtege({ roles }: { roles?: Role[] }) {
 // ─── Plan de routes ──────────────────────────────────────────
 
 const ROUTES: RouteObject[] = [
-  { path: "/", Component: Landing },
+  // Site : page d'accueil. Application : espace, présentation ou connexion.
+  { path: "/", Component: Entree },
+  // Présentation du premier lancement (application) ; inoffensive sur le site.
+  { path: "/bienvenue", Component: Bienvenue },
   {
     path: "/login",
     element: (

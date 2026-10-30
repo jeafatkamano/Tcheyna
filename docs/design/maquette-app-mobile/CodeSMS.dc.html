@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Vérification du numéro</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#FDBA74}a:hover{color:#FFF7ED}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; padding: 56px 24px 32px; display: flex; flex-direction: column; background: linear-gradient(170deg, #0F2040 0%, #1E3A5F 100%); color: #ffffff; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; overflow: hidden;">
+
+  <div style="display: flex; align-items: center; height: 44px;">
+    <a href="Inscription2.dc.html" aria-label="Retour" style="width: 44px; height: 44px; margin-left: -10px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); text-decoration: none;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"></path><path d="m11 18-6-6 6-6"></path></svg>
+    </a>
+  </div>
+
+  <div style="margin-top: 24px; width: 72px; height: 72px; border-radius: 22px; background: rgba(249,115,22,0.16); display: flex; align-items: center; justify-content: center;">
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"></rect><path d="M11 18h2"></path></svg>
+  </div>
+
+  <div style="margin-top: 24px; display: flex; flex-direction: column; gap: 10px;">
+    <h1 style="margin: 0; font-size: 30px; font-weight: 800; line-height: 1.15; letter-spacing: -0.5px;">Vérifiez votre numéro</h1>
+    <p style="margin: 0; font-size: 16px; line-height: 1.55; color: rgba(255,255,255,0.78);">Un code à 6 chiffres a été envoyé au <strong style="color: #ffffff;">+224 622 52 92 52</strong>.</p>
+  </div>
+
+  <fieldset style="margin: 32px 0 0; padding: 0; border: none;">
+    <legend style="position: absolute; width: 1px; height: 1px; overflow: hidden;">Code reçu par SMS</legend>
+    <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px;">
+      <input aria-label="Chiffre 1" inputmode="numeric" maxlength="1" value="4" style="height: 60px; width: 100%; box-sizing: border-box; text-align: center; border-radius: 14px; background: rgba(255,255,255,0.1); border: 1.5px solid rgba(255,255,255,0.35); color: #ffffff; font-family: inherit; font-size: 24px; font-weight: 800; outline: none;">
+      <input aria-label="Chiffre 2" inputmode="numeric" maxlength="1" value="8" style="height: 60px; width: 100%; box-sizing: border-box; text-align: center; border-radius: 14px; background: rgba(255,255,255,0.1); border: 1.5px solid rgba(255,255,255,0.35); color: #ffffff; font-family: inherit; font-size: 24px; font-weight: 800; outline: none;">
+      <input aria-label="Chiffre 3" inputmode="numeric" maxlength="1" value="1" style="height: 60px; width: 100%; box-sizing: border-box; text-align: center; border-radius: 14px; background: rgba(255,255,255,0.1); border: 1.5px solid rgba(255,255,255,0.35); color: #ffffff; font-family: inherit; font-size: 24px; font-weight: 800; outline: none;">
+      <input aria-label="Chiffre 4" inputmode="numeric" maxlength="1" value="" style="height: 60px; width: 100%; box-sizing: border-box; text-align: center; border-radius: 14px; background: rgba(255,255,255,0.07); border: 2px solid #F97316; color: #ffffff; font-family: inherit; font-size: 24px; font-weight: 800; outline: none;">
+      <input aria-label="Chiffre 5" inputmode="numeric" maxlength="1" value="" style="height: 60px; width: 100%; box-sizing: border-box; text-align: center; border-radius: 14px; background: rgba(255,255,255,0.07); border: 1.5px solid rgba(255,255,255,0.2); color: #ffffff; font-family: inherit; font-size: 24px; font-weight: 800; outline: none;">
+      <input aria-label="Chiffre 6" inputmode="numeric" maxlength="1" value="" style="height: 60px; width: 100%; box-sizing: border-box; text-align: center; border-radius: 14px; background: rgba(255,255,255,0.07); border: 1.5px solid rgba(255,255,255,0.2); color: #ffffff; font-family: inherit; font-size: 24px; font-weight: 800; outline: none;">
+    </div>
+  </fieldset>
+
+  <div style="margin-top: 18px; display: flex; align-items: center; gap: 8px; font-size: 14px; color: rgba(255,255,255,0.78);">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+    Renvoyer le code dans 42 s
+  </div>
+
+  <div style="margin-top: 28px; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px; background: rgba(37,99,235,0.18); border: 1px solid rgba(147,197,253,0.35);">
+    <span style="width: 32px; height: 32px; border-radius: 50%; background: #2563EB; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>
+    </span>
+    <span style="font-size: 14px; line-height: 1.45; color: rgba(255,255,255,0.9);">Ce code vous fait passer au niveau <strong style="color: #ffffff;">Basique</strong> du Passeport.</span>
+  </div>
+
+  <div style="flex-grow: 1;"></div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px;">
+    <a href="Accueil.dc.html" style="height: 56px; border-radius: 16px; background: #F97316; color: #ffffff; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; text-decoration: none; box-shadow: 0 10px 24px rgba(249,115,22,0.35);">Valider</a>
+    <a href="Accueil.dc.html" style="height: 44px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.78); font-size: 14px; font-weight: 600; text-decoration: none;">Plus tard</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
