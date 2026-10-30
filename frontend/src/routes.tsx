@@ -10,9 +10,9 @@ import { Suspense, type ComponentType, type ReactNode } from "react";
 import type { Role } from "./api";
 import { Chargement, Erreur, ErreurRoute } from "./components/Etats";
 import { Layout } from "./components/Layout";
+import { EcranMarque } from "./components/Marque";
 import { useAuth } from "./context/AuthContext";
 
-import { Bienvenue } from "./pages/Bienvenue";
 import { Entree } from "./pages/Entree";
 import { ListingDetail } from "./pages/ListingDetail";
 import { LoginPage } from "./pages/LoginPage";
@@ -32,6 +32,7 @@ import { TenantProfileView } from "./pages/shared/TenantProfileView";
 import {
   AdminDashboard,
   AdminUsers,
+  Bienvenue,
   CGU,
   Confidentialite,
   FavorisPage,
@@ -124,7 +125,14 @@ const ROUTES: RouteObject[] = [
   // Site : page d'accueil. Application : espace, présentation ou connexion.
   { path: "/", Component: Entree },
   // Présentation du premier lancement (application) ; inoffensive sur le site.
-  { path: "/bienvenue", Component: Bienvenue },
+  {
+    path: "/bienvenue",
+    element: (
+      <Suspense fallback={<EcranMarque />}>
+        <Bienvenue />
+      </Suspense>
+    ),
+  },
   {
     path: "/login",
     element: (

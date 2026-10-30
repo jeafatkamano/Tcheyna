@@ -76,6 +76,14 @@ describe("Bienvenue", () => {
     expect(annonce(conteneur)).toBe("Écran 3 sur 3");
   });
 
+  it("le focus passe au titre du nouvel écran, une fois celui-ci lisible", () => {
+    const { conteneur } = ouvrir();
+    act(() => boutons(conteneur, "Suivant")[0].click());
+    const titre = ecrans(conteneur)[1].querySelector("h1")!;
+    expect(document.activeElement).toBe(titre);
+    expect(ecrans(conteneur)[1].hasAttribute("inert")).toBe(false);
+  });
+
   it("« Passer » mène au troisième écran, la flèche retour au deuxième", () => {
     const { conteneur } = ouvrir();
     act(() => boutons(conteneur, "Passer")[0].click());

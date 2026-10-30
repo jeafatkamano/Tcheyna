@@ -27,21 +27,29 @@ function mouvementReduit(): boolean {
 export function Bienvenue() {
   const defileur = useRef<HTMLDivElement>(null);
   const [courant, setCourant] = useState(0);
+  // Navigation par bouton : le focus suivra sur le titre du nouvel écran.
+  const focusEnAttente = useRef(false);
 
-  // Seul l'écran visible est lisible et atteignable au clavier.
+  // Seul l'écran visible est lisible et atteignable au clavier. Le focus n'est
+  // donné qu'ensuite : un élément encore inerte ne peut pas le recevoir.
   useEffect(() => {
-    [...(defileur.current?.children ?? [])].forEach((el, i) => {
+    const sections = [...(defileur.current?.children ?? [])];
+    sections.forEach((el, i) => {
       el.toggleAttribute("inert", i !== courant);
       el.setAttribute("aria-hidden", String(i !== courant));
     });
+    if (focusEnAttente.current) {
+      focusEnAttente.current = false;
+      sections[courant]?.querySelector("h1")?.focus({ preventScroll: true });
+    }
   }, [courant]);
 
   const aller = useCallback((i: number) => {
     setCourant(i);
     const el = defileur.current;
     if (el) el.scrollTo({ left: i * el.clientWidth, behavior: mouvementReduit() ? "auto" : "smooth" });
-    // Le bouton pressé devient inerte : le focus passe au titre du nouvel écran.
-    el?.querySelectorAll("h1")[i]?.focus({ preventScroll: true });
+    // Le bouton pressé devient inerte : le focus passera au titre du nouvel écran.
+    focusEnAttente.current = true;
   }, []);
 
   function surDefilement() {
