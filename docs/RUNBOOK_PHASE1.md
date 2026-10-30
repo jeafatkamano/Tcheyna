@@ -78,7 +78,8 @@ Contrôle, en PowerShell (`curl.exe`, pas l'alias `curl` de PowerShell) :
 curl.exe -s -o NUL -D - -X OPTIONS https://tcheyna-api.onrender.com/api/auth/login -H "Origin: https://localhost" -H "Access-Control-Request-Method: POST"
 ```
 
-La réponse doit contenir `access-control-allow-origin: https://localhost`.
+La réponse doit contenir `access-control-allow-origin: https://localhost`
+(majuscules ou minuscules, selon le proxy).
 Refais-le avec `-H "Origin: https://tcheyna.onrender.com"` pour le site. Si la
 ligne manque, corrige `CORS_ORIGINS` dans Render → `tcheyna-api` →
 Environment, enregistre (Render redéploie), puis relance le contrôle.
