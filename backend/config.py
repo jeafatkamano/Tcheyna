@@ -121,7 +121,22 @@ class Config:
     # nuit. Vide : la route répond 404, la fonction est désactivée.
     TACHES_NOCTURNES_JETON = os.getenv("TACHES_NOCTURNES_JETON", "")
 
-    # ─── Africa's Talking (OTP SMS) ─────────────────────────
+    # ─── SMS (codes OTP), lot 1.27 : services/sms.py ────────
+    # Essayés dans l'ordre : Nimba SMS (Guinée, tous opérateurs), Orange SMS
+    # API Guinée (secours), Africa's Talking (autres pays : il ne couvre pas
+    # la Guinée). Un fournisseur sans ses variables est ignoré.
+    # Vrai en production : sans SMS parti, /send-otp répond 503 au lieu de
+    # « code envoyé ».
+    SMS_OBLIGATOIRE = False
+    NIMBA_SERVICE_ID = os.getenv("NIMBA_SERVICE_ID", "")
+    NIMBA_SECRET_TOKEN = os.getenv("NIMBA_SECRET_TOKEN", "")
+    NIMBA_SENDER_NAME = os.getenv("NIMBA_SENDER_NAME", "")
+    NIMBA_BASE_URL = os.getenv("NIMBA_BASE_URL", "https://api.nimbasms.com/v1")
+    ORANGE_SMS_AUTH_HEADER = os.getenv("ORANGE_SMS_AUTH_HEADER", "")
+    ORANGE_SMS_SENDER_NAME = os.getenv("ORANGE_SMS_SENDER_NAME", "")
+    ORANGE_SMS_SENDER_ADDRESS = os.getenv("ORANGE_SMS_SENDER_ADDRESS", "tel:+2240000")
+
+    # ─── Africa's Talking (OTP SMS hors Guinée) ─────────────
     AT_API_KEY = os.getenv("AT_API_KEY", "")
     AT_USERNAME = os.getenv("AT_USERNAME", "sandbox")
     AT_SENDER_ID = os.getenv("AT_SENDER_ID", "TCHEYNA")
@@ -156,6 +171,8 @@ def _secret_valide(valeur: str) -> bool:
 
 class ProductionConfig(Config):
     DEBUG = False
+    # Sans SMS parti, l'API le dit (503) au lieu d'annoncer « code envoyé ».
+    SMS_OBLIGATOIRE = True
 
     def __init__(self):
         # Sans DATABASE_URL, la classe de base retombe sur SQLite. En
