@@ -1,6 +1,7 @@
 /**
  * Présentation du premier lancement (lot 3.13) : navigation entre les trois
  * écrans, annonce de la position, liens du troisième écran et mémorisation.
+ * Lot 3.17 : déclenchement des animations à l'arrivée sur chaque écran.
  */
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -148,5 +149,39 @@ describe("Bienvenue", () => {
     act(() => lien.click());
     expect(router.state.location.pathname).toBe("/login");
     vi.unstubAllGlobals();
+  });
+
+  it("animations : l'écran courant joue, les écrans pas encore vus attendent", () => {
+    const { conteneur } = ouvrir();
+    expect(ecrans(conteneur).map((e) => e.dataset.pres)).toEqual(["joue", "attente", "attente"]);
+    act(() => boutons(conteneur, "Suivant")[0].click());
+    // L'écran quitté reste « joue » : il ne disparaît pas en glissant hors de vue.
+    expect(ecrans(conteneur).map((e) => e.dataset.pres)).toEqual(["joue", "joue", "attente"]);
+  });
+
+  it("animations : revenir sur un écran relance son animation sans le recréer", () => {
+    const { conteneur } = ouvrir();
+    const titre = ecrans(conteneur)[1].querySelector("h1");
+    act(() => boutons(conteneur, "Suivant")[0].click());
+    const observateur = new MutationObserver(() => undefined);
+    observateur.observe(ecrans(conteneur)[1], { attributes: true, attributeFilter: ["data-pres"], attributeOldValue: true });
+    act(() => boutons(conteneur, "Passer")[1].click());
+    act(() => boutons(conteneur, "Écran précédent")[0].click());
+    // Valeur de l'attribut après chaque changement : l'ancienne valeur du suivant.
+    const anciennes = observateur.takeRecords().map((r) => r.oldValue);
+    observateur.disconnect();
+    // Retour sur l'écran 2 : « joue » → « attente » → « joue », même élément (le focus tient).
+    expect(anciennes.slice(-2)).toEqual(["joue", "attente"]);
+    expect(ecrans(conteneur)[1].dataset.pres).toBe("joue");
+    expect(ecrans(conteneur)[1].querySelector("h1")).toBe(titre);
+    expect(document.activeElement).toBe(titre);
+  });
+
+  it("les décors animés restent cachés aux lecteurs d'écran", () => {
+    const { conteneur } = ouvrir();
+    for (const decor of conteneur.querySelectorAll(".pres-confetti, .pres-tape, .pres-etincelle")) {
+      expect(decor.closest('[aria-hidden="true"]')).not.toBeNull();
+    }
+    expect(conteneur.querySelectorAll(".pres-confetti").length).toBeGreaterThan(0);
   });
 });
