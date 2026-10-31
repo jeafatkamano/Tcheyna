@@ -9,6 +9,8 @@
 import { X } from "lucide-react";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
+import { enregistrerFermable } from "../lib/fermables";
+
 interface Props {
   titre: string;
   onFermer: () => void;
@@ -20,6 +22,13 @@ interface Props {
 export function FeuilleBas({ titre, onFermer, children, pied }: Props) {
   const idTitre = useId();
   const feuille = useRef<HTMLDivElement>(null);
+
+  // Le bouton retour d'Android ferme la feuille avant de changer de page.
+  const fermerRef = useRef(onFermer);
+  useEffect(() => {
+    fermerRef.current = onFermer;
+  });
+  useEffect(() => enregistrerFermable(() => fermerRef.current()), []);
 
   useEffect(() => {
     const declencheur = document.activeElement as HTMLElement | null;

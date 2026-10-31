@@ -41,6 +41,7 @@ import { SaisieCode } from "../components/SaisieCode";
 import { decritPar } from "../lib/aria";
 import { useAuth } from "../context/AuthContext";
 import { ATTENTE_RENVOI_S } from "../hooks/useVerificationTelephone";
+import { vibrerLegerement } from "../lib/vibration";
 
 /** Règle du serveur (`MotDePasse` : 8 à 128 caractères). */
 const LONGUEUR_MIN = 8;
@@ -219,6 +220,7 @@ export function MotDePasseOubliePage() {
       setEnCours(false);
       return;
     }
+    void vibrerLegerement();
     // Le serveur a révoqué tous les jetons du compte : ceux de cet appareil
     // ne valent plus rien. Sans cela, /login renverrait vers l'espace.
     if (user || tokens.access() || tokens.refresh()) deconnecter();

@@ -15,6 +15,7 @@ import { Link } from "react-router";
 import { urlFichier, type Listing } from "../api";
 import { formatMontantCourt, labelTransaction, labelTypeBien } from "../lib/format";
 import { HAUTEUR_REPLI, LARGEUR_REPLI, TAILLES_CARTE } from "../lib/imageRepli";
+import { transitionPage } from "../lib/transitions";
 import { BadgeCertifie, BadgeProprietaireVerifie } from "./BadgeVerification";
 import { PastilleCompatibilite } from "./Pastille";
 import { PhotoAnnonce } from "./PhotoAnnonce";
@@ -52,7 +53,12 @@ export function ListingCard({ listing, onToggleFavori, to, compacte = false }: P
       className={`relative overflow-hidden bg-white ${compacte ? "w-[220px] shrink-0 snap-start" : ""}`}
       style={{ borderRadius: compacte ? 20 : 22, boxShadow: "0 6px 18px rgba(15,32,64,0.08)" }}
     >
-      <Link to={destination} className="block no-underline" style={{ color: "#1E293B" }}>
+      <Link
+        to={destination}
+        viewTransition={transitionPage()}
+        className="block no-underline"
+        style={{ color: "#1E293B" }}
+      >
         <div className="relative" style={{ height: hauteurPhoto }}>
           {/* width/height : réservent la place (ratio 8:5) avant le chargement. */}
           <PhotoAnnonce

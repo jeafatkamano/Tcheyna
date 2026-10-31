@@ -22,6 +22,7 @@ import { useApi } from "../../hooks/useApi";
 import { useFilConversation } from "../../hooks/useFilConversation";
 import { formatMontantCourt } from "../../lib/format";
 import { HAUTEUR_REPLI, LARGEUR_REPLI } from "../../lib/imageRepli";
+import { vibrerLegerement } from "../../lib/vibration";
 
 const ID_EXPLICATION_FERMETURE = "explication-fermeture";
 
@@ -133,6 +134,7 @@ export function ConversationPage() {
     setSaisie("");
     try {
       await messagesAPI.envoyer(conversation.data.id, contenu);
+      void vibrerLegerement();
       await conversation.recharger();
     } catch (err) {
       setSaisie(contenu); // échec : on rend son texte à l'utilisateur

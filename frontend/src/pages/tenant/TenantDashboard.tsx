@@ -15,6 +15,7 @@ import { Erreur, ListeVide } from "../../components/Etats";
 import { ListingCard } from "../../components/ListingCard";
 import { useAuth } from "../../context/AuthContext";
 import { useApi } from "../../hooks/useApi";
+import { transitionPage } from "../../lib/transitions";
 
 const TEXTE_SECONDAIRE = "#475569";
 
@@ -157,6 +158,7 @@ export function TenantDashboard() {
             <Link
               key={r.to}
               to={r.to}
+              viewTransition={transitionPage()}
               className="flex items-center gap-2.5 bg-white font-bold no-underline"
               style={{ padding: 14, borderRadius: 18, color: "#1E3A5F", fontSize: 14 }}
             >

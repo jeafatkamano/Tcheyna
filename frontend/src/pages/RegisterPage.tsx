@@ -40,6 +40,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useGeo } from "../hooks/useGeo";
 import { fixerDestinationApresInscription } from "../lib/apresInscription";
+import { transitionPage } from "../lib/transitions";
 
 type RoleInscription = Exclude<Role, "admin">;
 
@@ -161,6 +162,7 @@ export function RegisterPage({ roleImpose, onInscrit }: Props = {}) {
     etape2Poussee.current = true;
     navigate(`${location.pathname}${location.search}`, {
       state: { ...(etat ?? {}), etapeInscription: 2 },
+      viewTransition: transitionPage(),
     });
   }
 

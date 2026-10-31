@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 
 import { authAPI } from "../api";
 import { useAuth } from "../context/AuthContext";
+import { vibrerLegerement } from "../lib/vibration";
 import { useAction } from "./useApi";
 
 /** Le backend impose 60 s entre deux envois : on l'affiche plutôt que de laisser découvrir l'erreur. */
@@ -41,6 +42,7 @@ export function useVerificationTelephone() {
   async function verifier(code: string): Promise<number | null> {
     const reponse = await verification.executer(code.trim());
     if (!reponse) return null;
+    void vibrerLegerement();
     await rafraichir();
     return reponse.trust_level;
   }

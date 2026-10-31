@@ -34,6 +34,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useApi } from "../../hooks/useApi";
 import { formatHeureMessage, formatMontantCourt } from "../../lib/format";
 import { HAUTEUR_REPLI, LARGEUR_REPLI } from "../../lib/imageRepli";
+import { transitionPage } from "../../lib/transitions";
 
 const PAR_PAGE = 20;
 
@@ -184,6 +185,7 @@ function CarteDiscussion({
   return (
     <Link
       to={`/messages/${conversation.match_id}`}
+      viewTransition={transitionPage()}
       className="flex gap-3 items-center bg-white no-underline"
       style={{
         padding: 14,

@@ -25,3 +25,64 @@ body {
 .sous-barre-etat {
   padding-top: var(--inset-haut);
 }
+
+/* ─── Application Android : sensation native (lot 3.16) ──────────────
+   Classe posée sur <html> par initialiserNatif() (lib/natif.ts), dans
+   l'application seulement : le site web n'est pas concerné. */
+.app-native {
+  /* Pas de surlignage bleu au toucher, pas de zoom par double toucher. */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Pas de rebond qui découvre le fond en haut ou en bas de page. */
+.app-native body {
+  overscroll-behavior-y: none;
+}
+
+/* Boutons, barre de navigation et en-têtes ne se sélectionnent pas ; le texte
+   des messages et des annonces reste sélectionnable. */
+.app-native :is(button, nav, header, [role="radio"], [role="tab"]) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Retour visuel au toucher : boutons et cartes cliquables (liens en bloc). */
+.app-native :is(button, a.flex, a.block, a.grid, a.inline-flex) {
+  transition:
+    transform 80ms ease-out,
+    opacity 80ms ease-out;
+}
+.app-native :is(button, a.flex, a.block, a.grid, a.inline-flex):active:not(:disabled) {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-native :is(button, a.flex, a.block, a.grid, a.inline-flex):active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* Glissement latéral entre les pages (View Transitions, lib/transitions.ts),
+   200 ms ; rien si le système demande moins d'animations. */
+@media (prefers-reduced-motion: no-preference) {
+  html.app-native::view-transition-old(root) {
+    animation: 200ms ease-out both tcheyna-page-sortie;
+  }
+  html.app-native::view-transition-new(root) {
+    animation: 200ms ease-out both tcheyna-page-entree;
+  }
+}
+
+@keyframes tcheyna-page-sortie {
+  to {
+    transform: translateX(-25%);
+    opacity: 0.6;
+  }
+}
+
+@keyframes tcheyna-page-entree {
+  from {
+    transform: translateX(100%);
+  }
+}

@@ -19,6 +19,9 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+
+import { enregistrerFermable } from "../lib/fermables";
+import { transitionPage } from "../lib/transitions";
 import { Link, Outlet, useLocation, useMatches, useNavigate } from "react-router";
 
 import { messagesAPI, notificationsAPI } from "../api";
@@ -69,6 +72,12 @@ export function Layout() {
   // Page qui dessine son propre en-tête (handle de la route) : pas de barre haute.
   const enTetePropre = useMatches().some((m) => (m.handle as PoigneeRoute | undefined)?.enTetePropre);
   const [messagesNonLus, setMessagesNonLus] = useState(0);
+
+  // Menu ouvert : le bouton retour d'Android le ferme avant de changer de page.
+  useEffect(() => {
+    if (!menuOuvert) return;
+    return enregistrerFermable(() => setMenuOuvertSur(null));
+  }, [menuOuvert]);
   const [notifsNonLues, setNotifsNonLues] = useState(0);
 
   // Les compteurs sont rafraîchis à chaque navigation : suffisant sans
@@ -267,6 +276,7 @@ export function Layout() {
               <Link
                 key={item.path}
                 to={item.path}
+                viewTransition={transitionPage()}
                 aria-current={actif ? "page" : undefined}
                 className="relative flex-1 min-w-0 min-h-11 flex flex-col items-center justify-center gap-1 py-1.5"
                 style={{

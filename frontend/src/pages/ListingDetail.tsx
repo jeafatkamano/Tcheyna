@@ -35,6 +35,7 @@ import { useAuth } from "../context/AuthContext";
 import { useAction, useApi } from "../hooks/useApi";
 import { formatDate, formatMontant, formatMontantCourt, labelTransaction } from "../lib/format";
 import { HAUTEUR_REPLI, LARGEUR_REPLI } from "../lib/imageRepli";
+import { vibrerLegerement } from "../lib/vibration";
 
 /** Photo du carrousel : pleine largeur de l'écran. */
 const TAILLES_CARROUSEL = "100vw";
@@ -144,6 +145,7 @@ export function ListingDetail() {
     if (!listing) return;
     const reponse = await candidature.executer(listing.id, messageCandidature.trim() || undefined);
     if (reponse) {
+      void vibrerLegerement();
       setFormulaireOuvert(false);
       await annonce.recharger();
     }

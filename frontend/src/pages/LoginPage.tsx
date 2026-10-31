@@ -26,6 +26,7 @@ import {
 import { Monogramme } from "../components/Marque";
 import { useAuth } from "../context/AuthContext";
 import { useAction } from "../hooks/useApi";
+import { transitionPage } from "../lib/transitions";
 
 /** Retour de la page « Mot de passe oublié » après une réinitialisation réussie. */
 const MESSAGE_REINITIALISATION =
@@ -77,7 +78,7 @@ export function LoginPage() {
     if (!user) return;
     // Retour à la page demandée avant la redirection, sinon accueil du rôle.
     const destination = (location.state as { from?: string } | null)?.from;
-    navigate(destination ?? accueilDuRole(user.role), { replace: true });
+    navigate(destination ?? accueilDuRole(user.role), { replace: true, viewTransition: transitionPage() });
   }
 
   return (

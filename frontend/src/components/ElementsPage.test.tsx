@@ -262,6 +262,18 @@ describe("Layout", () => {
     await act(async () => racine!.render(<RouterProvider router={router} />));
   }
 
+  it("menu latéral ouvert : le bouton retour d'Android le ferme d'abord (lot 3.16)", async () => {
+    const { fermerDernier } = await import("../lib/fermables");
+    await ouvrirLayout(false);
+    act(() => conteneur.querySelector<HTMLButtonElement>('button[aria-label="Ouvrir le menu"]')!.click());
+    expect(conteneur.querySelector('button[aria-label="Fermer le menu"]')).not.toBeNull();
+    act(() => {
+      expect(fermerDernier()).toBe(true);
+    });
+    expect(conteneur.querySelector('button[aria-label="Fermer le menu"]')).toBeNull();
+    expect(fermerDernier()).toBe(false);
+  });
+
   it("barre haute affichée par défaut, masquée quand la page a son propre en-tête", async () => {
     await ouvrirLayout(false);
     expect(conteneur.querySelector("header")).not.toBeNull();
