@@ -34,6 +34,15 @@ export const CGU = lazy(() => legal().then((m) => ({ default: m.CGU })));
 export const Confidentialite = lazy(() => legal().then((m) => ({ default: m.Confidentialite })));
 export const MentionsLegales = lazy(() => legal().then((m) => ({ default: m.MentionsLegales })));
 
+// Présentation du premier lancement : utile à l'application seulement, hors
+// du premier chargement du site.
+export const Bienvenue = lazy(() => import("./Bienvenue").then((m) => ({ default: m.Bienvenue })));
+
+// Une fois, juste après l'inscription : hors du premier chargement.
+export const VerificationNumeroPage = lazy(() =>
+  import("./VerificationNumeroPage").then((m) => ({ default: m.VerificationNumeroPage })),
+);
+
 // Rarement utile : hors du premier chargement, comme les espaces.
 export const MotDePasseOubliePage = lazy(() =>
   motDePasseOublie().then((m) => ({ default: m.MotDePasseOubliePage })),

@@ -10,6 +10,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { paiementsAPI, urlFichier, type Payment } from "../api";
 import { Chargement, Erreur, MessageErreur } from "../components/Etats";
 import { useAction, useApi } from "../hooks/useApi";
+import { vibrerLegerement } from "../lib/vibration";
 import { formatDateHeure, formatMontant } from "../lib/format";
 
 const STATUTS: Record<
@@ -157,7 +158,10 @@ export function RecuPage() {
             <button
               onClick={async () => {
                 const ok = await verification.executer(paiement.id);
-                if (ok) void recu.recharger();
+                if (!ok) return;
+                // Paiement confirmé par le serveur : vibration de confirmation.
+                if (ok.paiement?.statut === "success") void vibrerLegerement();
+                void recu.recharger();
               }}
               disabled={verification.enCours}
               className="w-full py-3.5 rounded-2xl font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60"

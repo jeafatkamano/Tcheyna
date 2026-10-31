@@ -28,7 +28,10 @@ import {
 } from "../../api";
 import { Avatar } from "../../components/Avatar";
 import { BadgeVerification, ScoreCircle, ScoreMatch } from "../../components/BadgeVerification";
+import { BoutonNotifications, EnTetePage } from "../../components/EnTetePage";
 import { Erreur, ListeVide, MessageErreur, SqueletteCartes } from "../../components/Etats";
+import { Pastille } from "../../components/Pastille";
+import { Segment } from "../../components/Segment";
 import { ModalePaiement } from "../../components/ModalePaiement";
 import { useAction, useApi } from "../../hooks/useApi";
 import { formatDateHeure, formatMontant, formatMontantCourt, formatRelatif } from "../../lib/format";
@@ -139,14 +142,13 @@ export function OwnerMatches() {
 
   return (
     <div className="pb-8">
-      <div className="px-4 pt-6 pb-5" style={{ background: "#1E3A5F" }}>
-        <h1 className="text-white font-bold mb-1" style={{ fontSize: "20px" }}>
-          Candidats
-        </h1>
-        <p className="text-white/60 text-sm">Les dossiers reçus sur vos annonces</p>
-
+      {/* En-tête partagé (lot 3.15a) */}
+      <EnTetePage titre="Candidats" chevauchement={14} droite={<BoutonNotifications />}>
+        <p className="m-0 -mt-2.5 text-sm" style={{ color: "rgba(255,255,255,0.78)" }}>
+          Les dossiers reçus sur vos annonces
+        </p>
         {stats && (
-          <div className="grid grid-cols-4 gap-2 mt-5">
+          <div className="grid grid-cols-4 gap-2">
             {[
               { label: "Total", valeur: stats.total },
               { label: "À examiner", valeur: stats.en_attente },
@@ -155,41 +157,31 @@ export function OwnerMatches() {
             ].map((s) => (
               <div
                 key={s.label}
-                className="rounded-xl p-3 text-center"
-                style={{ background: "rgba(255,255,255,0.08)" }}
+                className="p-3 text-center"
+                style={{ background: "rgba(255,255,255,0.08)", borderRadius: 18 }}
               >
                 <span className="text-white font-bold text-xl block">{s.valeur}</span>
-                <span className="text-white/50 text-xs leading-tight">{s.label}</span>
+                <span className="text-xs leading-tight" style={{ color: "rgba(255,255,255,0.78)" }}>
+                  {s.label}
+                </span>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </EnTetePage>
 
-      {/* Onglets */}
-      <div className="px-4 -mt-3 relative z-10">
-        <div
-          className="flex gap-1 p-1 rounded-2xl"
-          style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.1)" }}
-        >
-          {(
-            [
-              { cle: "candidatures" as const, label: "Candidatures reçues" },
-              { cle: "suggestions" as const, label: "Suggestions" },
-            ]
-          ).map((o) => (
-            <button
-              key={o.cle}
-              onClick={() => setOnglet(o.cle)}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors"
-              style={{
-                background: onglet === o.cle ? "#F97316" : "transparent",
-                color: onglet === o.cle ? "white" : "#64748B",
-              }}
-            >
-              {o.label}
-            </button>
-          ))}
+      {/* Onglets : segment partagé (lot 3.15a) */}
+      <div className="px-5 -mt-3 relative z-10">
+        <div className="rounded-2xl" style={{ boxShadow: "0 2px 12px rgba(30,58,95,0.1)" }}>
+          <Segment
+            libelle="Affichage"
+            options={[
+              { valeur: "candidatures" as const, label: "Candidatures reçues" },
+              { valeur: "suggestions" as const, label: "Suggestions" },
+            ]}
+            valeur={onglet}
+            onChange={setOnglet}
+          />
         </div>
       </div>
 
@@ -197,20 +189,16 @@ export function OwnerMatches() {
         <OngletSuggestions />
       ) : (
         <>
-          <div className="flex gap-2 px-4 py-4 overflow-x-auto">
+          <div
+            className="flex gap-2 px-5 py-4 overflow-x-auto [&::-webkit-scrollbar]:hidden"
+            style={{ scrollbarWidth: "none" }}
+            role="group"
+            aria-label="Filtrer par statut"
+          >
             {FILTRES.map((f) => (
-              <button
-                key={f.label}
-                onClick={() => setFiltre(f.valeur)}
-                className="px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all"
-                style={{
-                  background: filtre === f.valeur ? "#1E3A5F" : "white",
-                  color: filtre === f.valeur ? "white" : "#64748B",
-                  border: "1px solid #E2E8F0",
-                }}
-              >
+              <Pastille key={f.label} actif={filtre === f.valeur} onClick={() => setFiltre(f.valeur)}>
                 {f.label}
-              </button>
+              </Pastille>
             ))}
           </div>
 

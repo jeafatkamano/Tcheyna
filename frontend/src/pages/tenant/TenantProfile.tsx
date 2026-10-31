@@ -1,6 +1,8 @@
 import {
   BadgeCheck,
   CheckCircle,
+  Clock,
+  Star,
   LogOut,
   Mail,
   MapPin,
@@ -9,15 +11,16 @@ import {
   Upload,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import type { LucideIcon } from "lucide-react";
 
 import { passportAPI, type TenantPassport, type TypeDocument } from "../../api";
-import { BadgeVerification, ScoreCircle, VerificationSteps } from "../../components/BadgeVerification";
+import { ScoreCircle, VerificationSteps } from "../../components/BadgeVerification";
 import { ChangementMotDePasse } from "../../components/ChangementMotDePasse";
 import { LiensLegaux } from "../../components/LiensLegaux";
-import { TeleversementAvatar } from "../../components/TeleversementAvatar";
+import { EnTeteProfil } from "../../components/EnTeteProfil";
+import { Segment } from "../../components/Segment";
 import { Chargement, Erreur, MessageErreur, MessageSucces } from "../../components/Etats";
 import { ModalePaiement } from "../../components/ModalePaiement";
 import { PhoneVerification } from "../../components/PhoneVerification";
@@ -80,59 +83,34 @@ export function TenantProfile() {
 
   return (
     <div className="pb-8">
-      <div className="px-4 pt-6 pb-8" style={{ background: "#1E3A5F" }}>
-        <h1 className="text-white font-bold mb-5" style={{ fontSize: "20px" }}>
-          Mon Passeport Locataire
-        </h1>
+      <EnTeteProfil
+        titre="Mon Passeport Locataire"
+        nom={user?.full_name}
+        detail={
+          p.situation_pro
+            ? p.situation_pro.charAt(0).toUpperCase() + p.situation_pro.slice(1)
+            : "Situation à préciser"
+        }
+        niveau={niveau}
+        avecBarre
+        aDroite={<ScoreCircle score={p.score} size={56} />}
+      />
 
-        <div
-          className="rounded-2xl p-5 flex items-center gap-4"
-          style={{ background: "rgba(255,255,255,0.08)" }}
-        >
-          <TeleversementAvatar taille={64} surFonce />
-          <div className="flex-1 min-w-0">
-            <h2 className="text-white font-bold text-lg truncate">{user?.full_name}</h2>
-            <p className="text-white/60 text-sm truncate">
-              {p.situation_pro
-                ? p.situation_pro.charAt(0).toUpperCase() + p.situation_pro.slice(1)
-                : "Situation à préciser"}
-            </p>
-            <div className="mt-2">
-              <BadgeVerification level={niveau} size="sm" />
-            </div>
-          </div>
-          <ScoreCircle score={p.score} size={64} />
-        </div>
+      <div className="px-5 pt-3.5">
+        <Segment
+          orange
+          libelle="Sections du profil"
+          options={[
+            { valeur: "dossier" as const, label: "Dossier" },
+            { valeur: "criteres" as const, label: "Ma recherche" },
+            { valeur: "compte" as const, label: "Compte" },
+          ]}
+          valeur={onglet}
+          onChange={setOnglet}
+        />
       </div>
 
-      <div className="px-4 -mt-4 relative z-10">
-        <div
-          className="flex gap-1 p-1 rounded-2xl"
-          style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.1)" }}
-        >
-          {(
-            [
-              { cle: "dossier" as const, label: "Dossier" },
-              { cle: "criteres" as const, label: "Ma recherche" },
-              { cle: "compte" as const, label: "Compte" },
-            ]
-          ).map((o) => (
-            <button
-              key={o.cle}
-              onClick={() => setOnglet(o.cle)}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors"
-              style={{
-                background: onglet === o.cle ? "#F97316" : "transparent",
-                color: onglet === o.cle ? "white" : "#64748B",
-              }}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="px-4 mt-5 space-y-5">
+      <div className="px-5 mt-3.5 space-y-4">
         <MessageSucces message={succes} />
 
         {onglet === "dossier" && (
@@ -305,6 +283,96 @@ function OngletDossier({
         </div>
       )}
 
+      {/* Pièces du dossier : une carte par pièce, avec son état (maquette Profil) */}
+      <section aria-labelledby="pieces" className="space-y-2.5">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 id="pieces" className="m-0 font-extrabold" style={{ color: "#1E293B", fontSize: 16 }}>
+            Pièces du dossier
+          </h3>
+          <span className="text-xs" style={{ color: "#475569" }}>
+            JPG, PNG ou PDF — 10 Mo max
+          </span>
+        </div>
+
+        <CartePiece
+          etat={user?.phone_verified ? "valide" : "manquant"}
+          titre="Téléphone"
+          detail={user?.phone_verified ? "Vérifié par SMS" : "À vérifier par SMS (ci-dessus)"}
+        />
+
+        {DOCUMENTS.map((doc) => {
+          // Une pièce est supprimée dès la décision : une fois validée, elle
+          // n'est plus « présente » mais la vérification reste acquise. Proposer
+          // « Ajouter » inviterait à un nouveau dépôt, qui annulerait la validation.
+          const verifiee =
+            !(passeport.documents?.[doc.type] ?? false) &&
+            (doc.type === "income"
+              ? passeport.income_verified
+              : PIECES_IDENTITE.includes(doc.type) && Boolean(user?.cni_verified));
+          const present = (passeport.documents?.[doc.type] ?? false) || verifiee;
+          return (
+            <CartePiece
+              key={doc.type}
+              etat={verifiee ? "valide" : present ? "envoye" : "manquant"}
+              titre={doc.label}
+              detail={
+                verifiee
+                  ? "Vérifié — document supprimé après examen"
+                  : present
+                    ? "Envoyé — vérification sous 48 h"
+                    : doc.aide
+              }
+              action={
+                verifiee ? null : present ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ok = await suppression.executer(doc.type);
+                      if (ok) await onChangement("Document supprimé");
+                    }}
+                    disabled={suppression.enCours}
+                    className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ background: "#FEE2E2", color: "#B91C1C" }}
+                    aria-label={`Supprimer ${doc.label}`}
+                  >
+                    <Trash2 size={16} aria-hidden="true" />
+                  </button>
+                ) : (
+                  <label
+                    className="min-h-11 inline-flex items-center px-3 rounded-xl text-sm font-bold cursor-pointer shrink-0"
+                    style={{ background: "#FFF7ED", color: "#C2410C" }}
+                  >
+                    <input
+                      type="file"
+                      accept=".jpg,.jpeg,.png,.pdf"
+                      className="sr-only"
+                      onChange={async (e) => {
+                        const fichier = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!fichier) return;
+                        const ok = await televersement.executer(doc.type, fichier);
+                        if (ok) await onChangement("Document envoyé — vérification sous 48 h");
+                      }}
+                    />
+                    Ajouter
+                    <span className="sr-only"> {doc.label}</span>
+                  </label>
+                )
+              }
+            />
+          );
+        })}
+
+        {/* Les avis sont déposés par les bailleurs : rien à ajouter ici. */}
+        <CartePiece
+          etat={niveau >= 4 ? "valide" : "prochain"}
+          titre="Avis d'un ancien bailleur"
+          detail={niveau >= 4 ? "Obtenu : niveau Recommandé" : "Pour passer Recommandé"}
+        />
+
+        <MessageErreur message={televersement.erreur ?? suppression.erreur} />
+      </section>
+
       {/* Parcours de vérification */}
       <div
         className="rounded-2xl p-5"
@@ -444,95 +512,53 @@ function OngletDossier({
         </button>
       </div>
 
-      {/* Documents */}
-      <div
-        className="rounded-2xl p-5 space-y-3"
-        style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }}
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold" style={{ color: "#1E293B" }}>
-            Documents
-          </h3>
-          <span className="text-xs text-gray-400">JPG, PNG ou PDF — 10 Mo max</span>
-        </div>
-
-        {DOCUMENTS.map((doc) => {
-          // Une pièce est supprimée dès la décision : une fois validée, elle
-          // n'est plus « présente » mais la vérification reste acquise. Proposer
-          // « Ajouter » inviterait à un nouveau dépôt, qui annulerait la validation.
-          const verifiee =
-            !(passeport.documents?.[doc.type] ?? false) &&
-            (doc.type === "income"
-              ? passeport.income_verified
-              : PIECES_IDENTITE.includes(doc.type) && Boolean(user?.cni_verified));
-          const present = (passeport.documents?.[doc.type] ?? false) || verifiee;
-          return (
-            <div
-              key={doc.type}
-              className="flex items-center gap-3 p-3 rounded-xl"
-              style={{
-                background: present ? "#ECFDF5" : "#F8FAFC",
-                border: `1.5px solid ${present ? "#A7F3D0" : "#E2E8F0"}`,
-              }}
-            >
-              {present ? (
-                <CheckCircle size={19} style={{ color: "#10B981", flexShrink: 0 }} />
-              ) : (
-                <Upload size={19} style={{ color: "#94A3B8", flexShrink: 0 }} />
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm" style={{ color: "#1E293B" }}>
-                  {doc.label}
-                </p>
-                <p className="text-xs text-gray-400 truncate">
-                  {verifiee
-                    ? "Vérifié — document supprimé après examen"
-                    : present
-                      ? "Envoyé — vérification sous 48 h"
-                      : doc.aide}
-                </p>
-              </div>
-
-              {verifiee ? null : present ? (
-                <button
-                  onClick={async () => {
-                    const ok = await suppression.executer(doc.type);
-                    if (ok) await onChangement("Document supprimé");
-                  }}
-                  disabled={suppression.enCours}
-                  className="p-2 rounded-lg flex-shrink-0"
-                  style={{ background: "#FEE2E2", color: "#DC2626" }}
-                  aria-label={`Supprimer ${doc.label}`}
-                >
-                  <Trash2 size={15} />
-                </button>
-              ) : (
-                <label
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer flex-shrink-0"
-                  style={{ background: "#FFF7ED", color: "#F97316" }}
-                >
-                  <input
-                    type="file"
-                    accept=".jpg,.jpeg,.png,.pdf"
-                    className="sr-only"
-                    onChange={async (e) => {
-                      const fichier = e.target.files?.[0];
-                      e.target.value = "";
-                      if (!fichier) return;
-                      const ok = await televersement.executer(doc.type, fichier);
-                      if (ok) await onChangement("Document envoyé — vérification sous 48 h");
-                    }}
-                  />
-                  Ajouter
-                </label>
-              )}
-            </div>
-          );
-        })}
-
-        <MessageErreur message={televersement.erreur ?? suppression.erreur} />
-      </div>
     </>
+  );
+}
+
+/** Carte d'une pièce du dossier, avec son état. */
+function CartePiece({
+  etat,
+  titre,
+  detail,
+  action,
+}: {
+  etat: "valide" | "envoye" | "manquant" | "prochain";
+  titre: string;
+  detail: string;
+  action?: ReactNode;
+}) {
+  const icone = {
+    valide: { Icone: CheckCircle, fond: "#DCFCE7", couleur: "#047857" },
+    envoye: { Icone: Clock, fond: "#EFF6FF", couleur: "#1D4ED8" },
+    manquant: { Icone: Upload, fond: "#FFF7ED", couleur: "#C2410C" },
+    prochain: { Icone: Star, fond: "#FFF7ED", couleur: "#C2410C" },
+  }[etat];
+  return (
+    <div
+      className="flex items-center gap-3 bg-white"
+      style={{
+        padding: 14,
+        borderRadius: 18,
+        border: etat === "prochain" ? "1.5px dashed #FDBA74" : undefined,
+      }}
+    >
+      <span
+        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+        style={{ background: icone.fond }}
+      >
+        <icone.Icone size={20} color={icone.couleur} aria-hidden="true" />
+      </span>
+      <div className="grow min-w-0">
+        <p className="m-0 font-bold" style={{ fontSize: 14, color: "#1E293B" }}>
+          {titre}
+        </p>
+        <p className="m-0" style={{ fontSize: 12, color: "#475569" }}>
+          {detail}
+        </p>
+      </div>
+      {action}
+    </div>
   );
 }
 

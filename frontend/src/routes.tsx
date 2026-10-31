@@ -9,10 +9,13 @@ import { Suspense, type ComponentType, type ReactNode } from "react";
 
 import type { Role } from "./api";
 import { Chargement, Erreur, ErreurRoute } from "./components/Etats";
+import type { PoigneeRoute } from "./components/coque";
 import { Layout } from "./components/Layout";
+import { RedirectIfAuth } from "./components/RedirectIfAuth";
+import { EcranMarque } from "./components/Marque";
 import { useAuth } from "./context/AuthContext";
 
-import { Landing } from "./pages/Landing";
+import { Entree } from "./pages/Entree";
 import { ListingDetail } from "./pages/ListingDetail";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFound } from "./pages/NotFound";
@@ -31,6 +34,7 @@ import { TenantProfileView } from "./pages/shared/TenantProfileView";
 import {
   AdminDashboard,
   AdminUsers,
+  Bienvenue,
   CGU,
   Confidentialite,
   FavorisPage,
@@ -45,6 +49,7 @@ import {
   TenantDashboard,
   TenantMatches,
   TenantProfile,
+  VerificationNumeroPage,
 } from "./pages/espaces";
 
 /** Page chargée à la demande : indicateur de chargement le temps du téléchargement. */
@@ -98,17 +103,6 @@ function RequireAuth({ roles, children }: { roles?: Role[]; children: ReactNode 
   return <>{children}</>;
 }
 
-/** Empêche un utilisateur déjà connecté de revoir la connexion ou l'inscription. */
-function RedirectIfAuth({ children }: { children: ReactNode }) {
-  const { user, chargement } = useAuth();
-  if (chargement) return null;
-  if (user) {
-    const accueil = { tenant: "/tenant/dashboard", landlord: "/owner/dashboard", agency: "/owner/dashboard", admin: "/admin" }[user.role];
-    return <Navigate to={accueil} replace />;
-  }
-  return <>{children}</>;
-}
-
 function EspaceProtege({ roles }: { roles?: Role[] }) {
   return (
     <RequireAuth roles={roles}>
@@ -119,8 +113,21 @@ function EspaceProtege({ roles }: { roles?: Role[] }) {
 
 // ─── Plan de routes ──────────────────────────────────────────
 
+/** Page qui dessine son propre en-tête : Layout masque sa barre haute (lot 3.15a). */
+const EN_TETE_PROPRE: PoigneeRoute = { enTetePropre: true };
+
 const ROUTES: RouteObject[] = [
-  { path: "/", Component: Landing },
+  // Site : page d'accueil. Application : espace, présentation ou connexion.
+  { path: "/", Component: Entree },
+  // Présentation du premier lancement (application) ; inoffensive sur le site.
+  {
+    path: "/bienvenue",
+    element: (
+      <Suspense fallback={<EcranMarque />}>
+        <Bienvenue />
+      </Suspense>
+    ),
+  },
   {
     path: "/login",
     element: (
@@ -135,6 +142,17 @@ const ROUTES: RouteObject[] = [
       <RedirectIfAuth>
         <RegisterPage />
       </RedirectIfAuth>
+    ),
+  },
+  // Juste après l'inscription, avec un numéro : le code SMS, ou « Plus tard ».
+  {
+    path: "/inscription/verification",
+    element: (
+      <RequireAuth>
+        <Suspense fallback={<EcranMarque />}>
+          <VerificationNumeroPage />
+        </Suspense>
+      </RequireAuth>
     ),
   },
   // Accessible aussi connecté : une réinitialisation réussie vide alors la
@@ -157,11 +175,11 @@ const ROUTES: RouteObject[] = [
     element: <EspaceProtege roles={["tenant"]} />,
     children: [
       { index: true, element: <Navigate to="/tenant/dashboard" replace /> },
-      { path: "dashboard", element: aLaDemande(TenantDashboard) },
-      { path: "listings", element: aLaDemande(ListingsPage) },
+      { path: "dashboard", element: aLaDemande(TenantDashboard), handle: EN_TETE_PROPRE },
+      { path: "listings", element: aLaDemande(ListingsPage), handle: EN_TETE_PROPRE },
       { path: "matches", element: aLaDemande(TenantMatches) },
       { path: "favoris", element: aLaDemande(FavorisPage) },
-      { path: "profile", element: aLaDemande(TenantProfile) },
+      { path: "profile", element: aLaDemande(TenantProfile), handle: EN_TETE_PROPRE },
     ],
   },
 
@@ -171,12 +189,12 @@ const ROUTES: RouteObject[] = [
     element: <EspaceProtege roles={["landlord", "agency"]} />,
     children: [
       { index: true, element: <Navigate to="/owner/dashboard" replace /> },
-      { path: "dashboard", element: aLaDemande(OwnerDashboard) },
-      { path: "listings", element: aLaDemande(OwnerListings) },
+      { path: "dashboard", element: aLaDemande(OwnerDashboard), handle: EN_TETE_PROPRE },
+      { path: "listings", element: aLaDemande(OwnerListings), handle: EN_TETE_PROPRE },
       { path: "listings/nouveau", element: aLaDemande(OwnerListingForm) },
       { path: "listings/:id", element: aLaDemande(OwnerListingForm) },
-      { path: "matches", element: aLaDemande(OwnerMatches) },
-      { path: "profile", element: aLaDemande(OwnerProfile) },
+      { path: "matches", element: aLaDemande(OwnerMatches), handle: EN_TETE_PROPRE },
+      { path: "profile", element: aLaDemande(OwnerProfile), handle: EN_TETE_PROPRE },
     ],
   },
 
@@ -194,7 +212,7 @@ const ROUTES: RouteObject[] = [
   {
     element: <EspaceProtege />,
     children: [
-      { path: "/messages", Component: MessagesList },
+      { path: "/messages", Component: MessagesList, handle: EN_TETE_PROPRE },
       { path: "/notifications", Component: NotificationsPage },
       { path: "/paiements", Component: PaiementsPage },
       { path: "/paiements/:id", Component: RecuPage },

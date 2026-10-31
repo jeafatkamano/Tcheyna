@@ -17,6 +17,8 @@ interface Props {
   forme?: "rond" | "arrondi";
   /** Sur fond bleu nuit, les initiales s'affichent en clair. */
   surFonce?: boolean;
+  /** Fond des initiales, à la place du bleu nuit (avatar orange des en-têtes). */
+  fond?: string;
   className?: string;
 }
 
@@ -26,6 +28,7 @@ export function Avatar({
   taille = 40,
   forme = "arrondi",
   surFonce = false,
+  fond,
   className = "",
 }: Props) {
   const source = urlFichier(url);
@@ -63,7 +66,7 @@ export function Avatar({
       className={`inline-flex items-center justify-center font-bold ${className}`}
       style={{
         ...style,
-        background: surFonce ? "rgba(255,255,255,0.2)" : "#1E3A5F",
+        background: fond ?? (surFonce ? "rgba(255,255,255,0.2)" : "#1E3A5F"),
         color: "white",
       }}
       aria-hidden={!nom}

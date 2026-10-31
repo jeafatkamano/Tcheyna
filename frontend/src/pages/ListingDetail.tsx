@@ -1,60 +1,97 @@
 /**
- * ListingDetail.tsx — Fiche annonce.
+ * ListingDetail.tsx — Fiche annonce (maquette Annonce, lot 3.15a).
  *
  * Consultable sans compte (acquisition), mais candidater exige un numéro
  * vérifié — et une identité vérifiée si l'annonce est certifiée.
+ *
+ * La photo passe sous la barre d'état, avec retour, partage et favori en
+ * boutons ronds blancs ; une fiche arrondie remonte dessus ; la barre du bas
+ * porte le prix et l'action (candidater, contacter le vendeur, ou la raison
+ * pour laquelle ce n'est pas possible).
  */
 import {
-  AirVent,
   ArrowLeft,
-  Bed,
   Calendar,
   CheckCircle,
   ChevronLeft,
   ChevronRight,
   Eye,
   Heart,
-  Layers,
   MapPin,
-  ParkingCircle,
   Share2,
-  Shield,
-  Sofa,
-  Square,
   Star,
   Users,
-  Wifi,
-  Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { favorisAPI, listingsAPI, matchesAPI, urlFichier } from "../api";
 import { Avatar } from "../components/Avatar";
-import {
-  BadgeCertifie,
-  BadgeProprietaireVerifie,
-  BadgeVerification,
-  ScoreMatch,
-} from "../components/BadgeVerification";
+import { BadgeCertifie, BadgeProprietaireVerifie, BadgeVerification } from "../components/BadgeVerification";
 import { Chargement, Erreur, MessageErreur } from "../components/Etats";
+import { Pastille, PastilleCompatibilite } from "../components/Pastille";
+import { PhotoAnnonce } from "../components/PhotoAnnonce";
 import { useAuth } from "../context/AuthContext";
 import { useAction, useApi } from "../hooks/useApi";
 import { formatDate, formatMontant, formatMontantCourt, labelTransaction } from "../lib/format";
 import { HAUTEUR_REPLI, LARGEUR_REPLI } from "../lib/imageRepli";
-import { PhotoAnnonce } from "../components/PhotoAnnonce";
+import { vibrerLegerement } from "../lib/vibration";
 
 /** Photo du carrousel : pleine largeur de l'écran. */
 const TAILLES_CARROUSEL = "100vw";
+const TEXTE_SECONDAIRE = "#475569";
 
 const EQUIPEMENTS = [
-  { cle: "generateur", label: "Groupe électrogène", icone: Zap },
-  { cle: "eau", label: "Eau courante", icone: Sofa },
-  { cle: "wifi", label: "WiFi", icone: Wifi },
-  { cle: "securite", label: "Gardien / clôture", icone: Shield },
-  { cle: "parking", label: "Parking", icone: ParkingCircle },
-  { cle: "climatisation", label: "Climatisation", icone: AirVent },
+  { cle: "generateur", label: "Groupe électrogène" },
+  { cle: "eau", label: "Eau courante" },
+  { cle: "wifi", label: "WiFi" },
+  { cle: "securite", label: "Gardien / clôture" },
+  { cle: "parking", label: "Parking" },
+  { cle: "climatisation", label: "Climatisation" },
 ] as const;
+
+const LIBELLES_CANDIDATURE = {
+  pending: "Candidature envoyée — en attente de réponse",
+  accepted: "Candidature acceptée !",
+  rejected: "Candidature non retenue",
+  completed: "Location conclue",
+  cancelled: "Candidature retirée",
+} as const;
+
+/** Bouton rond blanc posé sur la photo (maquette : 44 px, blanc à 95 %). */
+function BoutonPhoto({ libelle, onClick, children }: { libelle: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={libelle}
+      className="w-11 h-11 rounded-full flex items-center justify-center shadow-sm"
+      style={{ background: "rgba(255,255,255,0.95)", color: "#1E3A5F" }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Carte blanche d'une section de la fiche. */
+function Section({ titre, children, droite }: { titre: string; children: ReactNode; droite?: ReactNode }) {
+  return (
+    <section className="bg-white" style={{ padding: 18, borderRadius: 20 }}>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h2 className="m-0 font-extrabold" style={{ fontSize: 16, color: "#1E293B" }}>
+          {titre}
+        </h2>
+        {droite}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function etage(valeur: number | null | undefined) {
+  if (valeur == null) return "—";
+  return valeur === 0 ? "RDC" : `${valeur}e`;
+}
 
 export function ListingDetail() {
   const { id } = useParams<{ id: string }>();
@@ -108,6 +145,7 @@ export function ListingDetail() {
     if (!listing) return;
     const reponse = await candidature.executer(listing.id, messageCandidature.trim() || undefined);
     if (reponse) {
+      void vibrerLegerement();
       setFormulaireOuvert(false);
       await annonce.recharger();
     }
@@ -125,7 +163,13 @@ export function ListingDetail() {
     return (
       <div className="sous-barre-etat min-h-screen flex flex-col" style={{ background: "#F0F4FA" }}>
         <div className="px-4 pt-6">
-          <button onClick={() => navigate(-1)} className="p-2 -ml-2" style={{ color: "#1E3A5F" }}>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="w-11 h-11 -ml-2.5 flex items-center justify-center"
+            style={{ color: "#1E3A5F" }}
+            aria-label="Retour"
+          >
             <ArrowLeft size={20} />
           </button>
         </div>
@@ -144,11 +188,13 @@ export function ListingDetail() {
   // Le niveau requis dépend de la certification de l'annonce.
   const niveauRequis = listing.is_certified ? 2 : 1;
   const niveauSuffisant = niveau >= niveauRequis;
+  const libelleAction = listing.est_vente ? "Contacter le vendeur" : "Envoyer ma candidature";
+  const lieu = listing.adresse ?? [listing.quartier, listing.ville].filter(Boolean).join(", ");
 
   return (
-    <div className="min-h-screen" style={{ background: "#F0F4FA" }}>
-      {/* Carrousel */}
-      <div className="relative h-64 sm:h-80">
+    <div className="min-h-dvh flex flex-col" style={{ background: "#F0F4FA" }}>
+      {/* Photo : passe sous la barre d'état */}
+      <div className="relative h-[300px] shrink-0">
         {/* Pas de lazy : première image visible de la page. */}
         <PhotoAnnonce
           url={urlFichier(photos[indexPhoto])}
@@ -159,229 +205,201 @@ export function ListingDetail() {
           className="w-full h-full object-cover"
           decoding="async"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-transparent pointer-events-none" />
+        <div
+          className="absolute inset-x-0 top-0 h-[120px] pointer-events-none"
+          style={{ background: "linear-gradient(180deg, rgba(15,32,64,0.45) 0%, rgba(15,32,64,0) 100%)" }}
+        />
 
         <div
           className="absolute left-4 right-4 flex items-center justify-between"
-          style={{ top: "calc(1rem + var(--inset-haut))" }}
+          style={{ top: "calc(12px + var(--inset-haut))" }}
         >
-          <button
-            onClick={() => navigate(-1)}
-            className="p-2 rounded-xl backdrop-blur-sm"
-            style={{ background: "rgba(0,0,0,0.35)", color: "white" }}
-            aria-label="Retour"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <div className="flex gap-2">
-            <button
+          <BoutonPhoto libelle="Retour" onClick={() => navigate(-1)}>
+            <ArrowLeft size={20} aria-hidden="true" />
+          </BoutonPhoto>
+          <div className="flex gap-2.5">
+            <BoutonPhoto libelle="Partager l'annonce" onClick={partager}>
+              <Share2 size={19} aria-hidden="true" />
+            </BoutonPhoto>
+            <BoutonPhoto
+              libelle={listing.is_favorite ? "Retirer des favoris" : "Ajouter aux favoris"}
               onClick={basculerFavori}
-              className="p-2 rounded-xl backdrop-blur-sm"
-              style={{ background: "rgba(0,0,0,0.35)" }}
-              aria-label={listing.is_favorite ? "Retirer des favoris" : "Ajouter aux favoris"}
             >
               <Heart
                 size={20}
                 fill={listing.is_favorite ? "#F97316" : "none"}
-                stroke={listing.is_favorite ? "#F97316" : "white"}
+                stroke={listing.is_favorite ? "#F97316" : "#1E3A5F"}
+                aria-hidden="true"
               />
-            </button>
-            <button
-              onClick={partager}
-              className="p-2 rounded-xl backdrop-blur-sm"
-              style={{ background: "rgba(0,0,0,0.35)", color: "white" }}
-              aria-label="Partager l'annonce"
-            >
-              <Share2 size={20} />
-            </button>
+            </BoutonPhoto>
           </div>
         </div>
 
         {photos.length > 1 && (
           <>
             <button
+              type="button"
               onClick={() => setIndexPhoto((i) => (i === 0 ? photos.length - 1 : i - 1))}
-              className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full backdrop-blur-sm"
-              style={{ background: "rgba(0,0,0,0.3)", color: "white" }}
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center"
+              style={{ background: "rgba(15,32,64,0.45)", color: "white" }}
               aria-label="Photo précédente"
             >
-              <ChevronLeft size={18} />
+              <ChevronLeft size={20} aria-hidden="true" />
             </button>
             <button
+              type="button"
               onClick={() => setIndexPhoto((i) => (i === photos.length - 1 ? 0 : i + 1))}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full backdrop-blur-sm"
-              style={{ background: "rgba(0,0,0,0.3)", color: "white" }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center"
+              style={{ background: "rgba(15,32,64,0.45)", color: "white" }}
               aria-label="Photo suivante"
             >
-              <ChevronRight size={18} />
+              <ChevronRight size={20} aria-hidden="true" />
             </button>
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-              {photos.map((_, i) => (
-                <span
-                  key={i}
-                  className="rounded-full transition-all"
-                  style={{
-                    width: i === indexPhoto ? "20px" : "6px",
-                    height: "6px",
-                    background: i === indexPhoto ? "white" : "rgba(255,255,255,0.5)",
-                  }}
-                />
-              ))}
-            </div>
+            <span
+              className="absolute right-4 rounded-full text-white font-bold"
+              style={{ bottom: 40, padding: "5px 10px", background: "rgba(15,32,64,0.7)", fontSize: 12 }}
+              aria-live="polite"
+            >
+              <span className="sr-only">Photo </span>
+              {indexPhoto + 1} / {photos.length}
+            </span>
           </>
         )}
-
-        <div className="absolute bottom-4 left-4 flex gap-2">
-          {listing.is_certified && <BadgeCertifie size="sm" />}
-          <ScoreMatch score={listing.score_compatibilite} />
-        </div>
       </div>
 
-      {partage && (
-        <div
-          className="mx-4 mt-3 px-4 py-2.5 rounded-xl text-sm font-medium text-center"
-          style={{ background: "#ECFDF5", color: "#065F46" }}
-        >
-          {partage}
-        </div>
-      )}
-
-      <div className="px-4 py-5 space-y-5 max-w-lg mx-auto">
-        {/* Titre et caractéristiques */}
-        <div
-          className="rounded-2xl p-5"
-          style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }}
-        >
-          <div className="flex items-start justify-between gap-3 mb-2">
-            <h1 className="font-bold" style={{ color: "#1E293B", fontSize: "18px", lineHeight: 1.35 }}>
-              {listing.title}
-            </h1>
-            <div className="flex-shrink-0 text-right">
-              <div className="font-bold" style={{ color: "#1E3A5F", fontSize: "19px" }}>
-                {formatMontantCourt(listing.prix, listing.devise)}
-              </div>
-              <div className="text-xs text-gray-400">
-                {listing.est_vente ? labelTransaction(true) : "/mois"}
-              </div>
-            </div>
+      {/* Fiche : remonte sur la photo */}
+      <div
+        className="relative grow flex flex-col gap-4 px-5 pb-5"
+        style={{ marginTop: -24, paddingTop: 22, borderRadius: "26px 26px 0 0", background: "#F0F4FA" }}
+      >
+        {partage && (
+          <div
+            role="status"
+            className="px-4 py-2.5 rounded-xl text-sm font-semibold text-center"
+            style={{ background: "#ECFDF5", color: "#065F46" }}
+          >
+            {partage}
           </div>
+        )}
 
-          <div className="flex items-center gap-1 text-gray-500 text-sm mb-1">
-            <MapPin size={14} />
-            {listing.adresse ?? `${listing.quartier ?? ""}, ${listing.ville}`}
+        <div>
+          <div className="flex flex-wrap gap-2 mb-2.5">
+            {listing.is_certified && <BadgeCertifie size="sm" />}
+            <PastilleCompatibilite score={listing.score_compatibilite} surClair />
+            {listing.est_vente && (
+              <span
+                className="rounded-full font-bold text-white"
+                style={{ padding: "5px 10px", background: "#1D4ED8", fontSize: 12 }}
+              >
+                {labelTransaction(true)}
+              </span>
+            )}
           </div>
-          {listing.adresse_masquee && (
-            <p className="text-xs text-gray-400 mb-1 ml-5">Adresse communiquée après acceptation</p>
-          )}
-          <div className="flex items-center gap-3 text-xs text-gray-400 mb-4">
+          <h1 className="m-0 font-extrabold" style={{ fontSize: 24, lineHeight: 1.2, color: "#1E293B" }}>
+            {listing.title}
+          </h1>
+          <p className="m-0 mt-1.5 flex items-center gap-1.5" style={{ fontSize: 14, color: TEXTE_SECONDAIRE }}>
+            <MapPin size={16} className="shrink-0" aria-hidden="true" />
+            {lieu}
+            {listing.adresse_masquee && " · adresse après acceptation"}
+          </p>
+          <p className="m-0 mt-1.5 flex items-center gap-3" style={{ fontSize: 12, color: TEXTE_SECONDAIRE }}>
             <span className="flex items-center gap-1">
-              <Eye size={12} />
+              <Eye size={12} aria-hidden="true" />
               {listing.views_count} vue{listing.views_count > 1 ? "s" : ""}
             </span>
             <span className="flex items-center gap-1">
-              <Users size={12} />
+              <Users size={12} aria-hidden="true" />
               {listing.nb_candidatures} candidature{listing.nb_candidatures > 1 ? "s" : ""}
             </span>
-          </div>
-
-          <div className="grid grid-cols-4 gap-3">
-            {[
-              { icone: Square, valeur: listing.superficie ? `${listing.superficie} m²` : "—", label: "Surface" },
-              { icone: Bed, valeur: listing.nb_pieces != null ? `${listing.nb_pieces}P` : "—", label: "Pièces" },
-              { icone: Layers, valeur: listing.etage != null ? `Ét. ${listing.etage}` : "—", label: "Étage" },
-              { icone: Sofa, valeur: listing.meuble ? "Oui" : "Non", label: "Meublé" },
-            ].map((item) => (
-              <div key={item.label} className="flex flex-col items-center text-center">
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center mb-1"
-                  style={{ background: "#F0F4FA" }}
-                >
-                  <item.icone size={16} style={{ color: "#1E3A5F" }} />
-                </div>
-                <span className="font-bold text-sm" style={{ color: "#1E293B" }}>
-                  {item.valeur}
-                </span>
-                <span className="text-xs text-gray-400">{item.label}</span>
-              </div>
-            ))}
-          </div>
+          </p>
         </div>
+
+        {/* Caractéristiques */}
+        <dl className="m-0 grid grid-cols-4 gap-2">
+          {[
+            { label: "Surface", valeur: listing.superficie ? `${listing.superficie} m²` : "—" },
+            { label: "Pièces", valeur: listing.nb_pieces != null ? String(listing.nb_pieces) : "—" },
+            { label: "Étage", valeur: etage(listing.etage) },
+            { label: "Meublé", valeur: listing.meuble ? "Oui" : "Non" },
+          ].map((c) => (
+            <div key={c.label} className="bg-white text-center flex flex-col-reverse" style={{ padding: "12px 6px", borderRadius: 16 }}>
+              <dt style={{ fontSize: 11, color: TEXTE_SECONDAIRE, marginTop: 2 }}>{c.label}</dt>
+              <dd className="m-0 font-extrabold" style={{ fontSize: 15, color: "#1E3A5F" }}>
+                {c.valeur}
+              </dd>
+            </div>
+          ))}
+        </dl>
+
+        {/* Équipements */}
+        {equipementsActifs.length > 0 && (
+          <div>
+            <h2 className="m-0 mb-2.5 font-extrabold" style={{ fontSize: 16, color: "#1E293B" }}>
+              Équipements
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {equipementsActifs.map((eq) => (
+                <Pastille key={eq.cle} forme="etiquette">
+                  {eq.label}
+                </Pastille>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Compatibilité détaillée */}
         {listing.details_compatibilite && (
-          <div
-            className="rounded-2xl p-5"
-            style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }}
+          <Section
+            titre="Votre compatibilité"
+            droite={
+              listing.score_compatibilite != null ? (
+                <span className="font-extrabold" style={{ fontSize: 14, color: "#047857" }}>
+                  {listing.score_compatibilite} %
+                </span>
+              ) : undefined
+            }
           >
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-bold" style={{ color: "#1E293B" }}>
-                Votre compatibilité
-              </h2>
-              <ScoreMatch score={listing.score_compatibilite} />
-            </div>
-            <div className="space-y-2.5">
+            <div className="flex flex-col gap-2.5">
               {listing.details_compatibilite.map((detail) => (
                 <div key={detail.critere}>
                   <div className="flex items-center justify-between text-sm mb-1">
                     <span style={{ color: "#334155" }}>{detail.critere}</span>
-                    <span className="text-xs text-gray-400">{detail.libelle}</span>
+                    <span className="text-xs" style={{ color: "#64748B" }}>
+                      {detail.libelle}
+                    </span>
                   </div>
                   <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "#F1F5F9" }}>
                     <div
-                      className="h-full rounded-full transition-all"
+                      className="h-full rounded-full"
                       style={{
                         width: `${(detail.points / detail.max) * 100}%`,
-                        background: detail.points === detail.max ? "#10B981" : detail.points > 0 ? "#F97316" : "#E2E8F0",
+                        background:
+                          detail.points === detail.max ? "#10B981" : detail.points > 0 ? "#F97316" : "#E2E8F0",
                       }}
                     />
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+          </Section>
         )}
 
         {/* Description */}
-        <div
-          className="rounded-2xl p-5"
-          style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }}
-        >
-          <h2 className="font-bold mb-3" style={{ color: "#1E293B" }}>
-            Description
-          </h2>
-          <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">
+        <Section titre="Description">
+          <p className="m-0 text-sm leading-relaxed whitespace-pre-line" style={{ color: "#334155" }}>
             {listing.description}
           </p>
-        </div>
-
-        {/* Équipements */}
-        {equipementsActifs.length > 0 && (
-          <div
-            className="rounded-2xl p-5"
-            style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }}
-          >
-            <h2 className="font-bold mb-3" style={{ color: "#1E293B" }}>
-              Équipements
-            </h2>
-            <div className="grid grid-cols-2 gap-2.5">
-              {equipementsActifs.map((eq) => (
-                <div key={eq.cle} className="flex items-center gap-2">
-                  <eq.icone size={16} style={{ color: "#10B981", flexShrink: 0 }} />
-                  <span className="text-sm text-gray-600">{eq.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        </Section>
 
         {/* Disponibilité */}
         {listing.disponible_a_partir && (
           <div
-            className="rounded-2xl p-4 flex items-center gap-3"
-            style={{ background: "#ECFDF5", border: "1.5px solid #A7F3D0" }}
+            className="flex items-center gap-3"
+            style={{ padding: 16, borderRadius: 20, background: "#ECFDF5", border: "1.5px solid #A7F3D0" }}
           >
-            <Calendar size={20} style={{ color: "#059669", flexShrink: 0 }} />
-            <p className="text-sm font-semibold" style={{ color: "#065F46" }}>
+            <Calendar size={20} style={{ color: "#047857", flexShrink: 0 }} aria-hidden="true" />
+            <p className="m-0 text-sm font-semibold" style={{ color: "#065F46" }}>
               Disponible à partir du {formatDate(listing.disponible_a_partir)}
             </p>
           </div>
@@ -389,21 +407,11 @@ export function ListingDetail() {
 
         {/* Propriétaire */}
         {listing.landlord && (
-          <div
-            className="rounded-2xl p-5"
-            style={{ background: "white", boxShadow: "0 2px 12px rgba(30,58,95,0.07)" }}
-          >
-            <h2 className="font-bold mb-4" style={{ color: "#1E293B" }}>
-              Propriétaire
-            </h2>
-            <Link to={`/profil/${listing.landlord.id}`} className="flex items-center gap-4">
-              <Avatar
-                nom={listing.landlord.full_name}
-                url={listing.landlord.avatar_url}
-                taille={56}
-              />
+          <Section titre="Propriétaire">
+            <Link to={`/profil/${listing.landlord.id}`} className="flex items-center gap-4 no-underline">
+              <Avatar nom={listing.landlord.full_name} url={listing.landlord.avatar_url} taille={56} forme="rond" />
               <div className="flex-1 min-w-0">
-                <p className="font-bold" style={{ color: "#1E293B" }}>
+                <p className="m-0 font-bold" style={{ color: "#1E293B" }}>
                   {listing.landlord.full_name}
                 </p>
                 <div className="mt-1 flex flex-wrap gap-1.5">
@@ -412,23 +420,25 @@ export function ListingDetail() {
                 </div>
                 {listing.landlord.note_moyenne != null && (
                   <div className="flex items-center gap-1 mt-1.5">
-                    <Star size={13} style={{ color: "#F59E0B" }} />
+                    <Star size={13} style={{ color: "#B45309" }} aria-hidden="true" />
                     <span className="text-sm font-semibold" style={{ color: "#1E293B" }}>
                       {listing.landlord.note_moyenne}
                     </span>
-                    <span className="text-xs text-gray-400">({listing.landlord.nb_avis} avis)</span>
+                    <span className="text-xs" style={{ color: "#64748B" }}>
+                      ({listing.landlord.nb_avis} avis)
+                    </span>
                   </div>
                 )}
               </div>
-              <ChevronRight size={18} style={{ color: "#CBD5E1", flexShrink: 0 }} />
+              <ChevronRight size={18} style={{ color: "#94A3B8", flexShrink: 0 }} aria-hidden="true" />
             </Link>
-          </div>
+          </Section>
         )}
 
         {/* Prix de vente : il n'y a ni loyer, ni caution, ni coût d'entrée. */}
         {listing.est_vente && (
-          <div className="rounded-2xl p-4" style={{ background: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
-            <p className="text-sm font-semibold mb-2" style={{ color: "#1E3070" }}>
+          <div style={{ padding: 16, borderRadius: 20, background: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
+            <p className="m-0 text-sm font-semibold mb-2" style={{ color: "#1E3070" }}>
               Bien à vendre
             </p>
             <div className="flex justify-between">
@@ -439,106 +449,52 @@ export function ListingDetail() {
                 {formatMontant(listing.prix, listing.devise)}
               </span>
             </div>
-            <p className="text-xs mt-2.5 leading-relaxed" style={{ color: "#1D4ED8" }}>
-              La cession se conclut devant notaire, hors plateforme. Tcheyna vous met en
-              relation avec le vendeur et conserve la trace de vos échanges.
+            <p className="m-0 text-xs mt-2.5 leading-relaxed" style={{ color: "#1D4ED8" }}>
+              La cession se conclut devant notaire, hors plateforme. Tcheyna vous met en relation avec le vendeur et
+              conserve la trace de vos échanges.
             </p>
           </div>
         )}
 
         {/* Coût d'entrée */}
         {!listing.est_vente && (
-        <div className="rounded-2xl p-4" style={{ background: "#FFF7ED", border: "1.5px solid #FED7AA" }}>
-          <p className="text-sm font-semibold mb-2" style={{ color: "#92400E" }}>
-            Coût d'entrée estimé
-          </p>
-          <div className="space-y-1.5">
-            <Ligne label="Premier loyer" valeur={formatMontant(listing.prix, listing.devise)} />
-            {listing.charges > 0 && (
-              <Ligne label="Charges" valeur={formatMontant(listing.charges, listing.devise)} />
-            )}
-            {listing.caution != null && (
-              <Ligne label="Dépôt de garantie" valeur={formatMontant(listing.caution, listing.devise)} />
-            )}
+          <div style={{ padding: 16, borderRadius: 20, background: "#FFF7ED", border: "1.5px solid #FED7AA" }}>
+            <p className="m-0 text-sm font-semibold mb-2" style={{ color: "#92400E" }}>
+              Coût d'entrée estimé
+            </p>
+            <div className="flex flex-col gap-1.5">
+              <Ligne label="Premier loyer" valeur={formatMontant(listing.prix, listing.devise)} />
+              {listing.charges > 0 && <Ligne label="Charges" valeur={formatMontant(listing.charges, listing.devise)} />}
+              {listing.caution != null && (
+                <Ligne label="Dépôt de garantie" valeur={formatMontant(listing.caution, listing.devise)} />
+              )}
+            </div>
+            <div className="border-t border-orange-200 mt-2.5 pt-2.5 flex justify-between">
+              <span className="text-sm font-semibold" style={{ color: "#9A3412" }}>
+                Total
+              </span>
+              <span className="text-sm font-bold" style={{ color: "#7C2D12" }}>
+                {formatMontant(listing.cout_entree, listing.devise)}
+              </span>
+            </div>
+            <p className="m-0 text-xs mt-2.5 leading-relaxed" style={{ color: "#C2410C" }}>
+              À régler directement au propriétaire : Tcheyna n'encaisse ni la caution ni le loyer.
+            </p>
           </div>
-          <div className="border-t border-orange-200 mt-2.5 pt-2.5 flex justify-between">
-            <span className="text-sm font-semibold" style={{ color: "#9A3412" }}>
-              Total
-            </span>
-            <span className="text-sm font-bold" style={{ color: "#7C2D12" }}>
-              {formatMontant(listing.cout_entree, listing.devise)}
-            </span>
-          </div>
-          <p className="text-xs mt-2.5 leading-relaxed" style={{ color: "#C2410C" }}>
-            À régler directement au propriétaire : Tcheyna n'encaisse ni la caution ni le loyer.
-          </p>
-        </div>
         )}
       </div>
 
-      {/* Barre d'action */}
+      {/* Barre du bas : prix et action, au-dessus de la barre de gestes */}
       <div
-        className="sticky bottom-0 px-4 pt-4 border-t border-gray-200"
-        // Au-dessus de la barre de gestes du téléphone (index.css, --inset-bas).
-        style={{ background: "#F0F4FA", paddingBottom: "calc(1rem + var(--inset-bas))" }}
+        className="sticky bottom-0 z-10 bg-white"
+        style={{
+          padding: "14px 20px",
+          paddingBottom: "calc(14px + var(--inset-bas))",
+          boxShadow: "0 -8px 24px rgba(15,32,64,0.08)",
+        }}
       >
-        {listing.is_owner ? (
-          <Link
-            to={`/owner/listings/${listing.id}`}
-            className="w-full py-4 rounded-2xl font-semibold text-white flex items-center justify-center gap-2"
-            style={{ background: "#1E3A5F", fontSize: "16px" }}
-          >
-            Gérer mon annonce
-          </Link>
-        ) : dejaCandidat ? (
-          <div
-            className="w-full py-4 rounded-2xl flex items-center justify-center gap-2 text-white font-semibold text-center px-4"
-            style={{ background: listing.ma_candidature!.status === "rejected" ? "#94A3B8" : "#10B981", fontSize: "15px" }}
-          >
-            <CheckCircle size={19} />
-            {
-              {
-                pending: "Candidature envoyée — en attente de réponse",
-                accepted: "Candidature acceptée !",
-                rejected: "Candidature non retenue",
-                completed: "Location conclue",
-                cancelled: "Candidature retirée",
-              }[listing.ma_candidature!.status]
-            }
-          </div>
-        ) : !user ? (
-          <Link
-            to="/inscription"
-            className="w-full py-4 rounded-2xl font-semibold text-white flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
-            style={{ background: "#F97316", fontSize: "16px" }}
-          >
-            {listing.est_vente
-              ? "Créer un compte pour contacter le vendeur"
-              : "Créer un compte pour candidater"}
-          </Link>
-        ) : !estLocataire ? (
-          <p className="text-center text-sm text-gray-500 py-2">
-            {listing.est_vente
-              ? "Seuls les comptes locataires peuvent contacter le vendeur."
-              : "Seuls les comptes locataires peuvent candidater."}
-          </p>
-        ) : !niveauSuffisant ? (
-          <Link
-            to="/tenant/profile"
-            className="w-full py-4 rounded-2xl font-semibold text-white flex flex-col items-center justify-center transition-transform active:scale-[0.98]"
-            style={{ background: "#1E3A5F" }}
-          >
-            <span style={{ fontSize: "15px" }}>
-              {niveauRequis === 2 ? "Vérifiez votre identité" : "Vérifiez votre téléphone"}
-            </span>
-            <span className="text-xs font-normal text-white/60 mt-0.5">
-              {niveauRequis === 2
-                ? "Les annonces certifiées demandent le niveau 2"
-                : "Requis pour candidater"}
-            </span>
-          </Link>
-        ) : formulaireOuvert ? (
-          <div className="space-y-3">
+        {formulaireOuvert ? (
+          <div className="flex flex-col gap-3">
             <textarea
               value={messageCandidature}
               onChange={(e) => setMessageCandidature(e.target.value)}
@@ -550,43 +506,137 @@ export function ListingDetail() {
                   : "Présentez-vous en quelques lignes : situation, date d'emménagement souhaitée…"
               }
               aria-label={listing.est_vente ? "Message au vendeur" : "Message de candidature"}
-              className="w-full px-4 py-3 rounded-xl outline-none resize-none"
-              style={{ background: "white", border: "1.5px solid #E2E8F0", fontSize: "14px" }}
+              className="w-full px-4 py-3 rounded-2xl outline-none resize-none"
+              style={{ background: "#F8FAFC", border: "1.5px solid #CBD5E1", fontSize: 14 }}
             />
             <MessageErreur message={candidature.erreur} />
             <div className="flex gap-3">
               <button
+                type="button"
                 onClick={() => setFormulaireOuvert(false)}
-                className="flex-1 py-3.5 rounded-2xl font-semibold"
-                style={{ background: "#E2E8F0", color: "#475569" }}
+                className="flex-1 h-[54px] rounded-2xl font-bold"
+                style={{ background: "#F0F4FA", color: TEXTE_SECONDAIRE }}
               >
                 Annuler
               </button>
               <button
+                type="button"
                 onClick={envoyerCandidature}
                 disabled={candidature.enCours}
-                className="flex-[2] py-3.5 rounded-2xl font-semibold text-white disabled:opacity-60"
-                style={{ background: "#F97316" }}
+                className="flex-[2] h-[54px] rounded-2xl font-bold text-white disabled:opacity-60"
+                style={{ background: "#F97316", fontSize: 15 }}
               >
-                {candidature.enCours
-                  ? "Envoi…"
-                  : listing.est_vente
-                    ? "Contacter le vendeur"
-                    : "Envoyer ma candidature"}
+                {candidature.enCours ? "Envoi…" : libelleAction}
               </button>
             </div>
           </div>
         ) : (
-          <button
-            onClick={() => setFormulaireOuvert(true)}
-            className="w-full py-4 rounded-2xl font-semibold text-white flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
-            style={{ background: "#F97316", fontSize: "16px" }}
-          >
-            Je suis intéressé(e)
-          </button>
+          <div className="flex items-center gap-3.5">
+            <div className="shrink-0">
+              <div className="font-extrabold" style={{ fontSize: 18, color: "#1E3A5F" }}>
+                {formatMontantCourt(listing.prix, listing.devise)}
+              </div>
+              <div style={{ fontSize: 12, color: TEXTE_SECONDAIRE }}>
+                {listing.est_vente ? "prix de vente" : "par mois"}
+              </div>
+            </div>
+            <div className="grow min-w-0">
+              <Action
+                listing={listing}
+                connecte={Boolean(user)}
+                estLocataire={estLocataire}
+                niveauSuffisant={niveauSuffisant}
+                niveauRequis={niveauRequis}
+                dejaCandidat={dejaCandidat}
+                libelle={libelleAction}
+                onOuvrir={() => setFormulaireOuvert(true)}
+              />
+            </div>
+          </div>
         )}
       </div>
     </div>
+  );
+}
+
+type DetailAnnonce = Awaited<ReturnType<typeof listingsAPI.detail>>;
+
+/** Action de la barre du bas, selon le visiteur et l'état de sa candidature. */
+function Action({
+  listing,
+  connecte,
+  estLocataire,
+  niveauSuffisant,
+  niveauRequis,
+  dejaCandidat,
+  libelle,
+  onOuvrir,
+}: {
+  listing: DetailAnnonce;
+  connecte: boolean;
+  estLocataire: boolean;
+  niveauSuffisant: boolean;
+  niveauRequis: number;
+  dejaCandidat: boolean;
+  libelle: string;
+  onOuvrir: () => void;
+}) {
+  const bouton = "w-full h-[54px] rounded-2xl font-bold text-white flex items-center justify-center text-center";
+
+  if (listing.is_owner) {
+    return (
+      <Link to={`/owner/listings/${listing.id}`} className={bouton} style={{ background: "#1E3A5F", fontSize: 15 }}>
+        Gérer mon annonce
+      </Link>
+    );
+  }
+  if (dejaCandidat) {
+    const statut = listing.ma_candidature!.status;
+    return (
+      <div
+        role="status"
+        className={`${bouton} gap-2 px-3 leading-tight`}
+        style={{ background: statut === "rejected" ? "#64748B" : "#047857", fontSize: 14 }}
+      >
+        <CheckCircle size={18} className="shrink-0" aria-hidden="true" />
+        {LIBELLES_CANDIDATURE[statut]}
+      </div>
+    );
+  }
+  if (!connecte) {
+    return (
+      <Link to="/inscription" className={`${bouton} px-3 leading-tight`} style={{ background: "#F97316", fontSize: 14 }}>
+        {listing.est_vente ? "Créer un compte pour contacter le vendeur" : "Créer un compte pour candidater"}
+      </Link>
+    );
+  }
+  if (!estLocataire) {
+    return (
+      <p className="m-0 text-sm text-center" style={{ color: TEXTE_SECONDAIRE }}>
+        {listing.est_vente
+          ? "Seuls les comptes locataires peuvent contacter le vendeur."
+          : "Seuls les comptes locataires peuvent candidater."}
+      </p>
+    );
+  }
+  if (!niveauSuffisant) {
+    return (
+      <Link
+        to="/tenant/profile"
+        className={`${bouton} flex-col leading-tight`}
+        style={{ background: "#1E3A5F", height: "auto", minHeight: 54, padding: "8px 12px" }}
+      >
+        <span style={{ fontSize: 14 }}>{niveauRequis === 2 ? "Vérifiez votre identité" : "Vérifiez votre téléphone"}</span>
+        <span className="font-normal" style={{ fontSize: 12, color: "rgba(255,255,255,0.78)" }}>
+          {niveauRequis === 2 ? "Les annonces certifiées demandent le niveau 2" : "Requis pour candidater"}
+        </span>
+      </Link>
+    );
+  }
+  return (
+    <button type="button" onClick={onOuvrir} className={bouton} style={{ background: "#F97316", fontSize: 15 }}>
+      {libelle}
+    </button>
   );
 }
 

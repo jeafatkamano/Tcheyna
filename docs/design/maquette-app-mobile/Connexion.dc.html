@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Connexion</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#FDBA74}a:hover{color:#FFF7ED}
+input::placeholder{color:rgba(255,255,255,0.5)}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; padding: 56px 24px 32px; display: flex; flex-direction: column; background: linear-gradient(170deg, #0F2040 0%, #1E3A5F 100%); color: #ffffff; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; overflow: hidden;">
+
+  <div style="display: flex; align-items: center; justify-content: space-between; height: 44px;">
+    <a href="Ecran3.dc.html" aria-label="Retour" style="width: 44px; height: 44px; margin-left: -10px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); text-decoration: none;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"></path><path d="m11 18-6-6 6-6"></path></svg>
+    </a>
+    <div style="display: flex; align-items: baseline; font-size: 26px; font-weight: 800; line-height: 1;" aria-label="Tcheyna">
+      <span>t</span><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #F97316; margin-left: 2px;"></span>
+    </div>
+    <span style="width: 44px;"></span>
+  </div>
+
+  <div style="margin-top: 40px; display: flex; flex-direction: column; gap: 10px;">
+    <h1 style="margin: 0; font-size: 32px; font-weight: 800; line-height: 1.12; letter-spacing: -0.6px;">Bon retour<span style="color: #F97316;">.</span></h1>
+    <p style="margin: 0; font-size: 16px; line-height: 1.55; color: rgba(255,255,255,0.78);">Connectez-vous pour retrouver vos annonces et vos mises en relation.</p>
+  </div>
+
+  <form style="margin-top: 36px; display: flex; flex-direction: column; gap: 18px;">
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <label for="identifiant" style="font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.85);">E-mail ou téléphone</label>
+      <div style="position: relative;">
+        <svg style="position: absolute; left: 16px; top: 18px;" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path></svg>
+        <input id="identifiant" type="text" placeholder="vous@exemple.com ou 622 52 92 52" style="width: 100%; height: 56px; box-sizing: border-box; padding: 0 16px 0 48px; border-radius: 16px; background: rgba(255,255,255,0.07); border: 2px solid #F97316; color: #ffffff; font-family: inherit; font-size: 15px; outline: none;">
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <label for="mdp" style="font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.85);">Mot de passe</label>
+      <div style="position: relative;">
+        <svg style="position: absolute; left: 16px; top: 18px;" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+        <input id="mdp" type="password" placeholder="Votre mot de passe" style="width: 100%; height: 56px; box-sizing: border-box; padding: 0 52px 0 48px; border-radius: 16px; background: rgba(255,255,255,0.07); border: 1.5px solid rgba(255,255,255,0.2); color: #ffffff; font-family: inherit; font-size: 15px; outline: none;">
+        <button type="button" aria-label="Afficher le mot de passe" style="position: absolute; right: 6px; top: 6px; width: 44px; height: 44px; border: none; background: transparent; color: rgba(255,255,255,0.7); display: flex; align-items: center; justify-content: center; cursor: pointer;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        </button>
+      </div>
+      <a href="MotDePasse.dc.html" style="align-self: flex-end; font-size: 14px; font-weight: 600; padding: 8px 0; color: rgba(255,255,255,0.8);">Mot de passe oublié ?</a>
+    </div>
+  </form>
+
+  <div style="flex-grow: 1;"></div>
+
+  <div style="display: flex; flex-direction: column; gap: 16px;">
+    <a href="Accueil.dc.html" style="height: 56px; border-radius: 16px; background: #F97316; color: #ffffff; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; text-decoration: none; box-shadow: 0 10px 24px rgba(249,115,22,0.35);">Se connecter</a>
+    <div style="text-align: center; font-size: 14px; color: rgba(255,255,255,0.78);">Pas encore de compte ? <a href="Inscription1.dc.html" style="font-weight: 700;">Créer un compte</a></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
