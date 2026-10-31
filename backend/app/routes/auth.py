@@ -579,8 +579,6 @@ def send_otp(current_user, corps):
             return jsonify({"error": "Ce numéro est déjà utilisé par un autre compte"}), 409
         current_user.phone = phone
 
-    OTPCode.query.filter_by(user_id=current_user.id, is_used=False).update({"is_used": True})
-
     code = generate_otp()
     # L'identifiant est fixé avant l'insertion : il entre dans l'empreinte.
     otp_id = generate_uuid()
@@ -598,10 +596,20 @@ def send_otp(current_user, corps):
 
     envoye = send_sms_otp(current_user.phone, code)
     if not envoye and current_app.config.get("SMS_OBLIGATOIRE"):
-        # Personne n'a reçu ce code : il est annulé.
-        OTPCode.query.filter_by(id=otp_id).update({"is_used": True})
+        # Personne n'a reçu ce code : il est supprimé, pour ne compter ni dans
+        # les quotas du compte ni dans le plafond global (une panne du
+        # fournisseur ne doit pas bloquer l'utilisateur 24 h). Un code reçu
+        # plus tôt et encore valable reste utilisable.
+        OTPCode.query.filter_by(id=otp_id).delete()
         db.session.commit()
         return sms_indisponible()
+
+    # Le nouveau code est parti (ou le mode développement l'expose) : les
+    # codes précédents ne servent plus.
+    (OTPCode.query.filter(OTPCode.user_id == current_user.id, OTPCode.is_used.is_(False),
+                          OTPCode.id != otp_id)
+     .update({"is_used": True}, synchronize_session=False))
+    db.session.commit()
 
     reponse = {
         "message": "Code envoyé par SMS" if envoye else "Code généré (SMS indisponible)",

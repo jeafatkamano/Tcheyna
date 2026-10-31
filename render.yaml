@@ -113,8 +113,10 @@ services:
       # En-tête « Basic … » donné par Orange Developer (page de l'application).
       - key: ORANGE_SMS_AUTH_HEADER
         sync: false
+      # Vide tant qu'Orange n'a pas validé le nom (sinon envois refusés),
+      # puis TCHEYNA.
       - key: ORANGE_SMS_SENDER_NAME
-        value: TCHEYNA
+        sync: false
 
       # Africa's Talking — hors Guinée seulement.
       - key: AT_API_KEY

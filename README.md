@@ -40,7 +40,7 @@ Tcheyna/
 
 **Pile technique** — Flask 3 · SQLAlchemy · JWT · PostgreSQL (Supabase) ·
 React 18 · React Router 7 · Tailwind CSS 4 · Vite 6.
-**Intégrations** — Africa's Talking (OTP SMS) · CinetPay (Mobile Money).
+**Intégrations** — Nimba SMS, Orange SMS API Guinée, Africa's Talking (OTP SMS, essayés dans cet ordre) · CinetPay (Mobile Money).
 
 ---
 
@@ -167,7 +167,9 @@ Santé du service : `GET /health` (utilisé par Render et UptimeRobot).
 renseigner les secrets marqués `sync: false` :
 
 - `DATABASE_URL` — chaîne de connexion Supabase (`postgresql://…`)
-- `AT_API_KEY` — Africa's Talking
+- `NIMBA_SERVICE_ID`, `NIMBA_SECRET_TOKEN`, `NIMBA_SENDER_NAME` — Nimba SMS (Guinée)
+- `ORANGE_SMS_AUTH_HEADER`, `ORANGE_SMS_SENDER_NAME` — Orange SMS API Guinée (secours)
+- `AT_API_KEY` — Africa's Talking (hors Guinée)
 - `CINETPAY_API_KEY`, `CINETPAY_SITE_ID` — CinetPay
 
 Puis créer les tables (par les migrations Alembic) et le compte administrateur :
@@ -201,7 +203,7 @@ téléversés survivent aux redéploiements.
 
 Le produit reste testable de bout en bout sans compte tiers :
 
-- **sans `AT_API_KEY`** — le code OTP est renvoyé dans la réponse de l'API en
+- **sans fournisseur SMS configuré** (`NIMBA_*`, `ORANGE_SMS_*`, `AT_API_KEY`) — le code OTP est renvoyé dans la réponse de l'API en
   mode `DEBUG` plutôt qu'envoyé par SMS ;
 - **sans `CINETPAY_API_KEY`** — le paiement est enregistré en statut
   `pending` et le parcours continue, au lieu d'échouer.

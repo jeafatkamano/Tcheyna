@@ -18,12 +18,18 @@ réussi, ou None si aucun n'a pu envoyer.
 Ni le numéro ni le texte (qui contient le code) n'apparaissent jamais en
 clair dans les journaux : seul un numéro masqué y figure.
 """
+import re
+import threading
 import time
 
 import requests
 from flask import current_app
 
-DELAI_RESEAU = 15  # secondes, par appel au fournisseur
+# (connexion, lecture), en secondes, pour chaque appel à un fournisseur.
+DELAI_RESEAU = (3, 8)
+# Au-delà, on n'essaie plus de fournisseur suivant : la requête doit finir
+# bien avant le délai de gunicorn (60 s), avec deux workers seulement.
+BUDGET_SECONDES = 20
 
 
 class EchecFournisseur(Exception):
@@ -61,8 +67,13 @@ def _expurger(message, remplacements):
     code, avant le code seul)."""
     message = str(message)
     for secret, remplacant in remplacements:
-        if secret:
+        # Un secret très court (moins de 6 caractères) remplacerait des
+        # morceaux de mots sans rien protéger : un code OTP en a 6.
+        if secret and len(secret) >= 6:
             message = message.replace(secret, remplacant)
+    # Filet : toute suite de 8 chiffres ou plus (un numéro recopié sous une
+    # autre forme par le fournisseur) disparaît aussi.
+    message = re.sub(r"\+?\d[\d ]{7,}\d", "…", message)
     return message[:300]
 
 
@@ -98,12 +109,30 @@ def _orange_configure(cfg):
 
 # Jeton OAuth d'Orange, valable une heure : gardé en mémoire du processus
 # plutôt que redemandé à chaque SMS (Orange limite les demandes de jeton).
+# Le verrou protège les envois concurrents (SMS parti après la réponse,
+# dans `call_on_close`, pendant qu'une autre requête en envoie un).
 _jeton_orange = {"valeur": None, "expire": 0.0}
+_verrou_orange = threading.Lock()
 
 
 def _jeton_orange_valide(cfg):
-    if _jeton_orange["valeur"] and _jeton_orange["expire"] > time.time() + 60:
-        return _jeton_orange["valeur"]
+    with _verrou_orange:
+        valeur = _jeton_orange["valeur"]
+        if valeur and _jeton_orange["expire"] > time.time() + 60:
+            return valeur
+        valeur, duree = _demander_jeton_orange(cfg)
+        _jeton_orange["valeur"] = valeur
+        _jeton_orange["expire"] = time.time() + duree
+        return valeur
+
+
+def _oublier_jeton_orange(jeton):
+    with _verrou_orange:
+        if _jeton_orange["valeur"] == jeton:
+            _jeton_orange["valeur"] = None
+
+
+def _demander_jeton_orange(cfg):
     try:
         reponse = requests.post(
             "https://api.orange.com/oauth/v3/token",
@@ -115,10 +144,11 @@ def _jeton_orange_valide(cfg):
         raise EchecFournisseur(f"jeton, réseau : {exc.__class__.__name__}") from None
     if reponse.status_code != 200:
         raise EchecFournisseur(f"jeton, HTTP {reponse.status_code}")
-    corps = reponse.json()
-    _jeton_orange["valeur"] = corps["access_token"]
-    _jeton_orange["expire"] = time.time() + int(corps.get("expires_in", 3600))
-    return _jeton_orange["valeur"]
+    try:
+        corps = reponse.json()
+        return str(corps["access_token"]), int(corps.get("expires_in", 3600))
+    except (ValueError, KeyError, TypeError):
+        raise EchecFournisseur("jeton, réponse illisible") from None
 
 
 def _envoyer_orange(cfg, phone, texte):
@@ -145,7 +175,7 @@ def _envoyer_orange(cfg, phone, texte):
     except requests.RequestException as exc:
         raise EchecFournisseur(f"réseau : {exc.__class__.__name__}") from None
     if reponse.status_code == 401:
-        _jeton_orange["valeur"] = None  # jeton révoqué : le prochain envoi en redemande un
+        _oublier_jeton_orange(jeton)  # jeton révoqué : le prochain envoi en redemande un
     if reponse.status_code not in (200, 201):
         raise EchecFournisseur(f"HTTP {reponse.status_code} : {reponse.text}")
 
@@ -159,9 +189,15 @@ def _envoyer_africastalking(cfg, phone, texte):
 
     africastalking.initialize(cfg["AT_USERNAME"], cfg["AT_API_KEY"])
     try:
-        africastalking.SMS.send(texte, [phone], sender_id=cfg["AT_SENDER_ID"])
+        reponse = africastalking.SMS.send(texte, [phone], sender_id=cfg["AT_SENDER_ID"])
     except Exception as exc:  # noqa: BLE001 — le SDK lève des exceptions de toute nature
         raise EchecFournisseur(str(exc)) from None
+    # Le SDK ne lève pas d'exception pour un destinataire refusé : il le dit
+    # dans le statut de chaque destinataire.
+    destinataires = ((reponse or {}).get("SMSMessageData") or {}).get("Recipients") or []
+    statuts = [d.get("status") for d in destinataires if isinstance(d, dict)]
+    if statuts and any(statut != "Success" for statut in statuts):
+        raise EchecFournisseur(f"statut {', '.join(str(st) for st in statuts)}")
 
 
 FOURNISSEURS = (
@@ -190,10 +226,18 @@ def envoyer_sms(phone, texte, code=None):
     if not configures:
         current_app.logger.warning("Aucun fournisseur SMS configuré — SMS non envoyé à %s", masque)
         return None
+    debut = time.monotonic()
     for nom, envoyer in configures:
+        if time.monotonic() - debut > BUDGET_SECONDES:
+            current_app.logger.error("Envoi SMS abandonné avant %s : délai total dépassé", nom)
+            break
         try:
             envoyer(cfg, phone, texte)
-        except EchecFournisseur as exc:
+        except Exception as exc:  # noqa: BLE001 — une erreur de fournisseur ne doit pas casser la requête
+            if not isinstance(exc, EchecFournisseur):
+                # Erreur imprévue : seul son type est journalisé, son message
+                # pourrait reprendre la requête (numéro, texte).
+                exc = EchecFournisseur(f"erreur inattendue : {exc.__class__.__name__}")
             detail = _expurger(exc, [
                 (texte, "«texte du SMS»"), (code, "******"),
                 (phone, masque), (_chiffres(phone), masque), (numero_local_guinee(phone), masque),

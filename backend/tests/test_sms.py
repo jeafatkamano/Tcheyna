@@ -1,6 +1,8 @@
 """Fournisseurs SMS (lot 1.27) : Nimba SMS, Orange en secours, Africa's
 Talking ; et refus explicite (503) en production quand rien ne part.
 Aucun appel réseau réel : `requests.post` est remplacé."""
+import sys
+
 import pytest
 
 from app.models import OTPCode
@@ -31,7 +33,8 @@ def appels(monkeypatch):
 
     monkeypatch.setattr(sms.requests, "post", faux_post)
     sms._jeton_orange.update(valeur=None, expire=0.0)
-    return journal
+    yield journal
+    sms._jeton_orange.update(valeur=None, expire=0.0)
 
 
 def configurer_nimba(app):
@@ -145,3 +148,102 @@ def test_production_exige_les_sms():
 
     assert ProductionConfig.SMS_OBLIGATOIRE is True
     assert Config.SMS_OBLIGATOIRE is False
+
+
+def test_reponse_orange_illisible_passe_au_suivant(app, appels, monkeypatch):
+    configurer_orange(app)
+    app.config["AT_API_KEY"] = "cle"
+    recus = []
+    succes = {"SMSMessageData": {"Recipients": [{"status": "Success"}]}}
+    monkeypatch.setattr(
+        sys.modules["africastalking"].SMS, "send",
+        lambda texte, dest, sender_id=None: recus.append(dest) or succes,
+    )
+    appels["reponses"] = [Reponse(200, {"pas_de_jeton": True})]
+    assert sms.envoyer_sms("+2250707070707", "a") == "africastalking"
+    assert recus == [["+2250707070707"]]
+
+
+def test_africastalking_destinataire_refuse(app, monkeypatch):
+    app.config["AT_API_KEY"] = "cle"
+    monkeypatch.setattr(
+        sys.modules["africastalking"].SMS, "send",
+        lambda texte, dest, sender_id=None: {"SMSMessageData": {"Recipients": [{"status": "UnsupportedNumberType"}]}},
+    )
+    assert sms.envoyer_sms("+224622529252", "a") is None
+
+
+def test_orange_401_oublie_le_jeton(app, appels):
+    configurer_orange(app)
+    appels["reponses"] = [
+        Reponse(200, {"access_token": "j1"}), Reponse(401), Reponse(200, {"access_token": "j2"}), Reponse(201),
+    ]
+    assert sms.envoyer_sms("+224622529252", "a") is None
+    assert sms.envoyer_sms("+224622529252", "b") == "orange"
+    assert appels["appels"][3][1]["headers"]["Authorization"] == "Bearer j2"
+
+
+def test_erreur_inattendue_ne_casse_pas_la_chaine(app, appels, caplog):
+    configurer_nimba(app)
+    appels["reponses"] = [RuntimeError("boum pour 622529252")]
+    assert sms.envoyer_sms("+224622529252", "a") is None
+    journal = " ".join(r.getMessage() for r in caplog.records)
+    assert "erreur inattendue : RuntimeError" in journal and "622529252" not in journal
+
+
+def test_numero_reformule_par_le_fournisseur_expurge(app, appels, caplog):
+    configurer_nimba(app)
+    appels["reponses"] = [Reponse(400, texte="numero 622 52 92 52 invalide")]
+    sms.envoyer_sms("+224622529252", "a")
+    journal = " ".join(r.getMessage() for r in caplog.records)
+    assert "622 52 92 52" not in journal
+
+
+def test_budget_depasse_arrete_la_chaine(app, appels, monkeypatch):
+    configurer_nimba(app)
+    configurer_orange(app)
+    horloge = iter([0.0, 0.0, 999.0])
+    monkeypatch.setattr(sms.time, "monotonic", lambda: next(horloge))
+    appels["reponses"] = [Reponse(500)]
+    assert sms.envoyer_sms("+224622529252", "a") is None
+    assert len(appels["appels"]) == 1  # Orange n'est pas essayé
+
+
+def test_panne_sms_ne_consomme_pas_les_quotas(app, client, fabrique, entetes, appels):
+    app.config["SMS_OBLIGATOIRE"] = True
+    configurer_nimba(app)
+    user = fabrique.locataire(niveau=0)
+    appels["reponses"] = [Reponse(500) for _ in range(8)]
+    for _ in range(6):
+        assert client.post("/api/auth/send-otp", headers=entetes(user), json={}).status_code == 503
+    assert OTPCode.query.filter_by(user_id=user.id).count() == 0
+    # Le fournisseur revient : l'utilisateur n'est ni bloqué 24 h ni freiné.
+    appels["reponses"] = [Reponse(201)]
+    assert client.post("/api/auth/send-otp", headers=entetes(user), json={}).status_code == 200
+
+
+def test_code_precedent_garde_si_le_nouvel_envoi_echoue(app, client, fabrique, entetes, appels, monkeypatch):
+    app.config["SMS_OBLIGATOIRE"] = True
+    configurer_nimba(app)
+    user = fabrique.locataire(niveau=0)
+    appels["reponses"] = [Reponse(201)]
+    assert client.post("/api/auth/send-otp", headers=entetes(user), json={}).status_code == 200
+    premier = OTPCode.query.filter_by(user_id=user.id, is_used=False).one()
+    # Nouvelle demande pendant une panne (anti-spam de 60 s contourné).
+    from app.routes import auth
+    monkeypatch.setattr(auth, "OTP_RESEND_DELAY_SECONDS", 0, raising=False)
+    OTPCode.query.filter_by(id=premier.id).update(
+        {"created_at": premier.created_at.replace(year=premier.created_at.year - 1)})
+    from app import db
+    db.session.commit()
+    appels["reponses"] = [Reponse(500)]
+    assert client.post("/api/auth/send-otp", headers=entetes(user), json={}).status_code == 503
+    assert OTPCode.query.filter_by(user_id=user.id, is_used=False).count() == 1
+
+
+def test_diagnostic_liste_les_fournisseurs(app, client, fabrique, entetes):
+    configurer_nimba(app)
+    admin = fabrique.admin()
+    corps = client.get("/api/admin/diagnostic", headers=entetes(admin)).get_json()
+    assert corps["sms"]["fournisseurs"] == ["nimba"]
+    assert corps["sms"]["operationnel"] is True
