@@ -3,6 +3,8 @@
  * écrans, annonce de la position, liens du troisième écran et mémorisation.
  * Lot 3.17 : déclenchement des animations à l'arrivée sur chaque écran.
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
@@ -12,6 +14,9 @@ import { Bienvenue } from "./Bienvenue";
 import { CLE_PRESENTATION } from "../lib/presentation";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+// Lu tel quel : Vitest ne fournit pas le texte des feuilles CSS importées.
+const cssPresentation = readFileSync(resolve(process.cwd(), "src/styles/presentation.css"), "utf8");
 
 let racine: ReturnType<typeof createRoot> | null = null;
 const defiler = vi.fn();
@@ -151,30 +156,91 @@ describe("Bienvenue", () => {
     vi.unstubAllGlobals();
   });
 
+  /** Simule la position du défilement (jsdom ne défile pas) et l'événement « scroll ». */
+  function defilerA(conteneur: HTMLElement, position: number) {
+    const defileur = conteneur.querySelector("main > div")!;
+    Object.defineProperty(defileur, "clientWidth", { value: 390, configurable: true });
+    Object.defineProperty(defileur, "scrollLeft", { value: position * 390, configurable: true });
+    act(() => {
+      defileur.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+  }
+  const etats = (c: HTMLElement) => ecrans(c).map((e) => e.dataset.pres);
+
   it("animations : l'écran courant joue, les écrans pas encore vus attendent", () => {
     const { conteneur } = ouvrir();
-    expect(ecrans(conteneur).map((e) => e.dataset.pres)).toEqual(["joue", "attente", "attente"]);
+    expect(etats(conteneur)).toEqual(["joue", "attente", "attente"]);
     act(() => boutons(conteneur, "Suivant")[0].click());
-    // L'écran quitté reste « joue » : il ne disparaît pas en glissant hors de vue.
-    expect(ecrans(conteneur).map((e) => e.dataset.pres)).toEqual(["joue", "joue", "attente"]);
+    // Pendant le glissement, l'écran visé attend ; l'écran quitté reste « joue ».
+    expect(etats(conteneur)).toEqual(["joue", "attente", "attente"]);
+    defilerA(conteneur, 1);
+    expect(etats(conteneur)).toEqual(["joue", "joue", "attente"]);
+  });
+
+  it("animations : les positions intermédiaires d'un glissement par bouton sont ignorées", () => {
+    const { conteneur } = ouvrir();
+    act(() => boutons(conteneur, "Passer")[0].click());
+    // « Passer » glisse de l'écran 1 au 3 en passant par le 2 : ni l'écran 1
+    // ni le 2 ne redeviennent courants, aucun ne rejoue son animation.
+    defilerA(conteneur, 0.2);
+    defilerA(conteneur, 1);
+    expect(annonce(conteneur)).toBe("Écran 3 sur 3");
+    expect(etats(conteneur)).toEqual(["joue", "attente", "attente"]);
+    defilerA(conteneur, 2);
+    expect(etats(conteneur)).toEqual(["joue", "attente", "joue"]);
+    // Ensuite, le doigt reprend la main normalement.
+    defilerA(conteneur, 1);
+    expect(annonce(conteneur)).toBe("Écran 2 sur 3");
   });
 
   it("animations : revenir sur un écran relance son animation sans le recréer", () => {
     const { conteneur } = ouvrir();
     const titre = ecrans(conteneur)[1].querySelector("h1");
     act(() => boutons(conteneur, "Suivant")[0].click());
+    defilerA(conteneur, 1);
+    act(() => boutons(conteneur, "Passer")[1].click());
+    defilerA(conteneur, 2);
     const observateur = new MutationObserver(() => undefined);
     observateur.observe(ecrans(conteneur)[1], { attributes: true, attributeFilter: ["data-pres"], attributeOldValue: true });
-    act(() => boutons(conteneur, "Passer")[1].click());
     act(() => boutons(conteneur, "Écran précédent")[0].click());
-    // Valeur de l'attribut après chaque changement : l'ancienne valeur du suivant.
+    defilerA(conteneur, 1);
+    // takeRecords : les enregistrements en attente, lus avant leur remise asynchrone.
     const anciennes = observateur.takeRecords().map((r) => r.oldValue);
     observateur.disconnect();
-    // Retour sur l'écran 2 : « joue » → « attente » → « joue », même élément (le focus tient).
-    expect(anciennes.slice(-2)).toEqual(["joue", "attente"]);
+    // Retour sur l'écran 2 : « joue » → « attente » (glissement) → « joue » (arrivée).
+    expect(anciennes).toEqual(["joue", "attente", "attente"]);
     expect(ecrans(conteneur)[1].dataset.pres).toBe("joue");
     expect(ecrans(conteneur)[1].querySelector("h1")).toBe(titre);
     expect(document.activeElement).toBe(titre);
+  });
+
+  it("animations : sans signal d'arrivée, l'écran visé s'anime quand même", () => {
+    vi.useFakeTimers();
+    try {
+      const { conteneur } = ouvrir();
+      act(() => boutons(conteneur, "Suivant")[0].click());
+      expect(ecrans(conteneur)[1].dataset.pres).toBe("attente");
+      act(() => vi.advanceTimersByTime(700));
+      expect(ecrans(conteneur)[1].dataset.pres).toBe("joue");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("mouvement réduit : l'écran visé s'affiche aussitôt, sans attendre", () => {
+    vi.stubGlobal("matchMedia", (requete: string) => ({ matches: requete.includes("reduce") }));
+    const { conteneur } = ouvrir();
+    act(() => boutons(conteneur, "Suivant")[0].click());
+    expect(ecrans(conteneur)[1].dataset.pres).toBe("joue");
+  });
+
+  it("CSS : en mouvement réduit, rien ne reste masqué", () => {
+    const reduit = cssPresentation.slice(cssPresentation.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reduit).toMatch(/\[data-pres\] \.pa\s*\{\s*opacity:\s*1;/);
+    expect(reduit).toMatch(/\[data-pres\] \.pres-coche path\s*\{\s*stroke-dashoffset:\s*0;/);
+    // Les animations ne sont déclarées que si le mouvement est permis.
+    const avant = cssPresentation.slice(0, cssPresentation.indexOf("@media (prefers-reduced-motion: no-preference)"));
+    expect(avant).not.toMatch(/animation:/);
   });
 
   it("les décors animés restent cachés aux lecteurs d'écran", () => {

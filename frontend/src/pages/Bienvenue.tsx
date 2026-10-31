@@ -34,24 +34,53 @@ export function Bienvenue() {
   const [courant, setCourant] = useState(0);
   // Navigation par bouton : le focus suivra sur le titre du nouvel écran.
   const focusEnAttente = useRef(false);
+  // Défilement lancé par un bouton : écran visé, et repli si l'arrivée n'est
+  // jamais signalée (doigt posé pendant le glissement, par exemple).
+  const cible = useRef<number | null>(null);
+  const repli = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Animations : l'écran courant repasse par « attente » puis « joue », ce qui
-  // relance ses animations CSS sans démonter ses éléments (le focus reste en
-  // place). Avant le premier affichage, pour éviter un éclair de l'état final.
-  // Un écran déjà joué garde « joue » quand on le quitte : il ne disparaît pas
-  // pendant qu'il glisse hors de l'écran.
+  /** Relance les animations d'un écran sans démonter ses éléments (le focus reste en place). */
+  const jouer = useCallback((i: number) => {
+    const el = defileur.current?.children[i] as HTMLElement | undefined;
+    if (!el) return;
+    el.dataset.pres = "attente";
+    void el.offsetWidth; // force le recalcul : les animations repartent de zéro
+    el.dataset.pres = "joue";
+  }, []);
+
+  /** Index de l'écran le plus visible, ou null si la largeur est inconnue. */
+  const indexVisible = useCallback((): number | null => {
+    const el = defileur.current;
+    if (!el || !el.clientWidth) return null;
+    return Math.min(NB_ECRANS - 1, Math.max(0, Math.round(el.scrollLeft / el.clientWidth)));
+  }, []);
+
+  /** Fin d'un défilement lancé par un bouton : l'écran d'arrivée s'anime. */
+  const arrivee = useCallback(() => {
+    clearTimeout(repli.current);
+    const visee = cible.current;
+    cible.current = null;
+    if (visee === null) return;
+    const fin = indexVisible() ?? visee;
+    setCourant(fin);
+    jouer(fin);
+  }, [indexVisible, jouer]);
+
+  useEffect(() => () => clearTimeout(repli.current), []);
+
+  // Animations : l'écran courant passe de « attente » à « joue ». Avant le
+  // premier affichage, pour éviter un éclair de l'état final. Après un bouton,
+  // l'écran visé attend la fin du glissement (arrivee) : son animation ne se
+  // joue pas pendant qu'il entre, encore à moitié hors de vue. Un écran déjà
+  // joué garde « joue » quand on le quitte : il ne disparaît pas en sortant.
   useLayoutEffect(() => {
     const sections = [...(defileur.current?.children ?? [])] as HTMLElement[];
     sections.forEach((el, i) => {
-      if (i === courant) {
-        el.dataset.pres = "attente";
-        void el.offsetWidth; // force le recalcul : les animations repartent de zéro
-        el.dataset.pres = "joue";
-      } else if (!el.dataset.pres) {
-        el.dataset.pres = "attente";
-      }
+      if (i === courant && cible.current === courant) el.dataset.pres = "attente";
+      else if (i === courant) jouer(i);
+      else if (!el.dataset.pres) el.dataset.pres = "attente";
     });
-  }, [courant]);
+  }, [courant, jouer]);
 
   // Seul l'écran visible est lisible et atteignable au clavier. Le focus n'est
   // donné qu'ensuite : un élément encore inerte ne peut pas le recevoir.
@@ -68,17 +97,27 @@ export function Bienvenue() {
   }, [courant]);
 
   const aller = useCallback((i: number) => {
+    const reduit = mouvementReduit();
+    // Glissement animé : les événements « scroll » intermédiaires sont ignorés
+    // jusqu'à l'arrivée (sinon l'écran quitté redeviendrait courant un instant
+    // et rejouerait son animation en sortant).
+    cible.current = reduit ? null : i;
+    clearTimeout(repli.current);
+    if (!reduit) repli.current = setTimeout(arrivee, 600);
     setCourant(i);
     const el = defileur.current;
-    if (el) el.scrollTo({ left: i * el.clientWidth, behavior: mouvementReduit() ? "auto" : "smooth" });
+    if (el) el.scrollTo({ left: i * el.clientWidth, behavior: reduit ? "auto" : "smooth" });
     // Le bouton pressé devient inerte : le focus passera au titre du nouvel écran.
     focusEnAttente.current = true;
-  }, []);
+  }, [arrivee]);
 
   function surDefilement() {
-    const el = defileur.current;
-    if (!el || !el.clientWidth) return;
-    const i = Math.min(NB_ECRANS - 1, Math.max(0, Math.round(el.scrollLeft / el.clientWidth)));
+    const i = indexVisible();
+    if (i === null) return;
+    if (cible.current !== null) {
+      if (i === cible.current) arrivee();
+      return;
+    }
     setCourant(i);
   }
 
@@ -427,6 +466,8 @@ function IllustrationAnnonce() {
   );
 }
 
+// Trois niveaux affichés : le texte défilant de l'illustration monte de 22 px
+// par niveau (presentation.css, pres-niveau et .pres-defile, -44 px au final).
 const NIVEAUX = [
   { nom: "Basique", detail: "Numéro vérifié par SMS", couleur: "#2563EB" },
   { nom: "Identifié", detail: "Pièce d'identité validée", couleur: "#7C3AED" },
@@ -575,7 +616,7 @@ function IllustrationMessagerie() {
   return (
     <>
       <Halo taille={260} />
-      <div className="absolute inset-0 pointer-events-none">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {CONFETTIS.map((c) => (
           <span
             key={c.left}

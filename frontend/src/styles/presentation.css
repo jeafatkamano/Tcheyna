@@ -502,7 +502,14 @@
   }
 }
 
-/* ─── Mouvement réduit : tout s'affiche à sa place, sans mouvement ─── */
+/* Écrans hors de vue (inertes) : leurs animations en boucle s'arrêtent,
+   pour ne pas consommer de batterie pour rien. */
+[inert] * {
+  animation-play-state: paused;
+}
+
+/* ─── Mouvement réduit : tout s'affiche à sa place, sans mouvement ───
+   Les décors purs (étincelles, « … », confettis) restent alors cachés. */
 @media (prefers-reduced-motion: reduce) {
   [data-pres] .pa {
     opacity: 1;
