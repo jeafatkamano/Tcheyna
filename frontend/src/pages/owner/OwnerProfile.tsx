@@ -3,10 +3,10 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 
 import { avisAPI, usersAPI } from "../../api";
-import { BadgeVerification, VerificationSteps } from "../../components/BadgeVerification";
+import { VerificationSteps } from "../../components/BadgeVerification";
 import { ChangementMotDePasse } from "../../components/ChangementMotDePasse";
 import { LiensLegaux } from "../../components/LiensLegaux";
-import { TeleversementAvatar } from "../../components/TeleversementAvatar";
+import { EnTeteProfil } from "../../components/EnTeteProfil";
 import { MessageErreur, MessageSucces } from "../../components/Etats";
 import { PhoneVerification } from "../../components/PhoneVerification";
 import { useAuth } from "../../context/AuthContext";
@@ -53,38 +53,27 @@ export function OwnerProfile() {
 
   return (
     <div className="pb-8">
-      <div className="px-4 pt-6 pb-8" style={{ background: "#1E3A5F" }}>
-        <h1 className="text-white font-bold mb-5" style={{ fontSize: "20px" }}>
-          Mon profil
-        </h1>
-
-        <div
-          className="rounded-2xl p-5 flex items-center gap-4"
-          style={{ background: "rgba(255,255,255,0.08)" }}
-        >
-          <TeleversementAvatar taille={64} surFonce />
-          <div className="flex-1 min-w-0">
-            <h2 className="text-white font-bold text-lg truncate">{user?.full_name}</h2>
-            <p className="text-white/60 text-sm">
-              {user?.role === "agency" ? "Agence" : "Propriétaire"}
-            </p>
-            <div className="mt-2">
-              <BadgeVerification level={niveau} size="sm" />
-            </div>
-          </div>
-          {user?.note_moyenne != null && (
-            <div className="flex flex-col items-center flex-shrink-0">
+      <EnTeteProfil
+        titre="Mon profil"
+        nom={user?.full_name}
+        detail={user?.role === "agency" ? "Agence" : "Propriétaire"}
+        niveau={niveau}
+        aDroite={
+          user?.note_moyenne != null ? (
+            <div className="flex flex-col items-center shrink-0">
               <div className="flex items-center gap-1">
-                <Star size={15} style={{ color: "#F59E0B" }} fill="#F59E0B" />
+                <Star size={15} style={{ color: "#FBBF24" }} fill="#FBBF24" aria-hidden="true" />
                 <span className="text-white font-bold text-lg">{user.note_moyenne}</span>
               </div>
-              <span className="text-white/50 text-xs">{user.nb_avis} avis</span>
+              <span className="text-xs" style={{ color: "rgba(255,255,255,0.78)" }}>
+                {user.nb_avis} avis
+              </span>
             </div>
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
-      <div className="px-4 pt-5 space-y-5">
+      <div className="px-5 pt-4 space-y-4">
         <MessageSucces message={succes} />
 
         {/* Vérification du téléphone */}

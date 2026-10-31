@@ -3,7 +3,7 @@
  * maquette Profil : onglets), lot 3.15a.
  *
  * `sombre` : sur l'en-tête bleu nuit (fond blanc à 10 %, segment actif blanc).
- * Clair : sur fond clair (fond blanc, segment actif bleu nuit).
+ * Clair : sur fond clair (fond blanc, segment actif bleu nuit, ou orange).
  * Sémantique : groupe de boutons radio (un choix parmi plusieurs) ; les
  * flèches gauche et droite changent de choix, comme un groupe radio natif.
  */
@@ -21,9 +21,20 @@ interface Props<V extends string> {
   /** Nom du groupe, lu par les lecteurs d'écran. */
   libelle: string;
   sombre?: boolean;
+  /** Segment actif orange, texte blanc (maquette Profil). */
+  orange?: boolean;
 }
 
-export function Segment<V extends string>({ options, valeur, onChange, libelle, sombre = false }: Props<V>) {
+export function Segment<V extends string>({
+  options,
+  valeur,
+  onChange,
+  libelle,
+  sombre = false,
+  orange = false,
+}: Props<V>) {
+  const fondActif = orange ? "#F97316" : sombre ? "#ffffff" : "#1E3A5F";
+  const texteActif = orange || !sombre ? "#ffffff" : "#1E3A5F";
   function surTouche(e: KeyboardEvent<HTMLDivElement>) {
     const sens = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
     if (!sens) return;
@@ -60,8 +71,8 @@ export function Segment<V extends string>({ options, valeur, onChange, libelle, 
             style={{
               fontSize: 14,
               fontWeight: actif ? 800 : 700,
-              background: actif ? (sombre ? "#ffffff" : "#1E3A5F") : "transparent",
-              color: actif ? (sombre ? "#1E3A5F" : "#ffffff") : sombre ? "rgba(255,255,255,0.85)" : "#475569",
+              background: actif ? fondActif : "transparent",
+              color: actif ? texteActif : sombre ? "rgba(255,255,255,0.85)" : "#475569",
             }}
           >
             {o.label}

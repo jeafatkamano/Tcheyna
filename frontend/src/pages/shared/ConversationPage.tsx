@@ -9,20 +9,36 @@
  * Le fil se charge par pages (« Charger les messages plus anciens »), et des
  * messages types proposés par le serveur aident à démarrer l'échange.
  */
-import { ArrowLeft, Loader2, Lock, Send } from "lucide-react";
+import { ArrowLeft, CalendarDays, House, Loader2, Lock, Send, UserRound } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { ApiError, messagesAPI, type Message, type User } from "../../api";
-import { Avatar } from "../../components/Avatar";
+import { ApiError, matchesAPI, messagesAPI, urlFichier, type Message, type Role } from "../../api";
 import { BadgeProprietaireVerifie } from "../../components/BadgeVerification";
 import { Chargement, Erreur, MessageErreur } from "../../components/Etats";
+import { PhotoAnnonce } from "../../components/PhotoAnnonce";
 import { useAuth } from "../../context/AuthContext";
 import { useApi } from "../../hooks/useApi";
 import { useFilConversation } from "../../hooks/useFilConversation";
 import { formatMontantCourt } from "../../lib/format";
+import { HAUTEUR_REPLI, LARGEUR_REPLI } from "../../lib/imageRepli";
 
 const ID_EXPLICATION_FERMETURE = "explication-fermeture";
+
+/** Rôle de l'interlocuteur, sous le titre de l'annonce (maquette Discussion). */
+const ROLES: Record<Role, string> = {
+  tenant: "Locataire",
+  landlord: "Propriétaire",
+  agency: "Agence",
+  admin: "Administrateur",
+};
+
+/** « Samedi 2 nov. · 10:00 » */
+function formatJourVisite(date: Date) {
+  const jour = date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "short" });
+  const heure = date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return `${jour.charAt(0).toUpperCase()}${jour.slice(1)} · ${heure}`;
+}
 
 /** Pourquoi la discussion est fermée, selon le code stable du serveur. */
 function texteFermeture(motif?: string | null): string {
@@ -65,6 +81,10 @@ export function ConversationPage() {
   // 404 : aucune puce, et aucun message d'erreur.
   const modeles = useApi((signal) => messagesAPI.modeles(signal), []);
   const listeModeles = modeles.data?.modeles ?? [];
+
+  // Mise en relation : la date de visite planifiée, si elle existe. Un échec
+  // n'affiche rien (la carte de visite est un complément).
+  const match = useApi(() => matchesAPI.detail(matchId!), [matchId], { actif: Boolean(matchId) });
 
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
   const envoiVerrou = useRef(false);
@@ -145,8 +165,14 @@ export function ConversationPage() {
     return (
       <div className="sous-barre-etat min-h-screen flex flex-col" style={{ background: "#F0F4FA" }}>
         <div className="px-4 pt-6">
-          <button onClick={() => navigate(-1)} className="p-2 -ml-2" style={{ color: "#1E3A5F" }}>
-            <ArrowLeft size={20} />
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="w-11 h-11 -ml-2.5 flex items-center justify-center"
+            style={{ color: "#1E3A5F" }}
+            aria-label="Retour"
+          >
+            <ArrowLeft size={20} aria-hidden="true" />
           </button>
         </div>
         <Erreur
@@ -158,100 +184,106 @@ export function ConversationPage() {
   }
 
   const { interlocuteur, listing } = conversation.data;
+  const role = interlocuteur?.role ? ROLES[interlocuteur.role] : null;
+  const visite = match.data?.visite_date ? new Date(match.data.visite_date) : null;
 
   return (
-    <div className="flex flex-col h-screen" style={{ background: "#F0F4FA" }}>
-      {/* En-tête */}
-      <div
-        className="flex items-center gap-3 px-4 py-3 shadow-sm flex-shrink-0"
+    <div className="flex flex-col h-dvh" style={{ background: "#F0F4FA" }}>
+      {/* En-tête : retour, vignette de l'annonce, titre, rôle de l'interlocuteur */}
+      <header
+        className="flex items-center gap-2.5 shrink-0 text-white"
         // Fond sous la barre d'état (bord à bord, index.css), contenu en dessous.
-        style={{ background: "#1E3A5F", paddingTop: "calc(0.75rem + var(--inset-haut))" }}
+        style={{ background: "#1E3A5F", padding: "calc(12px + var(--inset-haut)) 12px 14px" }}
       >
         <button
+          type="button"
           onClick={() => navigate("/messages")}
-          className="p-2 rounded-xl"
-          style={{ background: "rgba(255,255,255,0.12)", color: "white" }}
+          className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full"
           aria-label="Retour aux messages"
         >
-          <ArrowLeft size={18} />
+          <ArrowLeft size={22} aria-hidden="true" />
         </button>
 
-        <Link to={`/profil/${interlocuteur?.id}`} aria-label="Voir le profil">
-          <Avatar
-            nom={interlocuteur?.full_name}
-            url={interlocuteur?.avatar_url}
-            taille={40}
-            surFonce
+        <span className="w-[42px] h-[42px] rounded-[14px] overflow-hidden shrink-0" style={{ background: "#E2E8F0" }}>
+          <PhotoAnnonce
+            url={urlFichier(listing?.images?.[0])}
+            tailles="42px"
+            alt=""
+            width={LARGEUR_REPLI}
+            height={HAUTEUR_REPLI}
+            className="w-full h-full object-cover"
+            decoding="async"
           />
-        </Link>
+        </span>
 
-        <div className="flex-1 min-w-0">
-          <p className="text-white font-bold text-sm truncate">
-            {interlocuteur?.full_name ?? "Interlocuteur"}
+        <div className="grow min-w-0">
+          <p className="m-0 font-extrabold truncate" style={{ fontSize: 16 }}>
+            {listing?.title ?? interlocuteur?.full_name ?? "Discussion"}
+          </p>
+          <p className="m-0 truncate" style={{ fontSize: 12, color: "rgba(255,255,255,0.78)" }}>
+            {[role, interlocuteur?.full_name, listing && `${formatMontantCourt(listing.prix, listing.devise)}/mois`]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
           {interlocuteur?.proprietaire_verifie && (
-            <div className="my-0.5">
+            <div className="mt-0.5">
               <BadgeProprietaireVerifie utilisateur={interlocuteur} />
             </div>
-          )}
-          {listing && (
-            <Link to={`/listing/${listing.id}`} className="text-white/50 text-xs truncate block">
-              {listing.title} · {formatMontantCourt(listing.prix, listing.devise)}/mois
-            </Link>
           )}
         </div>
 
         {conversation.actualisation && (
-          <Loader2
-            size={14}
-            className="animate-spin flex-shrink-0 text-white/40"
-            aria-label="Actualisation"
-          />
+          <Loader2 size={14} className="animate-spin shrink-0 text-white/60" aria-label="Actualisation" />
         )}
-      </div>
+        {interlocuteur && (
+          <Link
+            to={`/profil/${interlocuteur.id}`}
+            className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full text-white"
+            aria-label="Voir le profil"
+          >
+            <UserRound size={20} aria-hidden="true" />
+          </Link>
+        )}
+        {listing && (
+          <Link
+            to={`/listing/${listing.id}`}
+            className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full text-white"
+            aria-label="Voir l'annonce"
+          >
+            <House size={20} aria-hidden="true" />
+          </Link>
+        )}
+      </header>
 
-      {/* Bandeau : mise en relation validée, ou discussion fermée. Région
-          `status` : la fermeture est annoncée dès qu'elle apparaît. */}
-      <div role="status" className="flex-shrink-0">
-        {fermee ? (
-          <div
-            className="flex items-center gap-2 px-4 py-2.5"
-            style={{ background: "#F1F5F9", borderBottom: "1px solid #E2E8F0" }}
-          >
+      {/* Discussion fermée : bandeau, annoncé dès qu'il apparaît (région status). */}
+      <div role="status" className="shrink-0">
+        {fermee && (
+          <div className="flex items-center gap-2 px-4 py-2.5" style={{ background: "#F1F5F9", borderBottom: "1px solid #E2E8F0" }}>
             <Lock size={14} style={{ color: "#475569", flexShrink: 0 }} aria-hidden="true" />
-            <p
-              id={ID_EXPLICATION_FERMETURE}
-              className="text-xs font-semibold"
-              style={{ color: "#334155" }}
-            >
+            <p id={ID_EXPLICATION_FERMETURE} className="m-0 text-xs font-semibold" style={{ color: "#334155" }}>
               {texteFermeture(motif)}
-            </p>
-          </div>
-        ) : (
-          <div
-            className="flex items-center gap-2 px-4 py-2.5"
-            style={{ background: "#D1FAE5", borderBottom: "1px solid #A7F3D0" }}
-          >
-            <span style={{ fontSize: "14px" }}>🎉</span>
-            <p className="text-xs font-semibold" style={{ color: "#065F46" }}>
-              Mise en relation validée — organisez la visite en toute confiance.
             </p>
           </div>
         )}
       </div>
 
       {conversation.erreurActualisation && (
-        <p
-          className="px-4 py-1.5 text-xs flex-shrink-0"
-          style={{ background: "#FEF3C7", color: "#92400E" }}
-          role="status"
-        >
+        <p className="m-0 px-4 py-1.5 text-xs shrink-0" style={{ background: "#FEF3C7", color: "#92400E" }} role="status">
           {conversation.erreurActualisation} Les nouveaux messages arriveront au retour du réseau.
         </p>
       )}
 
       {/* Fil */}
-      <div ref={zoneFil} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div ref={zoneFil} className="flex-1 overflow-y-auto flex flex-col gap-2.5" style={{ padding: "16px 16px 8px" }}>
+        {!fermee && (
+          <p
+            className="m-0 self-center rounded-full font-bold text-center"
+            style={{ padding: "6px 12px", background: "#DCFCE7", color: "#047857", fontSize: 12 }}
+          >
+            Mise en relation validée · organisez la visite en toute confiance
+          </p>
+        )}
+
         {plusAnciens && (
           <div className="text-center">
             <button
@@ -259,8 +291,8 @@ export function ConversationPage() {
               onClick={chargerPlusAnciens}
               disabled={anciensEnCours}
               aria-busy={anciensEnCours}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full disabled:opacity-60"
-              style={{ background: "white", color: "#1E3A5F", border: "1px solid #E2E8F0" }}
+              className="inline-flex items-center gap-1.5 text-xs font-bold h-11 px-4 rounded-full disabled:opacity-60"
+              style={{ background: "white", color: "#1E3A5F", border: "1px solid #CBD5E1" }}
             >
               {anciensEnCours && <Loader2 size={12} className="animate-spin" aria-hidden="true" />}
               {anciensEnCours ? "Chargement…" : "Charger les messages plus anciens"}
@@ -270,52 +302,68 @@ export function ConversationPage() {
         <MessageErreur message={erreurAnciens} />
 
         {messages.length === 0 && (
-          <p className="text-center text-sm text-gray-400 py-10">
+          <p className="m-0 text-center text-sm py-10" style={{ color: "#475569" }}>
             Aucun message pour l'instant. Lancez la discussion.
           </p>
         )}
 
         {messages.map((message, i) => (
-          <Bulle
-            key={message.id}
-            message={message}
-            estMien={message.sender_id === user?.id}
-            precedent={messages[i - 1]}
-            interlocuteur={interlocuteur}
-          />
+          <Bulle key={message.id} message={message} estMien={message.sender_id === user?.id} precedent={messages[i - 1]} />
         ))}
+
+        {/* Visite planifiée : date et heure seulement (la confirmation par
+            l'autre partie relève du lot 2.7 suite). */}
+        {visite && (
+          <div
+            className="mt-1 flex items-center gap-3 bg-white"
+            style={{ padding: 14, borderRadius: 18, border: "1.5px solid #FED7AA" }}
+          >
+            <span className="w-11 h-11 rounded-[14px] flex items-center justify-center shrink-0" style={{ background: "#FFF7ED" }}>
+              <CalendarDays size={22} color="#C2410C" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="m-0 font-semibold" style={{ fontSize: 12, color: "#475569" }}>
+                Visite planifiée
+              </p>
+              <p className="m-0 font-extrabold" style={{ fontSize: 15, color: "#1E3A5F" }}>
+                {formatJourVisite(visite)}
+              </p>
+            </div>
+          </div>
+        )}
         <div ref={finDuFil} />
       </div>
 
-      {/* Saisie */}
+      {/* Messages types : pastilles au-dessus de la saisie, insérées sans envoi. */}
+      {!fermee && !saisie && listeModeles.length > 0 && (
+        <div
+          role="group"
+          aria-label="Messages types"
+          className="flex gap-2 overflow-x-auto shrink-0 [&::-webkit-scrollbar]:hidden"
+          style={{ padding: "4px 16px 10px", scrollbarWidth: "none" }}
+        >
+          {listeModeles.map((modele) => (
+            <button
+              key={modele.id}
+              type="button"
+              onClick={() => insererModele(modele.texte)}
+              className="shrink-0 max-w-[16rem] truncate h-9 px-3 rounded-full font-semibold bg-white relative after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']"
+              style={{ border: "1px solid #CBD5E1", color: "#1E3A5F", fontSize: 13 }}
+              title={modele.texte}
+            >
+              {modele.texte}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Saisie : champ en pilule, envoi rond orange, au-dessus de la barre de gestes. */}
       <div
-        className="flex-shrink-0 px-4 pt-3 border-t border-gray-200"
-        // Au-dessus de la barre de gestes du téléphone (index.css, --inset-bas).
-        style={{ background: "white", paddingBottom: "calc(0.75rem + var(--inset-bas))" }}
+        className="shrink-0 bg-white"
+        style={{ padding: "10px 12px", paddingBottom: "calc(10px + var(--inset-bas))", borderTop: "1px solid #E2E8F0" }}
       >
         <MessageErreur message={erreurEnvoi} />
-        {/* Messages types : proposés sur une saisie vide, insérés sans envoi. */}
-        {!fermee && !saisie && listeModeles.length > 0 && (
-          <div
-            role="group"
-            aria-label="Messages types"
-            className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1"
-          >
-            {listeModeles.map((modele) => (
-              <button
-                key={modele.id}
-                type="button"
-                onClick={() => insererModele(modele.texte)}
-                className="flex-shrink-0 max-w-[16rem] truncate text-xs px-3 py-1.5 rounded-full"
-                style={{ background: "#F0F4FA", color: "#1E3A5F", border: "1px solid #E2E8F0" }}
-                title={modele.texte}
-              >
-                {modele.texte}
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="flex items-end gap-2 mt-1">
+        <div className="flex items-end gap-2.5">
           <textarea
             ref={champSaisie}
             value={saisie}
@@ -330,29 +378,33 @@ export function ConversationPage() {
             maxLength={2000}
             placeholder={fermee ? "Discussion fermée" : "Écrivez votre message…"}
             aria-label="Message"
+            enterKeyHint="send"
             // Fermée : lecture seule plutôt que `disabled`, pour que le texte
             // rendu après un refus d'envoi reste sélectionnable et copiable.
             readOnly={fermee}
             aria-disabled={fermee || undefined}
             aria-describedby={fermee ? ID_EXPLICATION_FERMETURE : undefined}
-            className="flex-1 px-4 py-3 rounded-2xl outline-none resize-none max-h-32"
+            className="grow min-w-0 rounded-[23px] outline-none resize-none max-h-32"
             style={{
-              background: fermee ? "#E2E8F0" : "#F0F4FA",
+              minHeight: 46,
+              padding: "12px 16px",
+              background: fermee ? "#E2E8F0" : "#F8FAFC",
               border: "1.5px solid #E2E8F0",
-              fontSize: "15px",
-              color: fermee ? "#64748B" : undefined,
+              fontSize: 15,
+              color: fermee ? "#475569" : "#1E293B",
               cursor: fermee ? "not-allowed" : undefined,
             }}
           />
           <button
+            type="button"
             onClick={envoyer}
             disabled={fermee || !saisie.trim() || envoiEnCours}
             aria-describedby={fermee ? ID_EXPLICATION_FERMETURE : undefined}
-            className="p-3 rounded-2xl text-white flex-shrink-0 transition-transform active:scale-90 disabled:opacity-40"
+            className="w-[46px] h-[46px] rounded-full text-white shrink-0 flex items-center justify-center disabled:opacity-40"
             style={{ background: "#F97316" }}
             aria-label="Envoyer"
           >
-            <Send size={19} />
+            <Send size={19} aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -360,72 +412,43 @@ export function ConversationPage() {
   );
 }
 
-function Bulle({
-  message,
-  estMien,
-  precedent,
-  interlocuteur,
-}: {
-  message: Message;
-  estMien: boolean;
-  precedent?: Message;
-  interlocuteur?: User | null;
-}) {
+function Bulle({ message, estMien, precedent }: { message: Message; estMien: boolean; precedent?: Message }) {
   const date = message.created_at ? new Date(message.created_at) : new Date();
   const nouveauJour =
     !precedent ||
-    (precedent.created_at &&
-      new Date(precedent.created_at).toDateString() !== date.toDateString());
+    (precedent.created_at && new Date(precedent.created_at).toDateString() !== date.toDateString());
+  const heure = date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div>
+    <>
       {nouveauJour && (
-        <div className="text-center my-3">
-          <span
-            className="text-xs px-3 py-1 rounded-full"
-            style={{ background: "#E2E8F0", color: "#64748B" }}
-          >
+        <p className="m-0 my-2 self-center">
+          <span className="text-xs px-3 py-1 rounded-full" style={{ background: "#E2E8F0", color: "#475569" }}>
             {date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
           </span>
-        </div>
+        </p>
       )}
-
-      <div className={`flex items-end gap-2 ${estMien ? "flex-row-reverse" : "flex-row"}`}>
-        {!estMien && (
-          <span className="mb-1">
-            <Avatar
-              nom={interlocuteur?.full_name}
-              url={interlocuteur?.avatar_url}
-              taille={28}
-              forme="rond"
-            />
-          </span>
-        )}
-
-        <div
-          className="max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-relaxed"
-          style={{
-            background: estMien ? "#1E3A5F" : "white",
-            color: estMien ? "white" : "#1E293B",
-            borderBottomRightRadius: estMien ? "4px" : "16px",
-            borderBottomLeftRadius: estMien ? "16px" : "4px",
-            boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-          }}
+      <div
+        className={`max-w-[75%] ${estMien ? "self-end" : "self-start"}`}
+        style={{
+          padding: "11px 14px",
+          borderRadius: estMien ? "18px 18px 6px 18px" : "18px 18px 18px 6px",
+          background: estMien ? "#1E3A5F" : "#ffffff",
+          color: estMien ? "#ffffff" : "#1E293B",
+          fontSize: 14,
+          lineHeight: 1.45,
+          boxShadow: estMien ? undefined : "0 2px 8px rgba(15,32,64,0.06)",
+        }}
+      >
+        <p className="m-0 whitespace-pre-wrap break-words">{message.contenu}</p>
+        <p
+          className={`m-0 mt-1 ${estMien ? "text-right" : ""}`}
+          style={{ fontSize: 11, color: estMien ? "rgba(255,255,255,0.78)" : "#475569" }}
         >
-          <p className="whitespace-pre-wrap break-words">{message.contenu}</p>
-          <div className={`flex items-center gap-1 mt-1 ${estMien ? "justify-end" : ""}`}>
-            <span
-              style={{
-                fontSize: "10px",
-                color: estMien ? "rgba(255,255,255,0.55)" : "#94A3B8",
-              }}
-            >
-              {date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-              {estMien && message.lu && " · lu"}
-            </span>
-          </div>
-        </div>
+          {heure}
+          {estMien && message.lu && " · Lu"}
+        </p>
       </div>
-    </div>
+    </>
   );
 }

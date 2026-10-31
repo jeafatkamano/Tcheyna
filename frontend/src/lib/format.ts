@@ -73,6 +73,26 @@ export function formatRelatif(iso?: string | null): string {
   return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
 
+/**
+ * Heure d'un message dans la liste des discussions (maquette Messages) :
+ * « 10:42 » aujourd'hui, « Hier », le jour de la semaine (« Lun. ») dans les
+ * six derniers jours, sinon la date courte (« 12 oct. »).
+ */
+export function formatHeureMessage(iso?: string | null, maintenant: Date = new Date()): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const jour = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const ecart = Math.round((jour(maintenant) - jour(date)) / 86_400_000);
+  if (ecart <= 0) return date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  if (ecart === 1) return "Hier";
+  if (ecart < 7) {
+    const nom = date.toLocaleDateString("fr-FR", { weekday: "short" });
+    return nom.charAt(0).toUpperCase() + nom.slice(1);
+  }
+  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+
 /** « +224622529252 » → « +224 622 52 92 52 » ; tout autre format est rendu tel quel. */
 export function formaterTelephone(numero?: string | null): string {
   if (!numero) return "";

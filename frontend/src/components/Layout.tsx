@@ -250,14 +250,15 @@ export function Layout() {
           </div>
         )}
 
-        <main className="flex-1" style={{ paddingBottom: "calc(6rem + var(--inset-bas))" }}>
+        <main className="flex-1" style={{ paddingBottom: "calc(72px + var(--inset-bas))" }}>
           <Outlet />
         </main>
 
-        {/* Navigation basse : au-dessus de la barre de gestes du téléphone. */}
+        {/* Navigation basse (maquette, lot 3.15b) : au-dessus de la barre de gestes. */}
         <nav
-          className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t border-white/10 shadow-lg"
-          style={{ background: "#1E3A5F", paddingBottom: "var(--inset-bas)" }}
+          aria-label="Navigation principale"
+          className="fixed bottom-0 left-0 right-0 z-30 flex"
+          style={{ background: "#1E3A5F", padding: "8px 4px", paddingBottom: "calc(8px + var(--inset-bas))" }}
         >
           {nav.map((item) => {
             const actif = estActif(item.path);
@@ -266,21 +267,27 @@ export function Layout() {
               <Link
                 key={item.path}
                 to={item.path}
-                className="relative flex flex-col items-center gap-1 py-3 px-2 flex-1 transition-colors"
-                style={{ color: actif ? "#F97316" : "rgba(255,255,255,0.55)" }}
+                aria-current={actif ? "page" : undefined}
+                className="relative flex-1 min-w-0 min-h-11 flex flex-col items-center justify-center gap-1 py-1.5"
+                style={{
+                  // Libellé actif en orange clair : l'orange de la maquette
+                  // n'atteint pas 4,5:1 sur le bleu nuit pour un texte de 11 px.
+                  color: actif ? "#FB923C" : "rgba(255,255,255,0.7)",
+                }}
               >
-                <span className="relative">
-                  <item.icon size={22} />
-                  {badge > 0 && (
-                    <span
-                      className="absolute -top-1 -right-2 min-w-[16px] h-4 px-1 rounded-full text-white flex items-center justify-center font-bold"
-                      style={{ background: "#F97316", fontSize: "9px" }}
-                    >
-                      {badge > 9 ? "9+" : badge}
-                    </span>
-                  )}
+                <item.icon size={22} color={actif ? "#F97316" : "currentColor"} aria-hidden="true" />
+                {badge > 0 && (
+                  <span
+                    className="absolute min-w-4 h-4 px-1 rounded-full text-white flex items-center justify-center font-extrabold"
+                    style={{ top: 2, left: "50%", marginLeft: 6, background: "#F97316", fontSize: 10 }}
+                  >
+                    {badge > 9 ? "9+" : badge}
+                    <span className="sr-only"> non lus</span>
+                  </span>
+                )}
+                <span className="truncate max-w-full" style={{ fontSize: 11, fontWeight: actif ? 700 : 600 }}>
+                  {item.label}
                 </span>
-                <span style={{ fontSize: "10px", fontWeight: 500 }}>{item.label}</span>
               </Link>
             );
           })}

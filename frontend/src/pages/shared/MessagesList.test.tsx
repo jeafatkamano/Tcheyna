@@ -61,7 +61,9 @@ async function ouvrir() {
   return conteneur;
 }
 
-const liens = (c: HTMLElement) => [...c.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+// Liens des discussions seulement (l'en-tête porte aussi la cloche, lot 3.15b).
+const discussions = (c: HTMLElement) => [...c.querySelectorAll<HTMLAnchorElement>('a[href^="/messages/"]')];
+const liens = (c: HTMLElement) => discussions(c).map((a) => a.getAttribute("href"));
 const afficherPlus = (c: HTMLElement) =>
   [...c.querySelectorAll("button")].find((b) => b.textContent === "Afficher plus");
 
@@ -113,7 +115,7 @@ describe("MessagesList", () => {
     });
     const c = await ouvrir();
 
-    const [premier, second] = [...c.querySelectorAll("a")];
+    const [premier, second] = discussions(c);
     expect(premier.textContent).toContain("Fermée");
     expect(second.textContent).not.toContain("Fermée");
     expect(afficherPlus(c)).toBeUndefined();

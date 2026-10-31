@@ -179,7 +179,7 @@ const ROUTES: RouteObject[] = [
       { path: "listings", element: aLaDemande(ListingsPage), handle: EN_TETE_PROPRE },
       { path: "matches", element: aLaDemande(TenantMatches) },
       { path: "favoris", element: aLaDemande(FavorisPage) },
-      { path: "profile", element: aLaDemande(TenantProfile) },
+      { path: "profile", element: aLaDemande(TenantProfile), handle: EN_TETE_PROPRE },
     ],
   },
 
@@ -194,7 +194,7 @@ const ROUTES: RouteObject[] = [
       { path: "listings/nouveau", element: aLaDemande(OwnerListingForm) },
       { path: "listings/:id", element: aLaDemande(OwnerListingForm) },
       { path: "matches", element: aLaDemande(OwnerMatches), handle: EN_TETE_PROPRE },
-      { path: "profile", element: aLaDemande(OwnerProfile) },
+      { path: "profile", element: aLaDemande(OwnerProfile), handle: EN_TETE_PROPRE },
     ],
   },
 
@@ -212,7 +212,7 @@ const ROUTES: RouteObject[] = [
   {
     element: <EspaceProtege />,
     children: [
-      { path: "/messages", Component: MessagesList },
+      { path: "/messages", Component: MessagesList, handle: EN_TETE_PROPRE },
       { path: "/notifications", Component: NotificationsPage },
       { path: "/paiements", Component: PaiementsPage },
       { path: "/paiements/:id", Component: RecuPage },
