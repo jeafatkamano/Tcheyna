@@ -177,6 +177,30 @@ describe("RegisterPage, passage d'une étape à l'autre", () => {
     expect(router.state.location.pathname).toBe("/inscription");
   });
 
+  it("étape 2 retrouvée après un rechargement (saisie perdue) : retour à l'étape 1 sur la même page", async () => {
+    const router = createMemoryRouter(
+      [
+        { path: "/inscription", element: <RegisterPage /> },
+        { path: "*", Component: Destination },
+      ],
+      {
+        initialEntries: ["/bienvenue", { pathname: "/inscription", search: "?role=tenant", state: { etapeInscription: 2 } }],
+        initialIndex: 1,
+      },
+    );
+    conteneur = document.createElement("div");
+    document.body.appendChild(conteneur);
+    racine = createRoot(conteneur);
+    act(() => racine!.render(<RouterProvider router={router} />));
+    expect(titre()).toBe("Sécurisez votre compte");
+
+    await remplirEtape2();
+    expect(inscrire).not.toHaveBeenCalled();
+    expect(router.state.location.pathname).toBe("/inscription");
+    expect(titre()).toBe("Créer votre compte");
+    expect(erreurDe("nom")).toBe("Saisissez votre nom complet.");
+  });
+
   it("étape 2 : mot de passe trop court refusé, sans appel au serveur", async () => {
     ouvrir();
     await remplirEtape1();

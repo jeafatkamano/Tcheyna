@@ -39,6 +39,7 @@ import {
 } from "../components/FormulaireSombre";
 import { useAuth } from "../context/AuthContext";
 import { useGeo } from "../hooks/useGeo";
+import { fixerDestinationApresInscription } from "../lib/apresInscription";
 
 type RoleInscription = Exclude<Role, "admin">;
 
@@ -149,15 +150,35 @@ export function RegisterPage({ roleImpose, onInscrit }: Props = {}) {
     setErreurs((e) => ({ ...e, [champ]: undefined }));
   };
 
+  // Vrai si l'étape 2 a été ouverte depuis l'étape 1 de cette page : le
+  // retour peut alors retirer son entrée de l'historique.
+  const etape2Poussee = useRef(false);
+
+  // La destination d'après inscription ne survit pas à la page.
+  useEffect(() => () => fixerDestinationApresInscription(null), []);
+
   function allerEtape2() {
+    etape2Poussee.current = true;
     navigate(`${location.pathname}${location.search}`, {
       state: { ...(etat ?? {}), etapeInscription: 2 },
     });
   }
 
-  /** Retour à l'étape 1 : l'entrée de l'étape 2 est retirée de l'historique. */
+  /**
+   * Retour à l'étape 1. Étape 2 ouverte depuis l'étape 1 : on retire son
+   * entrée de l'historique (comme le bouton retour d'Android). Étape 2
+   * retrouvée après un rechargement, saisie perdue : on la remplace par
+   * l'étape 1, sans quitter la page.
+   */
   function revenirEtape1() {
-    navigate(-1);
+    if (etape2Poussee.current) {
+      etape2Poussee.current = false;
+      navigate(-1);
+      return;
+    }
+    const reste = { ...(etat ?? {}) };
+    delete reste.etapeInscription;
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: reste });
   }
 
   function continuer(e: React.FormEvent) {
@@ -182,10 +203,20 @@ export function RegisterPage({ roleImpose, onInscrit }: Props = {}) {
     setErreur(null);
     if (Object.keys(trouvees).length > 0 || !conditionsAcceptees || enCours) return;
 
+    // Après l'inscription : code SMS si un numéro est saisi, sinon l'onboarding.
+    // Fixé avant l'appel : la garde de /inscription voit la session avant
+    // que cette page ait navigué (lib/apresInscription.ts).
+    const suite = role === "tenant" ? "/onboarding/tenant" : "/onboarding/owner";
+    const destination = onInscrit
+      ? null
+      : form.phone.trim()
+        ? { vers: "/inscription/verification", state: { suite } }
+        : { vers: suite };
+    fixerDestinationApresInscription(destination);
+
     setEnCours(true);
-    let user;
     try {
-      user = await inscrire({
+      await inscrire({
         ...form,
         full_name: form.full_name.trim(),
         email: form.email.trim(),
@@ -194,6 +225,7 @@ export function RegisterPage({ roleImpose, onInscrit }: Props = {}) {
         quartier: form.quartier || undefined,
       });
     } catch (err) {
+      fixerDestinationApresInscription(null);
       const { general, champs } = analyserErreur(err);
       setErreurs(champs);
       setErreur(general);
@@ -208,9 +240,7 @@ export function RegisterPage({ roleImpose, onInscrit }: Props = {}) {
       onInscrit();
       return;
     }
-    const suite = user.role === "tenant" ? "/onboarding/tenant" : "/onboarding/owner";
-    if (form.phone.trim()) navigate("/inscription/verification", { replace: true, state: { suite } });
-    else navigate(suite, { replace: true });
+    if (destination) navigate(destination.vers, { replace: true, state: destination.state });
   }
 
   const avecHistorique = location.key !== "default";

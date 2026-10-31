@@ -10,6 +10,7 @@ import { Suspense, type ComponentType, type ReactNode } from "react";
 import type { Role } from "./api";
 import { Chargement, Erreur, ErreurRoute } from "./components/Etats";
 import { Layout } from "./components/Layout";
+import { RedirectIfAuth } from "./components/RedirectIfAuth";
 import { EcranMarque } from "./components/Marque";
 import { useAuth } from "./context/AuthContext";
 
@@ -98,17 +99,6 @@ function RequireAuth({ roles, children }: { roles?: Role[]; children: ReactNode 
     return <Navigate to={accueil} replace />;
   }
 
-  return <>{children}</>;
-}
-
-/** Empêche un utilisateur déjà connecté de revoir la connexion ou l'inscription. */
-function RedirectIfAuth({ children }: { children: ReactNode }) {
-  const { user, chargement } = useAuth();
-  if (chargement) return null;
-  if (user) {
-    const accueil = { tenant: "/tenant/dashboard", landlord: "/owner/dashboard", agency: "/owner/dashboard", admin: "/admin" }[user.role];
-    return <Navigate to={accueil} replace />;
-  }
   return <>{children}</>;
 }
 

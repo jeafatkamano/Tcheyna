@@ -135,7 +135,7 @@ export function LoginPage() {
             />
             <Link
               to="/mot-de-passe-oublie"
-              className="self-end py-2.5 font-semibold underline underline-offset-2"
+              className="self-end min-h-11 inline-flex items-center font-semibold underline underline-offset-2"
               style={{ fontSize: 14, color: "rgba(255,255,255,0.8)" }}
             >
               Mot de passe oublié ?

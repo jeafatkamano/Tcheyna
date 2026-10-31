@@ -46,8 +46,11 @@ export function SaisieCode({
     focusApres.current = null;
   });
 
-  function focus(i: number) {
-    focusApres.current = Math.max(0, Math.min(LONGUEUR - 1, i));
+  /** Focus sur la case `i` : après le rendu si la valeur change, tout de suite sinon. */
+  function focus(i: number, apresRendu = true) {
+    const cible = Math.max(0, Math.min(LONGUEUR - 1, i));
+    if (apresRendu) focusApres.current = cible;
+    else cases.current[cible]?.focus();
   }
 
   /** Place `chiffres` à partir de la case `i` ; un seul chiffre remplace celui de la case. */
@@ -57,7 +60,7 @@ export function SaisieCode({
         ? code.slice(0, i) + chiffres + code.slice(i + 1)
         : (code.slice(0, i) + chiffres).slice(0, LONGUEUR);
     onChange(suivant);
-    focus(Math.min(i + chiffres.length, LONGUEUR - 1));
+    focus(Math.min(i + chiffres.length, LONGUEUR - 1), suivant !== code);
   }
 
   function surSaisie(i: number, brut: string) {
@@ -75,16 +78,23 @@ export function SaisieCode({
   }
 
   function surTouche(i: number, e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Backspace" && !code[i] && i > 0) {
+    // keyCode 8 : certains claviers Android ne renseignent pas `key`.
+    const effacement = e.key === "Backspace" || e.keyCode === 8;
+    if (effacement && !code[i] && i > 0) {
       e.preventDefault();
       onChange(code.slice(0, i - 1));
       focus(i - 1);
+    } else if (/^\d$/.test(e.key) && e.key === code[i]) {
+      // Même chiffre retapé : la valeur ne change pas, React ne voit aucune
+      // saisie ; on avance quand même.
+      e.preventDefault();
+      focus(i + 1, false);
     } else if (e.key === "ArrowLeft" && i > 0) {
       e.preventDefault();
-      focus(i - 1);
+      focus(i - 1, false);
     } else if (e.key === "ArrowRight" && i < code.length) {
       e.preventDefault();
-      focus(i + 1);
+      focus(i + 1, false);
     }
   }
 

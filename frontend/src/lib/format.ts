@@ -73,7 +73,6 @@ export function formatRelatif(iso?: string | null): string {
   return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
 
-/** Initiales pour les avatars de repli : « Aminata Diallo » → « AD ». */
 /** « +224622529252 » → « +224 622 52 92 52 » ; tout autre format est rendu tel quel. */
 export function formaterTelephone(numero?: string | null): string {
   if (!numero) return "";
@@ -81,6 +80,7 @@ export function formaterTelephone(numero?: string | null): string {
   return guinee ? `+224 ${guinee.slice(1).join(" ")}` : numero;
 }
 
+/** Initiales pour les avatars de repli : « Aminata Diallo » → « AD ». */
 export function initiales(nom?: string | null): string {
   if (!nom) return "?";
   return nom

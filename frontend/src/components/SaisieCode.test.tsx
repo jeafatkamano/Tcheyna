@@ -120,6 +120,28 @@ describe("SaisieCode", () => {
     expect(valeur).toBe("987654");
   });
 
+  it("les flèches déplacent le focus tout de suite, sans dépasser la saisie", () => {
+    const cases = ouvrir();
+    taper(cases[0], "4");
+    taper(cases[1], "8");
+    act(() => cases[2].focus());
+    touche(cases[2], "ArrowLeft");
+    expect(document.activeElement).toBe(cases[1]);
+    touche(cases[1], "ArrowRight");
+    expect(document.activeElement).toBe(cases[2]);
+    touche(cases[2], "ArrowRight");
+    expect(document.activeElement).toBe(cases[2]);
+  });
+
+  it("retaper le même chiffre avance quand même à la case suivante", () => {
+    const cases = ouvrir();
+    taper(cases[0], "4");
+    act(() => cases[0].focus());
+    touche(cases[0], "4");
+    expect(valeur).toBe("4");
+    expect(document.activeElement).toBe(cases[1]);
+  });
+
   it("une case vide au-delà de la saisie renvoie le focus à la première case libre", () => {
     const cases = ouvrir();
     taper(cases[0], "4");

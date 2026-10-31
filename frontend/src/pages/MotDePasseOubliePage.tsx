@@ -40,11 +40,10 @@ import {
 import { SaisieCode } from "../components/SaisieCode";
 import { decritPar } from "../lib/aria";
 import { useAuth } from "../context/AuthContext";
+import { ATTENTE_RENVOI_S } from "../hooks/useVerificationTelephone";
 
 /** Règle du serveur (`MotDePasse` : 8 à 128 caractères). */
 const LONGUEUR_MIN = 8;
-/** Anti-spam du serveur entre deux codes envoyés au même compte. */
-const ATTENTE_RENVOI_S = 60;
 
 const MESSAGE_INDISPONIBLE =
   "La récupération par SMS n'est pas encore disponible. Réessayez plus tard.";
