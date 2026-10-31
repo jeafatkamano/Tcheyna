@@ -1,9 +1,29 @@
-import { ArrowLeft, Eye, EyeOff, Lock, UserRound } from "lucide-react";
+/**
+ * LoginPage.tsx — Connexion (maquette Connexion, lot 3.14).
+ *
+ * Logique inchangée : e-mail ou numéro vérifié dans le même champ (lot 3.8),
+ * motif d'une déconnexion forcée, message après réinitialisation du mot de
+ * passe, retour à la page demandée avant la redirection.
+ */
+import { Capacitor } from "@capacitor/core";
+import { Lock, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
 import { effacerMotifDeconnexion, lireMotifDeconnexion } from "../api";
 import { MessageErreur, MessageSucces } from "../components/Etats";
+import {
+  BoutonPrincipal,
+  BoutonRetour,
+  Champ,
+  ChampMotDePasse,
+  CLASSE_LIEN,
+  EcranSombre,
+  LigneLien,
+  TEXTE_SECONDAIRE,
+  TitreEcran,
+} from "../components/FormulaireSombre";
+import { Monogramme } from "../components/Marque";
 import { useAuth } from "../context/AuthContext";
 import { useAction } from "../hooks/useApi";
 
@@ -20,7 +40,6 @@ export function LoginPage() {
   // l'un ou l'autre dans le champ `email`, sans contrôle de format ici.
   const [identifiant, setIdentifiant] = useState("");
   const [motDePasse, setMotDePasse] = useState("");
-  const [afficherMdp, setAfficherMdp] = useState(false);
 
   const connexion = useAction(connecter);
   // Déconnexion forcée (session révoquée, compte désactivé) : on dit pourquoi
@@ -41,6 +60,15 @@ export function LoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Retour : page précédente s'il y en a une. Sinon, l'accueil du site ;
+  // dans l'application, la connexion est le premier écran : pas de retour.
+  const avecHistorique = location.key !== "default";
+  const retour = avecHistorique
+    ? () => navigate(-1)
+    : Capacitor.isNativePlatform()
+      ? null
+      : () => navigate("/");
+
   async function soumettre(e: React.FormEvent) {
     e.preventDefault();
     setMotif(null);
@@ -53,151 +81,111 @@ export function LoginPage() {
   }
 
   return (
-    <div
-      className="sous-barre-etat min-h-screen flex flex-col"
-      style={{ background: "linear-gradient(160deg, #0F2040 0%, #1E3A5F 60%, #0F2040 100%)" }}
-    >
-      <header className="flex items-center justify-between px-6 pt-8 pb-4">
-        <Link to="/" className="p-2 -ml-2 rounded-lg text-white/70 hover:text-white">
-          <ArrowLeft size={20} />
-        </Link>
-        <span className="text-white font-bold tracking-tight" style={{ fontSize: "22px" }}>
-          tcheyna
-        </span>
-        <span className="w-9" />
-      </header>
+    <EcranSombre>
+      <form onSubmit={soumettre} className="flex-1 flex flex-col">
+        <div className="h-11 flex items-center justify-between">
+          {retour ? <BoutonRetour onClick={retour} /> : <span className="w-11" />}
+          <Monogramme taille={26} />
+          <span className="w-11" />
+        </div>
 
-      <div className="flex-1 flex flex-col justify-center px-6 pb-10">
-        <div className="w-full max-w-sm mx-auto">
-          <h1 className="text-white font-bold mb-2" style={{ fontSize: "28px", lineHeight: 1.2 }}>
-            Bon retour 👋
-          </h1>
-          <p className="text-white/60 mb-8" style={{ fontSize: "15px" }}>
-            Connectez-vous pour retrouver vos annonces et vos mises en relation.
-          </p>
+        <div className="mt-8">
+          <TitreEcran sousTitre="Connectez-vous pour retrouver vos annonces et vos mises en relation.">
+            Bon retour<span style={{ color: "#F97316" }}>.</span>
+          </TitreEcran>
+        </div>
 
-          {succes && (
-            <div ref={succesRef} tabIndex={-1} className="mb-4 outline-none">
-              <MessageSucces message={succes} />
-            </div>
-          )}
+        {succes && (
+          <div ref={succesRef} tabIndex={-1} className="mt-6 outline-none">
+            <MessageSucces message={succes} />
+          </div>
+        )}
 
-          <form onSubmit={soumettre} className="space-y-4">
-            <div>
-              <label htmlFor="identifiant" className="block text-sm font-semibold text-white/80 mb-1.5">
-                E-mail ou téléphone
-              </label>
-              <div className="relative">
-                <UserRound
-                  size={17}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2"
-                  style={{ color: "#94A3B8" }}
-                  aria-hidden="true"
-                />
-                {/* type="text" : `type="email"` refuserait un numéro à l'envoi.
-                    Le clavier e-mail garde l'arobase et une rangée de chiffres. */}
-                <input
-                  id="identifiant"
-                  name="identifiant"
-                  type="text"
-                  inputMode="email"
-                  autoComplete="username"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  required
-                  value={identifiant}
-                  onChange={(e) => setIdentifiant(e.target.value)}
-                  placeholder="vous@exemple.com ou 622 52 92 52"
-                  className="w-full pl-10 pr-4 py-3.5 rounded-xl outline-none"
-                  style={{ background: "white", border: "1.5px solid #E2E8F0", fontSize: "15px" }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="mdp" className="block text-sm font-semibold text-white/80 mb-1.5">
-                Mot de passe
-              </label>
-              <div className="relative">
-                <Lock
-                  size={17}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2"
-                  style={{ color: "#94A3B8" }}
-                />
-                <input
-                  id="mdp"
-                  type={afficherMdp ? "text" : "password"}
-                  autoComplete="current-password"
-                  required
-                  value={motDePasse}
-                  onChange={(e) => setMotDePasse(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-10 pr-11 py-3.5 rounded-xl outline-none"
-                  style={{ background: "white", border: "1.5px solid #E2E8F0", fontSize: "15px" }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setAfficherMdp(!afficherMdp)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2"
-                  style={{ color: "#94A3B8" }}
-                  aria-label={afficherMdp ? "Masquer le mot de passe" : "Afficher le mot de passe"}
-                >
-                  {afficherMdp ? <EyeOff size={17} /> : <Eye size={17} />}
-                </button>
-              </div>
-              <div className="text-right mt-2">
-                <Link to="/mot-de-passe-oublie" className="text-sm font-medium text-white/70 underline">
-                  Mot de passe oublié ?
-                </Link>
-              </div>
-            </div>
-
-            <MessageErreur message={connexion.erreur ?? motif} />
-
-            <button
-              type="submit"
-              disabled={connexion.enCours}
-              className="w-full py-4 rounded-2xl font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-60"
-              style={{ background: "#F97316", fontSize: "16px" }}
+        <div className="mt-7 flex flex-col gap-4">
+          {/* type="text" : `type="email"` refuserait un numéro à l'envoi.
+              Le clavier e-mail garde l'arobase et une rangée de chiffres. */}
+          <Champ
+            id="identifiant"
+            name="identifiant"
+            libelle="E-mail ou téléphone"
+            icone={UserRound}
+            type="text"
+            inputMode="email"
+            autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="next"
+            required
+            value={identifiant}
+            onChange={(e) => setIdentifiant(e.target.value)}
+            placeholder="vous@exemple.com ou 622 52 92 52"
+          />
+          <div className="flex flex-col">
+            <ChampMotDePasse
+              id="mdp"
+              libelle="Mot de passe"
+              icone={Lock}
+              autoComplete="current-password"
+              enterKeyHint="go"
+              required
+              value={motDePasse}
+              onChange={(e) => setMotDePasse(e.target.value)}
+              placeholder="Votre mot de passe"
+            />
+            <Link
+              to="/mot-de-passe-oublie"
+              className="self-end py-2.5 font-semibold underline underline-offset-2"
+              style={{ fontSize: 14, color: "rgba(255,255,255,0.8)" }}
             >
-              {connexion.enCours ? "Connexion…" : "Se connecter"}
-            </button>
-          </form>
+              Mot de passe oublié ?
+            </Link>
+          </div>
+          <MessageErreur message={connexion.erreur ?? motif} />
+        </div>
 
-          <p className="text-center text-white/50 text-sm mt-6">
+        <div className="flex-1 min-h-6" />
+
+        <div className="flex flex-col gap-3">
+          <BoutonPrincipal disabled={connexion.enCours}>
+            {connexion.enCours ? "Connexion…" : "Se connecter"}
+          </BoutonPrincipal>
+          <LigneLien>
             Pas encore de compte ?{" "}
-            <Link to="/inscription" className="font-semibold" style={{ color: "#F97316" }}>
+            <Link to="/inscription" className={CLASSE_LIEN}>
               Créer un compte
             </Link>
+          </LigneLien>
+          <p className="m-0 text-center" style={{ fontSize: 12, lineHeight: 1.5, color: TEXTE_SECONDAIRE }}>
+            Votre compte reste actif après déconnexion : vos annonces, vos candidatures et vos échanges
+            vous attendent.
           </p>
-
-          <p className="text-center text-white/35 text-xs mt-3 leading-relaxed">
-            Votre compte reste actif après déconnexion : vos annonces, vos
-            candidatures et vos échanges vous attendent.
-          </p>
-
-          <div className="mt-8 pt-6 border-t border-white/10">
-            <p className="text-center text-white/40 text-xs mb-3">Vous découvrez Tcheyna ?</p>
+          <div className="pt-3 border-t border-white/10">
+            <p className="m-0 mb-3 text-center" style={{ fontSize: 12, color: TEXTE_SECONDAIRE }}>
+              Vous découvrez Tcheyna ?
+            </p>
             <div className="flex gap-3">
-              <Link
-                to="/onboarding/tenant"
-                className="flex-1 py-3 rounded-xl text-center text-sm font-semibold"
-                style={{ background: "rgba(255,255,255,0.08)", color: "white", border: "1.5px solid rgba(255,255,255,0.2)" }}
-              >
-                Je cherche
-              </Link>
-              <Link
-                to="/onboarding/owner"
-                className="flex-1 py-3 rounded-xl text-center text-sm font-semibold"
-                style={{ background: "rgba(255,255,255,0.08)", color: "white", border: "1.5px solid rgba(255,255,255,0.2)" }}
-              >
-                Je loue
-              </Link>
+              {[
+                { to: "/onboarding/tenant", texte: "Je cherche" },
+                { to: "/onboarding/owner", texte: "Je loue" },
+              ].map((lien) => (
+                <Link
+                  key={lien.to}
+                  to={lien.to}
+                  className="flex-1 h-11 rounded-2xl flex items-center justify-center font-semibold text-white"
+                  style={{
+                    fontSize: 14,
+                    background: "rgba(255,255,255,0.08)",
+                    border: "1.5px solid rgba(255,255,255,0.28)",
+                  }}
+                >
+                  {lien.texte}
+                </Link>
+              ))}
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </form>
+    </EcranSombre>
   );
 }

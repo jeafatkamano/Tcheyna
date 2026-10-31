@@ -1,5 +1,5 @@
 /**
- * MotDePasseOubliePage.tsx — Mot de passe oublié, par SMS (lot 3.8).
+ * MotDePasseOubliePage.tsx — Mot de passe oublié, par SMS (lot 3.8 ; maquette MotDePasse et code en six cases, lot 3.14).
  *
  * Deux étapes :
  *   1. le numéro → POST /auth/mot-de-passe-oublie. La réponse est la même que
@@ -17,12 +17,28 @@
  * en plus le bouton pendant `reessayer_dans`), 422 place `details` sous les
  * champs concernés, 404 signale un serveur qui ne connaît pas encore la route.
  */
-import { ArrowLeft, Eye, EyeOff, KeyRound, Lock, Phone } from "lucide-react";
+import { Info, KeyRound, Lock, Smartphone } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 import { ApiError, authAPI, tokens } from "../api";
 import { MessageErreur } from "../components/Etats";
+import {
+  BoutonPrincipal,
+  BoutonRetour,
+  Champ,
+  ChampMotDePasse,
+  CLASSE_LIEN,
+  EcranSombre,
+  Encadre,
+  ErreurChamp,
+  IconeEcran,
+  LigneLien,
+  TEXTE_SECONDAIRE,
+  TitreEcran,
+} from "../components/FormulaireSombre";
+import { SaisieCode } from "../components/SaisieCode";
+import { decritPar } from "../lib/aria";
 import { useAuth } from "../context/AuthContext";
 
 /** Règle du serveur (`MotDePasse` : 8 à 128 caractères). */
@@ -109,23 +125,6 @@ function useCompteARebours() {
       setDuree(secondes);
     },
   };
-}
-
-const STYLE_CHAMP = { background: "white", border: "1.5px solid #E2E8F0", fontSize: "15px" };
-const STYLE_CHAMP_INVALIDE = { ...STYLE_CHAMP, border: "1.5px solid #F87171" };
-
-function ErreurChamp({ id, message }: { id: string; message?: string }) {
-  if (!message) return null;
-  return (
-    <p id={id} className="text-xs mt-1.5 font-medium" style={{ color: "#FCA5A5" }}>
-      {message}
-    </p>
-  );
-}
-
-/** Identifiants des textes qui décrivent un champ (aide, erreur). */
-function decritPar(...ids: (string | false | undefined)[]) {
-  return ids.filter(Boolean).join(" ") || undefined;
 }
 
 export function MotDePasseOubliePage() {
@@ -238,249 +237,193 @@ export function MotDePasseOubliePage() {
         : "";
 
   return (
-    <div
-      className="sous-barre-etat min-h-screen flex flex-col"
-      style={{ background: "linear-gradient(160deg, #0F2040 0%, #1E3A5F 60%, #0F2040 100%)" }}
-    >
-      <header className="flex items-center justify-between px-6 pt-8 pb-4">
-        <Link
-          to="/login"
-          className="p-2 -ml-2 rounded-lg text-white/70 hover:text-white"
-          aria-label="Retour à la connexion"
-        >
-          <ArrowLeft size={20} />
-        </Link>
-        <span className="text-white font-bold tracking-tight" style={{ fontSize: "22px" }}>
-          tcheyna
-        </span>
-        <span className="w-9" />
-      </header>
+    <EcranSombre>
+      <p className="sr-only" aria-live="polite">
+        {annonceRenvoi}
+      </p>
 
-      <div className="flex-1 flex flex-col justify-center px-6 pb-10">
-        <div className="w-full max-w-sm mx-auto">
-          <h1 className="text-white font-bold mb-2" style={{ fontSize: "28px", lineHeight: 1.2 }}>
-            Mot de passe oublié
-          </h1>
+      {etape === "numero" ? (
+        <form onSubmit={demanderCode} className="flex-1 flex flex-col" noValidate>
+          <div className="h-11 flex items-center">
+            <BoutonRetour onClick={() => navigate("/login")} libelle="Retour à la connexion" />
+          </div>
+          <div className="mt-6">
+            <IconeEcran icone={KeyRound} />
+          </div>
+          <div className="mt-6">
+            <TitreEcran taille={30} sousTitre="Recevez par SMS un code pour choisir un nouveau mot de passe.">
+              Mot de passe oublié
+            </TitreEcran>
+          </div>
 
-          <p className="sr-only" aria-live="polite">
-            {annonceRenvoi}
-          </p>
+          <div className="mt-8">
+            <Champ
+              ref={champNumeroRef}
+              id="phone"
+              libelle="Numéro de téléphone"
+              prefixe="+224"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              enterKeyHint="send"
+              required
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="622 52 92 52"
+              aide="Indicatif +224 ajouté automatiquement pour la Guinée."
+              erreur={erreursChamps.phone}
+            />
+          </div>
 
-          {etape === "numero" ? (
-            <form onSubmit={demanderCode} className="space-y-4" noValidate>
-              <p className="text-white/60" style={{ fontSize: "15px" }}>
-                Recevez par SMS un code pour choisir un nouveau mot de passe.
-              </p>
-              <p
-                className="text-sm px-3.5 py-3 rounded-xl text-white/80"
-                style={{ background: "rgba(255,255,255,0.08)" }}
-              >
-                Seul un numéro <strong>vérifié</strong> permet de récupérer votre compte. Une
-                fois connecté, pensez à vérifier votre numéro depuis votre profil.
-              </p>
+          <div className="mt-5">
+            <Encadre icone={Info}>
+              Seul un numéro <strong className="text-white">vérifié</strong> permet de récupérer votre compte.
+              Une fois connecté, pensez à vérifier votre numéro depuis votre profil.
+            </Encadre>
+          </div>
 
-              <div>
-                <label htmlFor="phone" className="block text-sm font-semibold text-white/80 mb-1.5">
-                  Numéro de téléphone
-                </label>
-                <div className="relative">
-                  <Phone
-                    size={17}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2"
-                    style={{ color: "#94A3B8" }}
-                    aria-hidden="true"
-                  />
-                  <input
-                    ref={champNumeroRef}
-                    id="phone"
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="622 52 92 52"
-                    aria-invalid={erreursChamps.phone ? true : undefined}
-                    aria-describedby={decritPar("phone-aide", erreursChamps.phone && "phone-erreur")}
-                    className="w-full pl-10 pr-4 py-3.5 rounded-xl outline-none"
-                    style={erreursChamps.phone ? STYLE_CHAMP_INVALIDE : STYLE_CHAMP}
-                  />
-                </div>
-                <p id="phone-aide" className="text-xs text-white/50 mt-1.5">
-                  Indicatif +224 ajouté automatiquement pour la Guinée.
-                </p>
-                <ErreurChamp id="phone-erreur" message={erreursChamps.phone} />
-              </div>
+          <div className="mt-4">
+            <MessageErreur message={erreur} />
+          </div>
 
-              <MessageErreur message={erreur} />
+          <div className="flex-1 min-h-8" />
 
-              <button
-                type="submit"
-                disabled={enCours || renvoi.restant > 0}
-                className="w-full py-4 rounded-2xl font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-60"
-                style={{ background: "#F97316", fontSize: "16px" }}
-              >
-                {enCours ? "Envoi…" : `Recevoir un code par SMS${libelleRenvoi}`}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={confirmer} className="space-y-4" noValidate>
-              <h2
-                ref={titreCodeRef}
-                tabIndex={-1}
-                className="text-white font-semibold outline-none"
-                style={{ fontSize: "18px" }}
-              >
-                Saisissez le code reçu
-              </h2>
-              {messageEnvoi && (
-                <div className="px-3.5 py-3 rounded-xl" style={{ background: "#EFF6FF" }}>
-                  <p className="text-sm" style={{ color: "#1E3A5F" }}>
-                    {messageEnvoi}
-                  </p>
-                  {expireDans ? (
-                    <p className="text-xs mt-1.5" style={{ color: "#1D4ED8" }}>
-                      Le code est valable {Math.round(expireDans / 60)} minutes.
-                    </p>
-                  ) : null}
-                </div>
-              )}
-              <p className="text-sm text-white/60">
-                Numéro : <strong className="text-white">{phone.trim()}</strong>{" "}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCode("");
-                    changerEtape("numero");
-                  }}
-                  className="underline text-white/80"
-                >
-                  Modifier
-                </button>
-              </p>
+          <div className="flex flex-col gap-3.5">
+            <BoutonPrincipal disabled={enCours || renvoi.restant > 0}>
+              {enCours ? "Envoi…" : `Recevoir un code par SMS${libelleRenvoi}`}
+            </BoutonPrincipal>
+            <LigneLien>
+              Vous vous en souvenez ?{" "}
+              <Link to="/login" className={CLASSE_LIEN}>
+                Se connecter
+              </Link>
+            </LigneLien>
+          </div>
+        </form>
+      ) : (
+        <form onSubmit={confirmer} className="flex-1 flex flex-col" noValidate>
+          <div className="h-11 flex items-center">
+            <BoutonRetour
+              onClick={() => {
+                setCode("");
+                changerEtape("numero");
+              }}
+              libelle="Modifier le numéro"
+            />
+          </div>
+          <div className="mt-6">
+            <IconeEcran icone={Smartphone} />
+          </div>
+          <div className="mt-6 flex flex-col gap-2.5">
+            <h1 className="m-0 font-extrabold" style={{ fontSize: 30, lineHeight: 1.12, letterSpacing: -0.5 }}>
+              Mot de passe oublié
+            </h1>
+            <h2
+              ref={titreCodeRef}
+              tabIndex={-1}
+              className="m-0 font-semibold outline-none"
+              style={{ fontSize: 18 }}
+            >
+              Saisissez le code reçu
+            </h2>
+          </div>
 
-              <div>
-                <label htmlFor="code" className="block text-sm font-semibold text-white/80 mb-1.5">
-                  Code à 6 chiffres
-                </label>
-                <input
-                  id="code"
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  required
-                  maxLength={6}
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  placeholder="000000"
-                  aria-invalid={erreursChamps.code ? true : undefined}
-                  aria-describedby={decritPar(erreursChamps.code && "code-erreur")}
-                  className="w-full px-4 py-3.5 rounded-xl outline-none text-center font-bold"
-                  style={{
-                    ...(erreursChamps.code ? STYLE_CHAMP_INVALIDE : STYLE_CHAMP),
-                    fontSize: "22px",
-                    letterSpacing: "0.4em",
-                  }}
-                />
-                <ErreurChamp id="code-erreur" message={erreursChamps.code} />
-              </div>
-
-              <div>
-                <label htmlFor="nouveau-mdp" className="block text-sm font-semibold text-white/80 mb-1.5">
-                  Nouveau mot de passe
-                </label>
-                <div className="relative">
-                  <Lock
-                    size={17}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2"
-                    style={{ color: "#94A3B8" }}
-                    aria-hidden="true"
-                  />
-                  <input
-                    id="nouveau-mdp"
-                    type={afficherMdp ? "text" : "password"}
-                    autoComplete="new-password"
-                    required
-                    minLength={LONGUEUR_MIN}
-                    value={nouveau}
-                    onChange={(e) => setNouveau(e.target.value)}
-                    aria-invalid={erreursChamps.nouveau_mot_de_passe ? true : undefined}
-                    aria-describedby={decritPar(
-                      "nouveau-mdp-aide",
-                      erreursChamps.nouveau_mot_de_passe && "nouveau-mdp-erreur",
-                    )}
-                    className="w-full pl-10 pr-11 py-3.5 rounded-xl outline-none"
-                    style={erreursChamps.nouveau_mot_de_passe ? STYLE_CHAMP_INVALIDE : STYLE_CHAMP}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setAfficherMdp(!afficherMdp)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2"
-                    style={{ color: "#94A3B8" }}
-                    aria-label={afficherMdp ? "Masquer les mots de passe" : "Afficher les mots de passe"}
-                  >
-                    {afficherMdp ? <EyeOff size={17} /> : <Eye size={17} />}
-                  </button>
-                </div>
-                <p id="nouveau-mdp-aide" className="text-xs text-white/50 mt-1.5">
-                  {LONGUEUR_MIN} caractères minimum.
-                </p>
-                <ErreurChamp id="nouveau-mdp-erreur" message={erreursChamps.nouveau_mot_de_passe} />
-              </div>
-
-              <div>
-                <label htmlFor="confirmation-mdp" className="block text-sm font-semibold text-white/80 mb-1.5">
-                  Confirmer le nouveau mot de passe
-                </label>
-                <input
-                  id="confirmation-mdp"
-                  type={afficherMdp ? "text" : "password"}
-                  autoComplete="new-password"
-                  required
-                  value={confirmation}
-                  onChange={(e) => setConfirmation(e.target.value)}
-                  aria-invalid={erreursChamps.confirmation ? true : undefined}
-                  aria-describedby={decritPar(erreursChamps.confirmation && "confirmation-mdp-erreur")}
-                  className="w-full px-4 py-3.5 rounded-xl outline-none"
-                  style={erreursChamps.confirmation ? STYLE_CHAMP_INVALIDE : STYLE_CHAMP}
-                />
-                <ErreurChamp id="confirmation-mdp-erreur" message={erreursChamps.confirmation} />
-              </div>
-
-              <MessageErreur message={erreur} />
-
-              <button
-                type="submit"
-                disabled={enCours || attenteConfirmation.restant > 0}
-                className="w-full py-4 rounded-2xl font-semibold text-white flex items-center justify-center gap-2 transition-transform active:scale-[0.98] disabled:opacity-60"
-                style={{ background: "#F97316", fontSize: "16px" }}
-              >
-                <KeyRound size={18} aria-hidden="true" />
-                {enCours
-                  ? "Modification…"
-                  : attenteConfirmation.restant > 0
-                    ? `Réessayer dans ${formaterAttente(attenteConfirmation.restant)}`
-                    : "Changer le mot de passe"}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => void demanderCode()}
-                disabled={enCours || renvoi.restant > 0}
-                className="w-full py-2 text-sm font-medium text-white/70 disabled:opacity-50"
-              >
-                {`Renvoyer un code${libelleRenvoi}`}
-              </button>
-            </form>
+          {messageEnvoi && (
+            <div className="mt-4">
+              <Encadre icone={Info}>
+                {messageEnvoi}
+                {expireDans ? ` Le code est valable ${Math.round(expireDans / 60)} minutes.` : null}
+              </Encadre>
+            </div>
           )}
-
-          <p className="text-center text-white/50 text-sm mt-6">
-            <Link to="/login" className="font-semibold" style={{ color: "#F97316" }}>
-              Retour à la connexion
-            </Link>
+          <p className="mt-3 mb-0" style={{ fontSize: 14, color: TEXTE_SECONDAIRE }}>
+            Numéro : <strong className="text-white">{phone.trim()}</strong>{" "}
+            <button
+              type="button"
+              onClick={() => {
+                setCode("");
+                changerEtape("numero");
+              }}
+              className="min-h-11 px-1 font-semibold text-white underline underline-offset-2"
+            >
+              Modifier
+            </button>
           </p>
-        </div>
-      </div>
-    </div>
+
+          <div className="mt-4 flex flex-col gap-2">
+            <SaisieCode
+              valeur={code}
+              onChange={setCode}
+              legende="Code à 6 chiffres"
+              invalide={Boolean(erreursChamps.code)}
+              describedBy={decritPar(erreursChamps.code && "code-erreur")}
+            />
+            <ErreurChamp id="code-erreur" message={erreursChamps.code} />
+          </div>
+
+          <div className="mt-5 flex flex-col gap-4">
+            <ChampMotDePasse
+              id="nouveau-mdp"
+              libelle="Nouveau mot de passe"
+              icone={Lock}
+              hauteur={54}
+              autoComplete="new-password"
+              enterKeyHint="next"
+              required
+              minLength={LONGUEUR_MIN}
+              value={nouveau}
+              onChange={(e) => setNouveau(e.target.value)}
+              visible={afficherMdp}
+              onBasculer={() => setAfficherMdp(!afficherMdp)}
+              pluriel
+              aide={`${LONGUEUR_MIN} caractères minimum.`}
+              erreur={erreursChamps.nouveau_mot_de_passe}
+            />
+            <Champ
+              id="confirmation-mdp"
+              libelle="Confirmer le nouveau mot de passe"
+              hauteur={54}
+              type={afficherMdp ? "text" : "password"}
+              autoComplete="new-password"
+              enterKeyHint="done"
+              required
+              value={confirmation}
+              onChange={(e) => setConfirmation(e.target.value)}
+              erreur={erreursChamps.confirmation}
+            />
+          </div>
+
+          <div className="mt-4">
+            <MessageErreur message={erreur} />
+          </div>
+
+          <div className="flex-1 min-h-8" />
+
+          <div className="flex flex-col gap-2">
+            <BoutonPrincipal disabled={enCours || attenteConfirmation.restant > 0}>
+              {enCours
+                ? "Modification…"
+                : attenteConfirmation.restant > 0
+                  ? `Réessayer dans ${formaterAttente(attenteConfirmation.restant)}`
+                  : "Changer le mot de passe"}
+            </BoutonPrincipal>
+            <button
+              type="button"
+              onClick={() => void demanderCode()}
+              disabled={enCours || renvoi.restant > 0}
+              className="h-11 font-semibold disabled:opacity-60"
+              style={{ fontSize: 14, color: TEXTE_SECONDAIRE }}
+            >
+              {`Renvoyer un code${libelleRenvoi}`}
+            </button>
+            <LigneLien>
+              <Link to="/login" className={CLASSE_LIEN}>
+                Retour à la connexion
+              </Link>
+            </LigneLien>
+          </div>
+        </form>
+      )}
+    </EcranSombre>
   );
 }

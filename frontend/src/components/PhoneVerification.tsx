@@ -5,11 +5,10 @@
  * lui, impossible de candidater.
  */
 import { CheckCircle, Phone } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import { authAPI } from "../api";
 import { useAuth } from "../context/AuthContext";
-import { useAction } from "../hooks/useApi";
+import { useVerificationTelephone } from "../hooks/useVerificationTelephone";
 import { MessageErreur } from "./Etats";
 
 interface Props {
@@ -17,39 +16,24 @@ interface Props {
 }
 
 export function PhoneVerification({ onVerifie }: Props) {
-  const { user, rafraichir } = useAuth();
+  const { user } = useAuth();
   const [etape, setEtape] = useState<"numero" | "code">("numero");
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [code, setCode] = useState("");
-  const [codeDebug, setCodeDebug] = useState<string | null>(null);
   const [succes, setSucces] = useState(user?.phone_verified ?? false);
-  const [compteARebours, setCompteARebours] = useState(0);
-
-  const envoi = useAction(authAPI.envoyerOTP);
-  const verification = useAction(authAPI.verifierOTP);
-
-  // Le backend impose 60 s entre deux envois : on l'affiche plutôt que de
-  // laisser l'utilisateur découvrir l'erreur.
-  useEffect(() => {
-    if (compteARebours <= 0) return;
-    const timer = setTimeout(() => setCompteARebours((s) => s - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [compteARebours]);
+  // Envoi, renvoi et compte à rebours : partagés avec l'écran qui suit l'inscription.
+  const sms = useVerificationTelephone();
+  const { envoi, verification, codeDebug, compteARebours } = sms;
 
   async function envoyer() {
-    const reponse = await envoi.executer(phone.trim() || undefined);
-    if (!reponse) return;
-    setCodeDebug(reponse.debug_code ?? null);
-    setCompteARebours(60);
-    setEtape("code");
+    if (await sms.envoyer(phone)) setEtape("code");
   }
 
   async function verifier() {
-    const reponse = await verification.executer(code.trim());
-    if (!reponse) return;
+    const niveau = await sms.verifier(code);
+    if (niveau === null) return;
     setSucces(true);
-    await rafraichir();
-    onVerifie?.(reponse.trust_level);
+    onVerifie?.(niveau);
   }
 
   if (succes) {

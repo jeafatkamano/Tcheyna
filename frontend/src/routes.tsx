@@ -47,6 +47,7 @@ import {
   TenantDashboard,
   TenantMatches,
   TenantProfile,
+  VerificationNumeroPage,
 } from "./pages/espaces";
 
 /** Page chargée à la demande : indicateur de chargement le temps du téléchargement. */
@@ -147,6 +148,17 @@ const ROUTES: RouteObject[] = [
       <RedirectIfAuth>
         <RegisterPage />
       </RedirectIfAuth>
+    ),
+  },
+  // Juste après l'inscription, avec un numéro : le code SMS, ou « Plus tard ».
+  {
+    path: "/inscription/verification",
+    element: (
+      <RequireAuth>
+        <Suspense fallback={<EcranMarque />}>
+          <VerificationNumeroPage />
+        </Suspense>
+      </RequireAuth>
     ),
   },
   // Accessible aussi connecté : une réinitialisation réussie vide alors la
