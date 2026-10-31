@@ -34,6 +34,7 @@ from app.schemas.auth import (
     VerificationOTP,
 )
 from app.services import notifications as notify
+from app.services import sms
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -169,45 +170,23 @@ def _cle_connexion():
     return f"{get_remote_address()}|{_email_saisi()}"
 
 
-def masquer_numero(phone):
-    """« +224…52 » : quatre premiers caractères (l'indicatif, pour repérer
-    une destination anormale) et deux derniers chiffres. Le numéro complet,
-    donnée personnelle, n'a rien à faire dans les logs."""
-    phone = phone or ""
-    if len(phone) <= 6:
-        return "…"
-    return f"{phone[:4]}…{phone[-2:]}"
-
-
 def send_sms_otp(phone, code, texte=None):
-    """Envoie l'OTP via Africa's Talking. Retourne False si l'envoi échoue —
-    en développement, le code reste consultable dans la réponse de l'API.
-    `texte` remplace le message de vérification du téléphone (code de
-    réinitialisation du mot de passe, lot 3.8)."""
-    api_key = current_app.config.get("AT_API_KEY")
-    if not api_key:
-        current_app.logger.warning("AT_API_KEY absent — SMS non envoyé (mode dev)")
-        return False
-    try:
-        import africastalking
+    """Envoie l'OTP par le premier fournisseur SMS qui réussit (services/sms.py :
+    Nimba SMS, puis Orange, puis Africa's Talking). Retourne False si aucun
+    n'a pu l'envoyer. `texte` remplace le message de vérification du
+    téléphone (code de réinitialisation du mot de passe, lot 3.8)."""
+    texte = texte or f"[Tcheyna] Votre code de verification : {code}. Valable {OTP_TTL_MINUTES} minutes."
+    return sms.envoyer_sms(phone, texte, code=code) is not None
 
-        africastalking.initialize(current_app.config["AT_USERNAME"], api_key)
-        africastalking.SMS.send(
-            texte or f"[Tcheyna] Votre code de verification : {code}. Valable {OTP_TTL_MINUTES} minutes.",
-            [phone],
-            sender_id=current_app.config["AT_SENDER_ID"],
-        )
-        return True
-    except Exception as exc:  # noqa: BLE001 — un échec SMS ne doit pas bloquer l'inscription
-        # Le message d'erreur du fournisseur peut reprendre le destinataire,
-        # voire le texte du SMS : numéro et code y sont masqués aussi.
-        masque = masquer_numero(phone)
-        detail = str(exc)
-        for secret, remplacement in ((phone, masque), (code, "******")):
-            if secret:
-                detail = detail.replace(secret, remplacement)
-        current_app.logger.error("Échec envoi OTP à %s : %s", masque, detail)
-        return False
+
+def sms_indisponible():
+    """Réponse 503 quand aucun SMS ne peut partir et que la configuration
+    l'interdit (SMS_OBLIGATOIRE, vrai en production) : annoncer « code
+    envoyé » ferait attendre un SMS qui n'arrivera jamais."""
+    return jsonify({
+        "error": "L'envoi de SMS est momentanément indisponible. Réessayez dans quelques minutes.",
+        "details": [],
+    }), 503
 
 
 def emettre_tokens(user):
@@ -600,8 +579,6 @@ def send_otp(current_user, corps):
             return jsonify({"error": "Ce numéro est déjà utilisé par un autre compte"}), 409
         current_user.phone = phone
 
-    OTPCode.query.filter_by(user_id=current_user.id, is_used=False).update({"is_used": True})
-
     code = generate_otp()
     # L'identifiant est fixé avant l'insertion : il entre dans l'empreinte.
     otp_id = generate_uuid()
@@ -618,6 +595,21 @@ def send_otp(current_user, corps):
     _alerter_plafond_global(fenetres)
 
     envoye = send_sms_otp(current_user.phone, code)
+    if not envoye and current_app.config.get("SMS_OBLIGATOIRE"):
+        # Personne n'a reçu ce code : il est supprimé, pour ne compter ni dans
+        # les quotas du compte ni dans le plafond global (une panne du
+        # fournisseur ne doit pas bloquer l'utilisateur 24 h). Un code reçu
+        # plus tôt et encore valable reste utilisable.
+        OTPCode.query.filter_by(id=otp_id).delete()
+        db.session.commit()
+        return sms_indisponible()
+
+    # Le nouveau code est parti (ou le mode développement l'expose) : les
+    # codes précédents ne servent plus.
+    (OTPCode.query.filter(OTPCode.user_id == current_user.id, OTPCode.is_used.is_(False),
+                          OTPCode.id != otp_id)
+     .update({"is_used": True}, synchronize_session=False))
+    db.session.commit()
 
     reponse = {
         "message": "Code envoyé par SMS" if envoye else "Code généré (SMS indisponible)",
@@ -825,6 +817,10 @@ def _envoi_otp_refuse(user, phone, maintenant):
 @valider_corps(DemandeReinitialisation)
 def mot_de_passe_oublie(corps):
     phone = _telephone_ou_422(corps.phone)
+    # Aucun fournisseur SMS configuré : même réponse pour tous les numéros,
+    # elle ne révèle donc pas si un compte existe.
+    if current_app.config.get("SMS_OBLIGATOIRE") and not sms.fournisseurs_configures():
+        return sms_indisponible()
     # Même corps et même statut dans tous les cas, envoi ou non.
     reponse = jsonify({"message": MESSAGE_OUBLI, "expire_dans": OTP_TTL_MINUTES * 60})
 
@@ -866,8 +862,8 @@ def mot_de_passe_oublie(corps):
     db.session.commit()
     _alerter_plafond_global(fenetres)
 
-    # Le SMS part une fois la réponse transmise : la durée de l'appel à
-    # Africa's Talking ne trahit pas, au chronomètre, qu'un compte existe.
+    # Le SMS part une fois la réponse transmise : la durée de l'appel au
+    # fournisseur SMS ne trahit pas, au chronomètre, qu'un compte existe.
     # Jamais de `debug_code` ici : en mode debug, il livrerait n'importe quel
     # compte à qui connaît son numéro.
     application = current_app._get_current_object()

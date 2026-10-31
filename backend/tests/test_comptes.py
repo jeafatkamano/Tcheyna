@@ -375,9 +375,10 @@ def test_echec_sms_journalise_sans_numero_ni_code(app, client, fabrique, entetes
     assert reponse.get_json()["message"] == "Code généré (SMS indisponible)"
     echecs = [r.getMessage() for r in caplog.records if "Échec envoi OTP" in r.getMessage()]
     assert len(echecs) == 1
-    assert echecs[0].startswith(f"Échec envoi OTP à {user.phone[:4]}…{user.phone[-2:]} : ")
+    assert echecs[0].startswith(f"Échec envoi OTP via africastalking à {user.phone[:4]}…{user.phone[-2:]} : ")
     assert user.phone not in echecs[0] and user.phone[1:] not in echecs[0]
-    assert codes_otp[0] not in echecs[0] and "******" in echecs[0]
+    # Le texte du SMS, qui contient le code, est retiré en entier.
+    assert codes_otp[0] not in echecs[0] and "«texte du SMS»" in echecs[0]
 
 
 def test_otp_antispam_60_secondes_en_json(client, fabrique, entetes):

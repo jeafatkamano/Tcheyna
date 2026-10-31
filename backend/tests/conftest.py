@@ -196,6 +196,12 @@ def app(tmp_path):
         SUPABASE_URL = ""
         SUPABASE_SERVICE_KEY = ""
         AT_API_KEY = ""
+        # Un backend/.env rempli ne doit jamais faire partir de vrais SMS.
+        NIMBA_SERVICE_ID = ""
+        NIMBA_SECRET_TOKEN = ""
+        NIMBA_SENDER_NAME = ""
+        ORANGE_SMS_AUTH_HEADER = ""
+        ORANGE_SMS_SENDER_NAME = ""
         CINETPAY_API_KEY = ""
         CINETPAY_SITE_ID = ""
         CINETPAY_NOTIFY_URL = ""

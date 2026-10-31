@@ -25,7 +25,7 @@ from app.schemas.admin import Decision, Remboursement, StatutCompte
 from app.schemas.payments import A_REMBOURSER, PAIEMENTS_HORS_PLATEFORME, REMBOURSE
 from app.services import donnees_personnelles as dp
 from app.services import notifications as notify
-from app.services import stockage
+from app.services import sms, stockage
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -73,6 +73,7 @@ def diagnostic(current_user):
     # On éprouve la clé plutôt que de constater sa présence : une clé publique
     # est renseignée, valide, et refuse pourtant chaque écriture.
     stockage_pret, consequence = stockage.verifier_acces()
+    fournisseurs_sms = sms.fournisseurs_configures()
 
     return jsonify({
         "stockage": {
@@ -84,10 +85,14 @@ def diagnostic(current_user):
             "consequence": consequence,
         },
         "sms": {
-            "operationnel": renseigne("AT_API_KEY"),
+            # Présence des variables seulement : un fournisseur configuré peut
+            # encore échouer (crédit épuisé, nom d'expéditeur non validé) ;
+            # les journaux disent alors « Échec envoi OTP via … ».
+            "operationnel": bool(fournisseurs_sms),
+            "fournisseurs": fournisseurs_sms,
             "consequence": (
-                "Les codes OTP partent par SMS."
-                if renseigne("AT_API_KEY")
+                f"Les codes OTP partent par SMS ({', '.join(fournisseurs_sms)})."
+                if fournisseurs_sms
                 else "Aucun SMS envoyé : personne ne peut dépasser le niveau 0."
             ),
         },

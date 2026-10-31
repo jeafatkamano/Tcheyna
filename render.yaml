@@ -99,9 +99,26 @@ services:
       - key: UPLOAD_FOLDER
         value: uploads
 
-      # Africa's Talking — vérification par SMS.
-      # Sans clé, le code OTP n'est pas envoyé ; il est renvoyé par l'API en
-      # mode développement uniquement.
+      # SMS des codes OTP (lot 1.27, backend/app/services/sms.py), essayés
+      # dans l'ordre : Nimba SMS (Guinée, tous opérateurs), Orange SMS API
+      # Guinée (secours), Africa's Talking (autres pays, ne couvre pas la
+      # Guinée). En production, sans SMS parti, /send-otp répond 503.
+      - key: NIMBA_SERVICE_ID
+        sync: false
+      - key: NIMBA_SECRET_TOKEN
+        sync: false
+      # Nom d'expéditeur, tel que validé par Nimba (11 caractères au plus).
+      - key: NIMBA_SENDER_NAME
+        value: TCHEYNA
+      # En-tête « Basic … » donné par Orange Developer (page de l'application).
+      - key: ORANGE_SMS_AUTH_HEADER
+        sync: false
+      # Vide tant qu'Orange n'a pas validé le nom (sinon envois refusés),
+      # puis TCHEYNA.
+      - key: ORANGE_SMS_SENDER_NAME
+        sync: false
+
+      # Africa's Talking — hors Guinée seulement.
       - key: AT_API_KEY
         sync: false
       # Nom d'utilisateur du compte Africa's Talking de production, à

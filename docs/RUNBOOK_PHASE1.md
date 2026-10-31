@@ -191,7 +191,7 @@ corriger (étape 1).
 |---|---|
 | `https://<api>.onrender.com/health` | `{"status": "ok", …}` |
 | Connexion avec un compte existant | OK. Les anciens jetons restent valides (`token_version` = 0). |
-| Inscription → OTP | Code reçu par SMS (ou renvoyé par l'API si `AT_API_KEY` est vide) |
+| Inscription → OTP | Code reçu par SMS. Sans fournisseur SMS configuré (`NIMBA_*`, `ORANGE_SMS_*`), l'API répond 503 « envoi de SMS indisponible » |
 | Recherche d'annonces | Résultats, photos affichées |
 | Admin → état de la configuration (`GET /api/admin/diagnostic`) | Stockage « prêt », pas d'alerte sur les clés |
 | Initier un paiement `caution` ou `premier_loyer` | Refusé (D2 = A) |
@@ -591,3 +591,55 @@ restent à poser à la main sont listées dans le corps de la PR qui les ajoute
 Une variable avec `value:` dans `render.yaml` doit avoir la même valeur dans le
 tableau de bord : en cas d'écart, c'est le tableau de bord qui fait foi pour
 le service en production.
+
+## 13. SMS des codes OTP (lot 1.27)
+
+Sans SMS, personne ne vérifie son numéro : tout le monde reste au niveau 0 et
+ne peut pas candidater. Africa's Talking, prévu à l'origine, **ne couvre pas
+la Guinée** (liste de pays sur help.africastalking.com). Le serveur essaie,
+dans l'ordre, chaque fournisseur dont les variables sont renseignées :
+
+1. **Nimba SMS** (principal) : agrégateur guinéen, tous opérateurs.
+2. **Orange SMS API Guinée** (secours) : opérateur officiel, paiement Orange Money.
+3. Africa's Talking : hors Guinée seulement (Côte d'Ivoire, Ghana, Nigeria…).
+
+En production, si aucun SMS ne part, `/api/auth/send-otp` répond **503**
+« L'envoi de SMS est momentanément indisponible » au lieu d'annoncer un code
+envoyé. Les journaux Render disent quel fournisseur a servi
+(`SMS envoyé via nimba à +224…52`) ou pourquoi il a échoué
+(`Échec envoi OTP via nimba à … : HTTP 402 …`), sans numéro ni code en clair.
+
+### a) Nimba SMS (à faire en premier)
+
+1. Créer un compte sur nimbasms.com, puis acheter un pack de SMS.
+2. Demander le nom d'expéditeur **TCHEYNA** (11 caractères au plus) et attendre
+   sa validation : un nom non validé fait refuser les envois.
+3. Page « Clés API » du compte : copier le **SERVICE ID** et le **SECRET TOKEN**.
+4. Render → `tcheyna-api` → Environment → ajouter :
+   - `NIMBA_SERVICE_ID` = le SERVICE ID ;
+   - `NIMBA_SECRET_TOKEN` = le SECRET TOKEN ;
+   - `NIMBA_SENDER_NAME` = `TCHEYNA` (exactement le nom validé).
+
+   Puis « Save, rebuild and deploy ».
+
+### b) Orange SMS API Guinée (secours, facultatif)
+
+1. developer.orange.com → créer une application → ajouter l'API
+   « SMS Guinea Conakry ».
+2. Acheter un pack (le premier, 15 SMS pour 1 200 GNF, suffit à tester) avec
+   une puce Orange, par crédit ou Orange Money.
+3. Demander le nom d'expéditeur **TCHEYNA** par le formulaire (jusqu'à 5 jours
+   ouvrés) ; ne pas l'utiliser avant le courriel de confirmation.
+4. Page de l'application : copier l'**en-tête d'autorisation** (« Basic … »).
+5. Render → `tcheyna-api` → Environment → ajouter :
+   - `ORANGE_SMS_AUTH_HEADER` = l'en-tête complet, `Basic` compris ;
+   - `ORANGE_SMS_SENDER_NAME` = `TCHEYNA` une fois validé (vide avant).
+
+### c) Vérifier
+
+1. Connecté en administrateur sur le site : `GET /api/admin/diagnostic` →
+   `sms.fournisseurs` liste `nimba` (et `orange`).
+2. Dans l'app, Profil → Vérification du téléphone → « Recevoir le code par
+   SMS » : le SMS arrive en moins d'une minute, sur un numéro Orange **et** sur
+   un numéro MTN.
+3. Journaux Render : `SMS envoyé via nimba à +224…`.
