@@ -18,6 +18,7 @@ const api = vi.hoisted(() => ({
   compteur: vi.fn(),
   detailMatch: vi.fn(),
   mesCandidatures: vi.fn(),
+  mesDemandes: vi.fn(),
   passeport: vi.fn(),
 }));
 
@@ -37,8 +38,14 @@ vi.mock("../api", async (original) => {
       nonLus: api.nonLus,
     },
     notificationsAPI: { ...reel.notificationsAPI, compteur: api.compteur },
-    matchesAPI: { ...reel.matchesAPI, detail: api.detailMatch, mesCandidatures: api.mesCandidatures },
+    matchesAPI: {
+      ...reel.matchesAPI,
+      detail: api.detailMatch,
+      mesCandidatures: api.mesCandidatures,
+      mesDemandes: api.mesDemandes,
+    },
     passportAPI: { ...reel.passportAPI, recuperer: api.passeport },
+    avisAPI: { ...reel.avisAPI, pourUtilisateur: () => Promise.resolve({ avis: [], note_moyenne: null, nb_avis: 0 }) },
   };
 });
 
@@ -46,6 +53,7 @@ const { formatHeureMessage } = await import("../lib/format");
 const { MessagesList } = await import("./shared/MessagesList");
 const { ConversationPage } = await import("./shared/ConversationPage");
 const { TenantProfile } = await import("./tenant/TenantProfile");
+const { OwnerProfile } = await import("./owner/OwnerProfile");
 const { Layout } = await import("../components/Layout");
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -71,6 +79,7 @@ beforeEach(() => {
   api.compteur.mockResolvedValue({ non_lues: 0 });
   api.detailMatch.mockResolvedValue({ id: "M1", status: "accepted", visite_date: null });
   api.mesCandidatures.mockResolvedValue({ matches: [], stats: {} });
+  api.mesDemandes.mockResolvedValue({ matches: [], stats: {} });
 });
 afterEach(() => {
   act(() => racine?.unmount());
@@ -148,6 +157,16 @@ describe("MessagesList", () => {
     expect(seconde.textContent).toContain("Vous : Merci, je confirme.");
     expect(seconde.textContent).toContain("En attente");
     expect(conteneur.textContent).toContain("2 messages non lus");
+  });
+
+  it("propriétaire : les statuts viennent de ses demandes reçues", async () => {
+    session.user = { ...PROPRIETAIRE, id: "u2" } as User;
+    api.conversations.mockResolvedValue({ conversations: [conv(1)], total: 1, non_lus: 0 });
+    api.mesDemandes.mockResolvedValue({ matches: [{ id: "M1", status: "completed" }], stats: {} });
+    await ouvrir("/messages", [{ path: "/messages", Component: MessagesList }]);
+    expect(api.mesCandidatures).not.toHaveBeenCalled();
+    expect(conteneur.querySelector('a[href="/messages/M1"]')?.textContent).toContain("Location conclue");
+    expect(conteneur.textContent).toContain("Vos échanges avec les candidats");
   });
 
   it("statuts indisponibles : la liste s'affiche quand même, sans pastille", async () => {
@@ -244,6 +263,18 @@ describe("TenantProfile", () => {
     await act(async () => (onglets[2] as HTMLButtonElement).click());
     expect(onglets[2].getAttribute("aria-checked")).toBe("true");
     expect(conteneur.textContent).toContain("Informations du compte");
+  });
+});
+
+describe("OwnerProfile", () => {
+  it("même en-tête partagé : nom, rôle, badge ; cloche des notifications", async () => {
+    session.user = { ...PROPRIETAIRE, id: "u2", trust_level: 2, phone_verified: true } as User;
+    await ouvrir("/owner/profile", [{ path: "/owner/profile", Component: OwnerProfile }]);
+    const entete = conteneur.querySelector("header")!;
+    expect(entete.querySelector("h1")?.textContent).toBe("Mon profil");
+    expect(entete.textContent).toContain("Ibrahima Sow");
+    expect(entete.textContent).toContain("Propriétaire");
+    expect(entete.querySelector('a[href="/notifications"]')).not.toBeNull();
   });
 });
 

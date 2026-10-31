@@ -9,7 +9,7 @@ import type { ReactNode } from "react";
 
 import { BadgeVerification } from "./BadgeVerification";
 import { useCoque } from "./coque";
-import { EnTetePage } from "./EnTetePage";
+import { BoutonNotifications, EnTetePage } from "./EnTetePage";
 import { TeleversementAvatar } from "./TeleversementAvatar";
 
 const NB_NIVEAUX = 4;
@@ -66,7 +66,12 @@ export function EnTeteProfil({ titre, nom, detail, niveau, aDroite, avecBarre = 
           {titre}
         </h1>
       }
-      droite={<BoutonMenu />}
+      droite={
+        <div className="flex items-center gap-1">
+          <BoutonNotifications />
+          <BoutonMenu />
+        </div>
+      }
     >
       <div className="flex items-center gap-3.5">
         <TeleversementAvatar taille={60} surFonce />

@@ -15,7 +15,12 @@ const modeles = vi.fn();
 
 vi.mock("../../api", async (original) => {
   const reel = await original<typeof import("../../api")>();
-  return { ...reel, messagesAPI: { ...reel.messagesAPI, filParMatch, envoyer, modeles } };
+  return {
+    ...reel,
+    messagesAPI: { ...reel.messagesAPI, filParMatch, envoyer, modeles },
+    // Date de visite (lot 3.15b) : pas d'appel réseau réel dans les tests.
+    matchesAPI: { ...reel.matchesAPI, detail: () => Promise.resolve({ id: "M1", visite_date: null }) },
+  };
 });
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({ user: { id: "moi", role: "tenant" } }),

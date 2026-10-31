@@ -13,7 +13,12 @@ const conversations = vi.fn();
 
 vi.mock("../../api", async (original) => {
   const reel = await original<typeof import("../../api")>();
-  return { ...reel, messagesAPI: { ...reel.messagesAPI, conversations } };
+  return {
+    ...reel,
+    messagesAPI: { ...reel.messagesAPI, conversations },
+    // Statuts des candidatures (lot 3.15b) : pas d'appel réseau réel.
+    matchesAPI: { ...reel.matchesAPI, mesCandidatures: () => Promise.resolve({ matches: [], stats: {} }) },
+  };
 });
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({ user: { id: "moi", role: "tenant" } }),

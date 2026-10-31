@@ -255,8 +255,17 @@ export function ConversationPage() {
         )}
       </header>
 
-      {/* Discussion fermée : bandeau, annoncé dès qu'il apparaît (région status). */}
+      {/* État de la discussion, annoncé dès qu'il change (région status) :
+          mise en relation validée, ou discussion fermée. */}
       <div role="status" className="shrink-0">
+        {!fermee && (
+          <p
+            className="m-0 mx-4 mt-4 rounded-full font-bold text-center"
+            style={{ padding: "6px 12px", background: "#DCFCE7", color: "#047857", fontSize: 12 }}
+          >
+            Mise en relation validée · organisez la visite en toute confiance
+          </p>
+        )}
         {fermee && (
           <div className="flex items-center gap-2 px-4 py-2.5" style={{ background: "#F1F5F9", borderBottom: "1px solid #E2E8F0" }}>
             <Lock size={14} style={{ color: "#475569", flexShrink: 0 }} aria-hidden="true" />
@@ -275,15 +284,6 @@ export function ConversationPage() {
 
       {/* Fil */}
       <div ref={zoneFil} className="flex-1 overflow-y-auto flex flex-col gap-2.5" style={{ padding: "16px 16px 8px" }}>
-        {!fermee && (
-          <p
-            className="m-0 self-center rounded-full font-bold text-center"
-            style={{ padding: "6px 12px", background: "#DCFCE7", color: "#047857", fontSize: 12 }}
-          >
-            Mise en relation validée · organisez la visite en toute confiance
-          </p>
-        )}
-
         {plusAnciens && (
           <div className="text-center">
             <button

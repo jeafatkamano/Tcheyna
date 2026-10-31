@@ -283,6 +283,96 @@ function OngletDossier({
         </div>
       )}
 
+      {/* Pièces du dossier : une carte par pièce, avec son état (maquette Profil) */}
+      <section aria-labelledby="pieces" className="space-y-2.5">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 id="pieces" className="m-0 font-extrabold" style={{ color: "#1E293B", fontSize: 16 }}>
+            Pièces du dossier
+          </h3>
+          <span className="text-xs" style={{ color: "#475569" }}>
+            JPG, PNG ou PDF — 10 Mo max
+          </span>
+        </div>
+
+        <CartePiece
+          etat={user?.phone_verified ? "valide" : "manquant"}
+          titre="Téléphone"
+          detail={user?.phone_verified ? "Vérifié par SMS" : "À vérifier par SMS (ci-dessus)"}
+        />
+
+        {DOCUMENTS.map((doc) => {
+          // Une pièce est supprimée dès la décision : une fois validée, elle
+          // n'est plus « présente » mais la vérification reste acquise. Proposer
+          // « Ajouter » inviterait à un nouveau dépôt, qui annulerait la validation.
+          const verifiee =
+            !(passeport.documents?.[doc.type] ?? false) &&
+            (doc.type === "income"
+              ? passeport.income_verified
+              : PIECES_IDENTITE.includes(doc.type) && Boolean(user?.cni_verified));
+          const present = (passeport.documents?.[doc.type] ?? false) || verifiee;
+          return (
+            <CartePiece
+              key={doc.type}
+              etat={verifiee ? "valide" : present ? "envoye" : "manquant"}
+              titre={doc.label}
+              detail={
+                verifiee
+                  ? "Vérifié — document supprimé après examen"
+                  : present
+                    ? "Envoyé — vérification sous 48 h"
+                    : doc.aide
+              }
+              action={
+                verifiee ? null : present ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ok = await suppression.executer(doc.type);
+                      if (ok) await onChangement("Document supprimé");
+                    }}
+                    disabled={suppression.enCours}
+                    className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ background: "#FEE2E2", color: "#B91C1C" }}
+                    aria-label={`Supprimer ${doc.label}`}
+                  >
+                    <Trash2 size={16} aria-hidden="true" />
+                  </button>
+                ) : (
+                  <label
+                    className="min-h-11 inline-flex items-center px-3 rounded-xl text-sm font-bold cursor-pointer shrink-0"
+                    style={{ background: "#FFF7ED", color: "#C2410C" }}
+                  >
+                    <input
+                      type="file"
+                      accept=".jpg,.jpeg,.png,.pdf"
+                      className="sr-only"
+                      onChange={async (e) => {
+                        const fichier = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!fichier) return;
+                        const ok = await televersement.executer(doc.type, fichier);
+                        if (ok) await onChangement("Document envoyé — vérification sous 48 h");
+                      }}
+                    />
+                    Ajouter
+                    <span className="sr-only"> {doc.label}</span>
+                  </label>
+                )
+              }
+            />
+          );
+        })}
+
+        {/* Les avis sont déposés par les bailleurs : rien à ajouter ici. */}
+        <CartePiece
+          etat={niveau >= 4 ? "valide" : "prochain"}
+          titre="Avis d'un ancien bailleur"
+          detail={niveau >= 4 ? "Obtenu : niveau Recommandé" : "Pour passer Recommandé"}
+        />
+
+        <MessageErreur message={televersement.erreur ?? suppression.erreur} />
+      </section>
+
       {/* Parcours de vérification */}
       <div
         className="rounded-2xl p-5"
@@ -422,95 +512,6 @@ function OngletDossier({
         </button>
       </div>
 
-      {/* Pièces du dossier : une carte par pièce, avec son état (maquette Profil) */}
-      <section aria-labelledby="pieces" className="space-y-2.5">
-        <div className="flex items-baseline justify-between gap-3">
-          <h3 id="pieces" className="m-0 font-extrabold" style={{ color: "#1E293B", fontSize: 16 }}>
-            Pièces du dossier
-          </h3>
-          <span className="text-xs" style={{ color: "#475569" }}>
-            JPG, PNG ou PDF — 10 Mo max
-          </span>
-        </div>
-
-        <CartePiece
-          etat={user?.phone_verified ? "valide" : "manquant"}
-          titre="Téléphone"
-          detail={user?.phone_verified ? "Vérifié par SMS" : "À vérifier par SMS (ci-dessus)"}
-        />
-
-        {DOCUMENTS.map((doc) => {
-          // Une pièce est supprimée dès la décision : une fois validée, elle
-          // n'est plus « présente » mais la vérification reste acquise. Proposer
-          // « Ajouter » inviterait à un nouveau dépôt, qui annulerait la validation.
-          const verifiee =
-            !(passeport.documents?.[doc.type] ?? false) &&
-            (doc.type === "income"
-              ? passeport.income_verified
-              : PIECES_IDENTITE.includes(doc.type) && Boolean(user?.cni_verified));
-          const present = (passeport.documents?.[doc.type] ?? false) || verifiee;
-          return (
-            <CartePiece
-              key={doc.type}
-              etat={verifiee ? "valide" : present ? "envoye" : "manquant"}
-              titre={doc.label}
-              detail={
-                verifiee
-                  ? "Vérifié — document supprimé après examen"
-                  : present
-                    ? "Envoyé — vérification sous 48 h"
-                    : doc.aide
-              }
-              action={
-                verifiee ? null : present ? (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const ok = await suppression.executer(doc.type);
-                      if (ok) await onChangement("Document supprimé");
-                    }}
-                    disabled={suppression.enCours}
-                    className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ background: "#FEE2E2", color: "#B91C1C" }}
-                    aria-label={`Supprimer ${doc.label}`}
-                  >
-                    <Trash2 size={16} aria-hidden="true" />
-                  </button>
-                ) : (
-                  <label
-                    className="min-h-11 inline-flex items-center px-3 rounded-xl text-sm font-bold cursor-pointer shrink-0"
-                    style={{ background: "#FFF7ED", color: "#C2410C" }}
-                  >
-                    <input
-                      type="file"
-                      accept=".jpg,.jpeg,.png,.pdf"
-                      className="sr-only"
-                      onChange={async (e) => {
-                        const fichier = e.target.files?.[0];
-                        e.target.value = "";
-                        if (!fichier) return;
-                        const ok = await televersement.executer(doc.type, fichier);
-                        if (ok) await onChangement("Document envoyé — vérification sous 48 h");
-                      }}
-                    />
-                    Ajouter
-                    <span className="sr-only"> {doc.label}</span>
-                  </label>
-                )
-              }
-            />
-          );
-        })}
-
-        {/* Les avis sont déposés par les bailleurs : rien à ajouter ici. */}
-        <CartePiece
-          etat={niveau >= 4 ? "valide" : "prochain"}
-          titre="Avis d'un ancien bailleur"
-          detail={niveau >= 4 ? "Obtenu : niveau Recommandé" : "Pour passer Recommandé"}
-        />
-
-        <MessageErreur message={televersement.erreur ?? suppression.erreur} />
-      </section>
     </>
   );
 }
