@@ -10,7 +10,7 @@ import { ChevronDown, Search, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 
 import { favorisAPI, listingsAPI, type FiltresAnnonces, type Listing } from "../../api";
-import { EnTetePage } from "../../components/EnTetePage";
+import { BoutonNotifications, EnTetePage } from "../../components/EnTetePage";
 import { Erreur, ListeVide, SqueletteCartes } from "../../components/Etats";
 import { FeuilleBas } from "../../components/FeuilleBas";
 import { ListingCard } from "../../components/ListingCard";
@@ -120,7 +120,7 @@ export function ListingsPage() {
 
   return (
     <div className="pb-6">
-      <EnTetePage titre={estVente ? "Biens à vendre" : "Annonces"}>
+      <EnTetePage titre={estVente ? "Biens à vendre" : "Annonces"} droite={<BoutonNotifications />}>
         {/* Louer et acheter sont deux marchés : on n'en montre qu'un à la fois. */}
         <Segment
           sombre

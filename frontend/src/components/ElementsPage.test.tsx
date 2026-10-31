@@ -185,6 +185,29 @@ describe("FeuilleBas", () => {
   });
 });
 
+describe("FeuilleBas, focus", () => {
+  it("Tab sur le dernier élément revient au premier ; Maj+Tab sur le premier va au dernier", () => {
+    const c = rendre(
+      <FeuilleBas titre="Filtres" onFermer={() => undefined} pied={<button type="button">Voir</button>}>
+        <p>Quartier</p>
+      </FeuilleBas>,
+    );
+    const fermer = c.querySelector<HTMLButtonElement>('button[aria-label="Fermer"]')!;
+    const voir = [...c.querySelectorAll("button")].find((b) => b.textContent === "Voir")!;
+    act(() => voir.focus());
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+    });
+    expect(document.activeElement).toBe(fermer);
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }),
+      );
+    });
+    expect(document.activeElement).toBe(voir);
+  });
+});
+
 describe("ListingCard", () => {
   it("carte pleine : badge Certifiée, compatibilité, résumé, prix, favori", () => {
     const onToggleFavori = vi.fn();

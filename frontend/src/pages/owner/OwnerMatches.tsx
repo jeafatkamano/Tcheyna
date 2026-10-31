@@ -28,7 +28,7 @@ import {
 } from "../../api";
 import { Avatar } from "../../components/Avatar";
 import { BadgeVerification, ScoreCircle, ScoreMatch } from "../../components/BadgeVerification";
-import { EnTetePage } from "../../components/EnTetePage";
+import { BoutonNotifications, EnTetePage } from "../../components/EnTetePage";
 import { Erreur, ListeVide, MessageErreur, SqueletteCartes } from "../../components/Etats";
 import { Pastille } from "../../components/Pastille";
 import { Segment } from "../../components/Segment";
@@ -143,7 +143,7 @@ export function OwnerMatches() {
   return (
     <div className="pb-8">
       {/* En-tête partagé (lot 3.15a) */}
-      <EnTetePage titre="Candidats" chevauchement={14}>
+      <EnTetePage titre="Candidats" chevauchement={14} droite={<BoutonNotifications />}>
         <p className="m-0 -mt-2.5 text-sm" style={{ color: "rgba(255,255,255,0.78)" }}>
           Les dossiers reçus sur vos annonces
         </p>

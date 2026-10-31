@@ -29,7 +29,7 @@ import { favorisAPI, listingsAPI, matchesAPI, urlFichier } from "../api";
 import { Avatar } from "../components/Avatar";
 import { BadgeCertifie, BadgeProprietaireVerifie, BadgeVerification } from "../components/BadgeVerification";
 import { Chargement, Erreur, MessageErreur } from "../components/Etats";
-import { Pastille } from "../components/Pastille";
+import { Pastille, PastilleCompatibilite } from "../components/Pastille";
 import { PhotoAnnonce } from "../components/PhotoAnnonce";
 import { useAuth } from "../context/AuthContext";
 import { useAction, useApi } from "../hooks/useApi";
@@ -283,14 +283,7 @@ export function ListingDetail() {
         <div>
           <div className="flex flex-wrap gap-2 mb-2.5">
             {listing.is_certified && <BadgeCertifie size="sm" />}
-            {listing.score_compatibilite != null && (
-              <span
-                className="rounded-full font-extrabold"
-                style={{ padding: "5px 10px", background: "#DCFCE7", color: "#047857", fontSize: 12 }}
-              >
-                {listing.score_compatibilite} % compatible
-              </span>
-            )}
+            <PastilleCompatibilite score={listing.score_compatibilite} surClair />
             {listing.est_vente && (
               <span
                 className="rounded-full font-bold text-white"
@@ -308,7 +301,7 @@ export function ListingDetail() {
             {lieu}
             {listing.adresse_masquee && " · adresse après acceptation"}
           </p>
-          <p className="m-0 mt-1.5 flex items-center gap-3" style={{ fontSize: 12, color: "#64748B" }}>
+          <p className="m-0 mt-1.5 flex items-center gap-3" style={{ fontSize: 12, color: TEXTE_SECONDAIRE }}>
             <span className="flex items-center gap-1">
               <Eye size={12} aria-hidden="true" />
               {listing.views_count} vue{listing.views_count > 1 ? "s" : ""}

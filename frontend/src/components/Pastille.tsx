@@ -51,14 +51,23 @@ export function Pastille({ children, actif = false, onClick, forme = "pilule" }:
 }
 
 /** « 87 % compatible » : pastille blanche, texte vert. */
-export function PastilleCompatibilite({ score, court = false }: { score?: number | null; court?: boolean }) {
+export function PastilleCompatibilite({
+  score,
+  court = false,
+  surClair = false,
+}: {
+  score?: number | null;
+  court?: boolean;
+  /** Sur fond clair (fiche annonce) : fond vert pâle au lieu du blanc. */
+  surClair?: boolean;
+}) {
   if (score === undefined || score === null) return null;
   return (
     <span
       className="inline-flex items-center rounded-full font-extrabold whitespace-nowrap"
       style={{
         padding: court ? "4px 8px" : "5px 10px",
-        background: "#ffffff",
+        background: surClair ? "#DCFCE7" : "#ffffff",
         color: "#047857",
         fontSize: court ? 11 : 12,
       }}

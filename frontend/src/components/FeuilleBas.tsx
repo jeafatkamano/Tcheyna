@@ -3,8 +3,8 @@
  * lot 3.15a.
  *
  * Fenêtre modale : le fond l'écrase, Échap et le fond la ferment, le focus
- * entre dans la feuille à l'ouverture et revient au déclencheur à la
- * fermeture. Au-dessus de la barre de gestes (--inset-bas).
+ * entre dans la feuille à l'ouverture, y reste (Tab boucle) et revient au
+ * déclencheur à la fermeture. Au-dessus de la barre de gestes (--inset-bas).
  */
 import { X } from "lucide-react";
 import { useEffect, useId, useRef, type ReactNode } from "react";
@@ -25,7 +25,27 @@ export function FeuilleBas({ titre, onFermer, children, pied }: Props) {
     const declencheur = document.activeElement as HTMLElement | null;
     feuille.current?.focus();
     const surTouche = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape") onFermer();
+      if (e.key === "Escape") {
+        onFermer();
+        return;
+      }
+      if (e.key !== "Tab" || !feuille.current) return;
+      const focalisables = [
+        ...feuille.current.querySelectorAll<HTMLElement>(
+          'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ].filter((el) => !el.hasAttribute("disabled"));
+      if (focalisables.length === 0) return;
+      const premier = focalisables[0];
+      const dernier = focalisables[focalisables.length - 1];
+      const actif = document.activeElement;
+      if (e.shiftKey && (actif === premier || actif === feuille.current)) {
+        e.preventDefault();
+        dernier.focus();
+      } else if (!e.shiftKey && actif === dernier) {
+        e.preventDefault();
+        premier.focus();
+      }
     };
     document.addEventListener("keydown", surTouche);
     return () => {

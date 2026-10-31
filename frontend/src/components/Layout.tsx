@@ -155,17 +155,17 @@ export function Layout() {
                   >
                     {notifsNonLues > 9 ? "9+" : notifsNonLues}
                   </span>
-              )}
-            </Link>
-            <Link
-              to={estAdmin ? "/admin" : estLocataire ? "/tenant/profile" : "/owner/profile"}
-              className="ml-1"
-              aria-label="Mon profil"
-            >
-              <Avatar nom={user.full_name} url={user.avatar_url} taille={32} forme="rond" surFonce />
-            </Link>
-          </div>
-        </header>
+                )}
+              </Link>
+              <Link
+                to={estAdmin ? "/admin" : estLocataire ? "/tenant/profile" : "/owner/profile"}
+                className="ml-1"
+                aria-label="Mon profil"
+              >
+                <Avatar nom={user.full_name} url={user.avatar_url} taille={32} forme="rond" surFonce />
+              </Link>
+            </div>
+          </header>
         )}
 
         {/* Menu latéral */}

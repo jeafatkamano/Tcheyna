@@ -4,7 +4,7 @@ import { Link } from "react-router";
 
 import { listingsAPI, urlFichier, type Listing } from "../../api";
 import { BadgeRetiree, EtatResoumission, RemiseEnLigne } from "../../components/CycleAnnonce";
-import { EnTetePage } from "../../components/EnTetePage";
+import { BoutonNotifications, EnTetePage } from "../../components/EnTetePage";
 import { Erreur, ListeVide, MessageSucces, SqueletteCartes } from "../../components/Etats";
 import { StatutPastille } from "../../components/ListingCard";
 import { ModalePaiement } from "../../components/ModalePaiement";
@@ -39,14 +39,17 @@ export function OwnerListings() {
       <EnTetePage
         titre="Mes biens"
         droite={
-          <Link
-            to="/owner/listings/nouveau"
-            className="h-11 flex items-center gap-1.5 px-4 rounded-[14px] text-sm font-bold text-white"
-            style={{ background: "#F97316" }}
-          >
-            <Plus size={16} aria-hidden="true" />
-            Publier
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/owner/listings/nouveau"
+              className="h-11 flex items-center gap-1.5 px-4 rounded-[14px] text-sm font-bold text-white"
+              style={{ background: "#F97316" }}
+            >
+              <Plus size={16} aria-hidden="true" />
+              Publier
+            </Link>
+            <BoutonNotifications />
+          </div>
         }
       >
         {stats && (
