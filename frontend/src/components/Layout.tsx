@@ -19,13 +19,12 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-
-import { enregistrerFermable } from "../lib/fermables";
-import { transitionPage } from "../lib/transitions";
 import { Link, Outlet, useLocation, useMatches, useNavigate } from "react-router";
 
 import { messagesAPI, notificationsAPI } from "../api";
 import { useAuth } from "../context/AuthContext";
+import { enregistrerFermable } from "../lib/fermables";
+import { transitionPage } from "../lib/transitions";
 import { Avatar } from "./Avatar";
 import { BadgeVerification } from "./BadgeVerification";
 import { CoqueContext, type PoigneeRoute } from "./coque";
