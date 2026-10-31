@@ -1,9 +1,21 @@
-import { Search, SlidersHorizontal, X } from "lucide-react";
+/**
+ * ListingsPage.tsx — Recherche d'annonces (maquette Annonces, lot 3.15a).
+ *
+ * En-tête : Louer / Acheter, recherche, bouton de filtres avec le nombre de
+ * filtres actifs. Sous l'en-tête : pastilles d'équipements en défilement
+ * horizontal (appliquées tout de suite), nombre de résultats et tri. Le
+ * panneau de filtres complet reste, en feuille qui monte du bas.
+ */
+import { ChevronDown, Search, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 
 import { favorisAPI, listingsAPI, type FiltresAnnonces, type Listing } from "../../api";
+import { BoutonNotifications, EnTetePage } from "../../components/EnTetePage";
 import { Erreur, ListeVide, SqueletteCartes } from "../../components/Etats";
+import { FeuilleBas } from "../../components/FeuilleBas";
 import { ListingCard } from "../../components/ListingCard";
+import { Pastille } from "../../components/Pastille";
+import { Segment } from "../../components/Segment";
 import { useApi } from "../../hooks/useApi";
 import { useGeo } from "../../hooks/useGeo";
 import { formatMontantCourt } from "../../lib/format";
@@ -25,7 +37,14 @@ const EQUIPEMENTS = [
   { cle: "has_ac", label: "Climatisation" },
 ] as const;
 
+const TRANSACTIONS = [
+  { valeur: "location", label: "Louer" },
+  { valeur: "vente", label: "Acheter" },
+] as const;
+
 const BUDGET_MAX = 10_000_000;
+
+const STYLE_CHAMP = { background: "white", border: "1.5px solid #CBD5E1", fontSize: "15px", color: "#1E293B" };
 
 export function ListingsPage() {
   const geo = useGeo("Guinée", "Conakry");
@@ -38,7 +57,7 @@ export function ListingsPage() {
     tri: "match",
     per_page: 20,
   });
-  // Brouillon : les filtres ne s'appliquent qu'à la validation du panneau.
+  // Brouillon : les filtres du panneau ne s'appliquent qu'à sa validation.
   const [brouillon, setBrouillon] = useState<FiltresAnnonces>(filtres);
 
   const annonces = useApi(
@@ -80,6 +99,15 @@ export function ListingsPage() {
     setFiltresOuverts(false);
   }
 
+  function changerTransaction(transaction: "location" | "vente") {
+    // Un tri par compatibilité n'existe pas à la vente.
+    setFiltres((f) => ({
+      ...f,
+      transaction,
+      tri: transaction === "vente" && f.tri === "match" ? "recent" : f.tri,
+    }));
+  }
+
   const nbFiltresActifs = Object.entries(filtres).filter(
     ([cle, valeur]) =>
       !["ville", "transaction", "tri", "per_page", "page"].includes(cle) &&
@@ -88,121 +116,133 @@ export function ListingsPage() {
   ).length;
 
   const estVente = filtres.transaction === "vente";
+  const total = annonces.data?.total ?? 0;
 
   return (
-    <div className="pb-8">
-      {/* Recherche */}
-      <div className="px-4 pt-6 pb-4" style={{ background: "#1E3A5F" }}>
-        <h1 className="text-white font-bold mb-4" style={{ fontSize: "20px" }}>
-          {estVente ? "Biens à vendre à Conakry" : "Annonces à Conakry"}
-        </h1>
-
+    <div className="pb-6">
+      <EnTetePage titre={estVente ? "Biens à vendre" : "Annonces"} droite={<BoutonNotifications />}>
         {/* Louer et acheter sont deux marchés : on n'en montre qu'un à la fois. */}
-        <div
-          className="flex gap-1 p-1 rounded-xl mb-4"
-          style={{ background: "rgba(255,255,255,0.1)" }}
-        >
-          {(
-            [
-              { valeur: "location" as const, label: "Louer" },
-              { valeur: "vente" as const, label: "Acheter" },
-            ]
-          ).map((option) => {
-            const actif = (filtres.transaction ?? "location") === option.valeur;
-            return (
-              <button
-                key={option.valeur}
-                onClick={() => {
-                  // Un tri par compatibilité n'existe pas à la vente.
-                  setFiltres((f) => ({
-                    ...f,
-                    transaction: option.valeur,
-                    tri: option.valeur === "vente" && f.tri === "match" ? "recent" : f.tri,
-                  }));
-                }}
-                className="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors"
-                style={{
-                  background: actif ? "#F97316" : "transparent",
-                  color: actif ? "white" : "rgba(255,255,255,0.65)",
-                }}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="relative">
-          <Search
-            size={18}
-            className="absolute left-3.5 top-1/2 -translate-y-1/2"
-            style={{ color: "#94A3B8" }}
-          />
-          <input
-            type="search"
-            value={recherche}
-            onChange={(e) => setRecherche(e.target.value)}
-            placeholder="Quartier, type de bien…"
-            aria-label="Rechercher une annonce"
-            className="w-full pl-10 pr-12 py-3 rounded-xl outline-none"
-            style={{ background: "white", fontSize: "14px" }}
-          />
+        <Segment
+          sombre
+          libelle="Type de recherche"
+          options={TRANSACTIONS}
+          valeur={filtres.transaction ?? "location"}
+          onChange={changerTransaction}
+        />
+        <div className="flex gap-2.5">
+          <div className="relative grow">
+            <Search
+              size={18}
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ color: "#64748B" }}
+              aria-hidden="true"
+            />
+            <input
+              type="search"
+              value={recherche}
+              onChange={(e) => setRecherche(e.target.value)}
+              placeholder="Quartier, type de bien…"
+              aria-label="Rechercher une annonce"
+              enterKeyHint="search"
+              className="w-full h-12 pl-[42px] pr-3.5 rounded-[14px] outline-none border-0 bg-white"
+              style={{ fontSize: 15, color: "#1E293B" }}
+            />
+          </div>
           <button
+            type="button"
             onClick={() => {
               setBrouillon(filtres);
               setFiltresOuverts(true);
             }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg"
-            style={{ background: nbFiltresActifs ? "#F97316" : "#F0F4FA", color: nbFiltresActifs ? "white" : "#1E3A5F" }}
-            aria-label="Ouvrir les filtres"
+            className="relative w-12 h-12 shrink-0 rounded-[14px] flex items-center justify-center text-white"
+            style={{ background: "#F97316" }}
+            aria-label={nbFiltresActifs ? `Filtres (${nbFiltresActifs} actifs)` : "Filtres"}
           >
-            <SlidersHorizontal size={16} />
+            <SlidersHorizontal size={20} aria-hidden="true" />
+            {nbFiltresActifs > 0 && (
+              <span
+                className="absolute -top-1 -right-1 w-[18px] h-[18px] rounded-full bg-white flex items-center justify-center font-extrabold"
+                style={{ color: "#C2410C", fontSize: 11 }}
+                aria-hidden="true"
+              >
+                {nbFiltresActifs}
+              </span>
+            )}
           </button>
         </div>
-      </div>
+      </EnTetePage>
 
-      {/* Tri */}
+      {/* Équipements : appliqués tout de suite */}
       <div
-        className="flex gap-2 px-4 py-3 overflow-x-auto"
-        style={{ background: "#1E3A5F", borderBottom: "1px solid rgba(255,255,255,0.1)" }}
+        className="flex gap-2 px-5 pt-3.5 pb-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden"
+        style={{ scrollbarWidth: "none" }}
+        role="group"
+        aria-label="Équipements"
       >
-        {TRIS.filter((t) => !(estVente && t.valeur === "match")).map((t) => (
-          <button
-            key={t.valeur}
-            onClick={() => setFiltres((f) => ({ ...f, tri: t.valeur }))}
-            className="px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all"
-            style={{
-              background: filtres.tri === t.valeur ? "#F97316" : "rgba(255,255,255,0.12)",
-              color: filtres.tri === t.valeur ? "white" : "rgba(255,255,255,0.6)",
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
+        {EQUIPEMENTS.map((eq) => {
+          const actif = Boolean(filtres[eq.cle]);
+          return (
+            <Pastille
+              key={eq.cle}
+              actif={actif}
+              onClick={() => setFiltres((f) => ({ ...f, [eq.cle]: actif ? undefined : true }))}
+            >
+              {eq.label}
+            </Pastille>
+          );
+        })}
       </div>
 
-      {/* Résultats */}
-      <div className="px-4 py-3 flex items-center justify-between">
-        <p className="text-gray-500 text-sm">
+      {/* Résultats et tri */}
+      <div className="flex items-center justify-between gap-3 px-5 pt-2.5 pb-1.5">
+        <p className="m-0" style={{ fontSize: 13, color: "#475569" }} aria-live="polite">
           {annonces.chargement ? (
             "Recherche…"
           ) : (
             <>
-              <span className="font-bold" style={{ color: "#1E3A5F" }}>
-                {annonces.data?.total ?? 0}
-              </span>{" "}
-              annonce{(annonces.data?.total ?? 0) > 1 ? "s" : ""}
+              <strong style={{ color: "#1E293B" }}>
+                {total} {total > 1 ? "biens" : "bien"}
+              </strong>{" "}
+              à Conakry
             </>
           )}
         </p>
-        {nbFiltresActifs > 0 && (
-          <button onClick={reinitialiser} className="text-xs font-semibold" style={{ color: "#F97316" }}>
+        <div className="relative shrink-0">
+          <select
+            aria-label="Trier par"
+            value={filtres.tri}
+            onChange={(e) => setFiltres((f) => ({ ...f, tri: e.target.value as FiltresAnnonces["tri"] }))}
+            className="h-11 pl-2 pr-6 appearance-none bg-transparent font-bold outline-none text-right"
+            style={{ fontSize: 13, color: "#1E3A5F" }}
+          >
+            {TRIS.filter((t) => !(estVente && t.valeur === "match")).map((t) => (
+              <option key={t.valeur} value={t.valeur}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            size={16}
+            className="absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none"
+            color="#1E3A5F"
+            aria-hidden="true"
+          />
+        </div>
+      </div>
+      {nbFiltresActifs > 0 && (
+        <div className="px-5">
+          <button
+            type="button"
+            onClick={reinitialiser}
+            className="min-h-11 font-bold"
+            style={{ fontSize: 13, color: "#C2410C" }}
+          >
             Réinitialiser les filtres
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
-      <div className="px-4 space-y-4">
+      <div className="px-5 pt-1.5 flex flex-col gap-3.5">
         {annonces.chargement ? (
           <SqueletteCartes nombre={3} />
         ) : annonces.erreur ? (
@@ -220,185 +260,170 @@ export function ListingsPage() {
         )}
       </div>
 
-      {/* Panneau de filtres */}
+      {/* Panneau de filtres : feuille qui monte du bas */}
       {filtresOuverts && (
-        <div className="fixed inset-0 z-50 flex items-end">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setFiltresOuverts(false)} />
-          <div
-            className="relative w-full rounded-t-3xl p-6 space-y-5"
-            style={{ background: "white", maxHeight: "85vh", overflowY: "auto", paddingBottom: "calc(1.5rem + var(--inset-bas))" }}
-          >
-            <div className="flex items-center justify-between sticky top-0 bg-white pb-2">
-              <h3 className="font-bold text-lg" style={{ color: "#1E3A5F" }}>
-                Filtres
-              </h3>
+        <FeuilleBas
+          titre="Filtres"
+          onFermer={() => setFiltresOuverts(false)}
+          pied={
+            <div className="flex gap-3">
               <button
-                onClick={() => setFiltresOuverts(false)}
-                style={{ color: "#64748B" }}
-                aria-label="Fermer les filtres"
-              >
-                <X size={22} />
-              </button>
-            </div>
-
-            <div>
-              <label htmlFor="f-quartier" className="block text-sm font-semibold text-gray-700 mb-2">
-                Quartier
-              </label>
-              <select
-                id="f-quartier"
-                value={brouillon.quartier ?? ""}
-                onChange={(e) => setBrouillon((f) => ({ ...f, quartier: e.target.value || undefined }))}
-                className="w-full px-4 py-3 rounded-xl outline-none"
-                style={{ background: "white", border: "1.5px solid #E2E8F0", fontSize: "15px" }}
-              >
-                <option value="">Tous les quartiers</option>
-                {geo.quartiers.map((q) => (
-                  <option key={q} value={q}>
-                    {q}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="f-type" className="block text-sm font-semibold text-gray-700 mb-2">
-                Type de bien
-              </label>
-              <select
-                id="f-type"
-                value={brouillon.type ?? ""}
-                onChange={(e) => setBrouillon((f) => ({ ...f, type: e.target.value || undefined }))}
-                className="w-full px-4 py-3 rounded-xl outline-none"
-                style={{ background: "white", border: "1.5px solid #E2E8F0", fontSize: "15px" }}
-              >
-                <option value="">Tous les types</option>
-                {geo.typesBien.map((t) => (
-                  <option key={t.valeur} value={t.valeur}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="f-budget" className="block text-sm font-semibold text-gray-700 mb-2">
-                Loyer maximum :{" "}
-                <span style={{ color: "#F97316" }}>
-                  {brouillon.prix_max
-                    ? `${formatMontantCourt(brouillon.prix_max)} /mois`
-                    : "sans limite"}
-                </span>
-              </label>
-              <input
-                id="f-budget"
-                type="range"
-                min={200_000}
-                max={BUDGET_MAX}
-                step={100_000}
-                value={brouillon.prix_max ?? BUDGET_MAX}
-                onChange={(e) => {
-                  const valeur = Number(e.target.value);
-                  setBrouillon((f) => ({ ...f, prix_max: valeur >= BUDGET_MAX ? undefined : valeur }));
-                }}
-                className="w-full accent-orange-500"
-              />
-              <div className="flex justify-between text-xs text-gray-400 mt-1">
-                <span>200 k GNF</span>
-                <span>10 M GNF +</span>
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="f-pieces" className="block text-sm font-semibold text-gray-700 mb-2">
-                Pièces minimum
-              </label>
-              <div className="flex gap-2">
-                {[1, 2, 3, 4, 5].map((n) => {
-                  const actif = brouillon.nb_pieces_min === n;
-                  return (
-                    <button
-                      key={n}
-                      onClick={() =>
-                        setBrouillon((f) => ({ ...f, nb_pieces_min: actif ? undefined : n }))
-                      }
-                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors"
-                      style={{
-                        background: actif ? "#F97316" : "#F0F4FA",
-                        color: actif ? "white" : "#64748B",
-                      }}
-                    >
-                      {n}
-                      {n === 5 ? "+" : ""}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <span className="block text-sm font-semibold text-gray-700 mb-2">Équipements</span>
-              <div className="flex flex-wrap gap-2">
-                {EQUIPEMENTS.map((eq) => {
-                  const actif = Boolean(brouillon[eq.cle]);
-                  return (
-                    <button
-                      key={eq.cle}
-                      onClick={() => setBrouillon((f) => ({ ...f, [eq.cle]: actif ? undefined : true }))}
-                      className="px-3 py-2 rounded-full text-xs font-semibold transition-colors"
-                      style={{
-                        background: actif ? "#F97316" : "#F0F4FA",
-                        color: actif ? "white" : "#64748B",
-                      }}
-                    >
-                      {eq.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <p className="font-semibold text-sm" style={{ color: "#1E293B" }}>
-                  Annonces certifiées uniquement
-                </p>
-                <p className="text-xs text-gray-400">Biens vérifiés sur pièces par Tcheyna</p>
-              </div>
-              <button
-                onClick={() =>
-                  setBrouillon((f) => ({ ...f, certified_only: f.certified_only ? undefined : true }))
-                }
-                className="relative w-12 h-6 rounded-full transition-colors flex-shrink-0"
-                style={{ background: brouillon.certified_only ? "#F97316" : "#CBD5E1" }}
-                aria-pressed={Boolean(brouillon.certified_only)}
-                aria-label="Annonces certifiées uniquement"
-              >
-                <span
-                  className="absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform"
-                  style={{ transform: brouillon.certified_only ? "translateX(26px)" : "translateX(4px)" }}
-                />
-              </button>
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button
+                type="button"
                 onClick={reinitialiser}
-                className="flex-1 py-4 rounded-2xl font-semibold"
-                style={{ background: "#F0F4FA", color: "#64748B" }}
+                className="flex-1 h-14 rounded-2xl font-bold"
+                style={{ background: "#F0F4FA", color: "#475569" }}
               >
                 Réinitialiser
               </button>
               <button
+                type="button"
                 onClick={appliquer}
-                className="flex-[2] py-4 rounded-2xl font-semibold text-white"
+                className="flex-[2] h-14 rounded-2xl font-bold text-white"
                 style={{ background: "#F97316" }}
               >
                 Voir les résultats
               </button>
             </div>
+          }
+        >
+          <div>
+            <label htmlFor="f-quartier" className="block text-sm font-semibold mb-2" style={{ color: "#334155" }}>
+              Quartier
+            </label>
+            <select
+              id="f-quartier"
+              value={brouillon.quartier ?? ""}
+              onChange={(e) => setBrouillon((f) => ({ ...f, quartier: e.target.value || undefined }))}
+              className="w-full h-[54px] px-4 rounded-2xl outline-none"
+              style={STYLE_CHAMP}
+            >
+              <option value="">Tous les quartiers</option>
+              {geo.quartiers.map((q) => (
+                <option key={q} value={q}>
+                  {q}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
+
+          <div>
+            <label htmlFor="f-type" className="block text-sm font-semibold mb-2" style={{ color: "#334155" }}>
+              Type de bien
+            </label>
+            <select
+              id="f-type"
+              value={brouillon.type ?? ""}
+              onChange={(e) => setBrouillon((f) => ({ ...f, type: e.target.value || undefined }))}
+              className="w-full h-[54px] px-4 rounded-2xl outline-none"
+              style={STYLE_CHAMP}
+            >
+              <option value="">Tous les types</option>
+              {geo.typesBien.map((t) => (
+                <option key={t.valeur} value={t.valeur}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="f-budget" className="block text-sm font-semibold mb-2" style={{ color: "#334155" }}>
+              Loyer maximum :{" "}
+              <span style={{ color: "#C2410C" }}>
+                {brouillon.prix_max ? `${formatMontantCourt(brouillon.prix_max)} /mois` : "sans limite"}
+              </span>
+            </label>
+            <input
+              id="f-budget"
+              type="range"
+              min={200_000}
+              max={BUDGET_MAX}
+              step={100_000}
+              value={brouillon.prix_max ?? BUDGET_MAX}
+              onChange={(e) => {
+                const valeur = Number(e.target.value);
+                setBrouillon((f) => ({ ...f, prix_max: valeur >= BUDGET_MAX ? undefined : valeur }));
+              }}
+              className="w-full accent-orange-500"
+            />
+            <div className="flex justify-between text-xs mt-1" style={{ color: "#64748B" }}>
+              <span>200 k GNF</span>
+              <span>10 M GNF +</span>
+            </div>
+          </div>
+
+          <div role="group" aria-labelledby="f-pieces">
+            <span id="f-pieces" className="block text-sm font-semibold mb-2" style={{ color: "#334155" }}>
+              Pièces minimum
+            </span>
+            <div className="flex gap-2">
+              {[1, 2, 3, 4, 5].map((n) => {
+                const actif = brouillon.nb_pieces_min === n;
+                return (
+                  <button
+                    key={n}
+                    type="button"
+                    aria-pressed={actif}
+                    onClick={() => setBrouillon((f) => ({ ...f, nb_pieces_min: actif ? undefined : n }))}
+                    className="flex-1 h-11 rounded-xl text-sm font-bold"
+                    style={{ background: actif ? "#1E3A5F" : "#F0F4FA", color: actif ? "white" : "#475569" }}
+                  >
+                    {n}
+                    {n === 5 ? "+" : ""}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div role="group" aria-labelledby="f-equipements">
+            <span id="f-equipements" className="block text-sm font-semibold mb-2" style={{ color: "#334155" }}>
+              Équipements
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {EQUIPEMENTS.map((eq) => {
+                const actif = Boolean(brouillon[eq.cle]);
+                return (
+                  <Pastille
+                    key={eq.cle}
+                    actif={actif}
+                    onClick={() => setBrouillon((f) => ({ ...f, [eq.cle]: actif ? undefined : true }))}
+                  >
+                    {eq.label}
+                  </Pastille>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="m-0 font-semibold text-sm" style={{ color: "#1E293B" }}>
+                Annonces certifiées uniquement
+              </p>
+              <p className="m-0 text-xs" style={{ color: "#64748B" }}>
+                Biens vérifiés sur pièces par Tcheyna
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBrouillon((f) => ({ ...f, certified_only: f.certified_only ? undefined : true }))}
+              className="relative w-12 h-11 shrink-0 flex items-center"
+              aria-pressed={Boolean(brouillon.certified_only)}
+              aria-label="Annonces certifiées uniquement"
+            >
+              <span
+                className="relative w-12 h-6 rounded-full transition-colors"
+                style={{ background: brouillon.certified_only ? "#F97316" : "#CBD5E1" }}
+              >
+                <span
+                  className="absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                  style={{ transform: brouillon.certified_only ? "translateX(26px)" : "translateX(4px)" }}
+                />
+              </span>
+            </button>
+          </div>
+        </FeuilleBas>
       )}
     </div>
   );

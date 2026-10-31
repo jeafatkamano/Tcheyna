@@ -1,5 +1,11 @@
 /**
- * MessagesList.tsx — Liste des discussions.
+ * MessagesList.tsx — Liste des discussions (maquette Messages, lot 3.15b).
+ *
+ * Chaque discussion : vignette de l'annonce, titre, dernier message (« Vous : »
+ * quand il est de soi), heure, nombre de non-lus et statut de la candidature.
+ * Le statut vient de la liste des candidatures (mes-candidatures ou
+ * mes-demandes), sans changement d'API ; s'il manque, la pastille ne
+ * s'affiche pas.
  *
  * Lot 2.8 : la liste se charge par pages de 20 (« Afficher plus ») quand le
  * serveur la pagine ; un serveur antérieur ignore `page` et renvoie tout, sans
@@ -9,13 +15,26 @@ import { Loader2, Lock, MessageSquare } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { ApiError, messagesAPI, type Conversation, type PageConversations } from "../../api";
-import { Avatar } from "../../components/Avatar";
+import {
+  ApiError,
+  matchesAPI,
+  messagesAPI,
+  urlFichier,
+  type Conversation,
+  type Match,
+  type MatchStatus,
+  type PageConversations,
+} from "../../api";
 import { BadgeProprietaireVerifie } from "../../components/BadgeVerification";
+import { BoutonNotifications, EnTetePage } from "../../components/EnTetePage";
 import { Erreur, ListeVide, MessageErreur, SqueletteCartes } from "../../components/Etats";
+import { PhotoAnnonce } from "../../components/PhotoAnnonce";
+import { PastilleStatut } from "../../components/StatutCandidature";
 import { useAuth } from "../../context/AuthContext";
 import { useApi } from "../../hooks/useApi";
-import { formatMontantCourt, formatRelatif } from "../../lib/format";
+import { formatHeureMessage, formatMontantCourt } from "../../lib/format";
+import { HAUTEUR_REPLI, LARGEUR_REPLI } from "../../lib/imageRepli";
+import { transitionPage } from "../../lib/transitions";
 
 const PAR_PAGE = 20;
 
@@ -35,9 +54,25 @@ interface Suite {
 
 export function MessagesList() {
   const { user } = useAuth();
+  const estLocataire = user?.role === "tenant";
   const conversations = useApi(
     (signal) => messagesAPI.conversations({ page: 1, per_page: PAR_PAGE }, signal),
     [],
+  );
+
+  // Statut de chaque candidature, par identifiant de mise en relation. Un
+  // échec n'empêche pas la liste : la pastille ne s'affiche pas.
+  const candidatures = useApi(
+    (): Promise<{ matches: Match[] }> =>
+      user?.role === "admin"
+        ? Promise.resolve({ matches: [] })
+        : estLocataire
+          ? matchesAPI.mesCandidatures()
+          : matchesAPI.mesDemandes(),
+    [user?.role],
+  );
+  const statuts = new Map<string, MatchStatus>(
+    (candidatures.data?.matches ?? []).map((m) => [m.id, m.status]),
   );
 
   // Pages suivantes, ajoutées à la première à chaque « Afficher plus ». Un
@@ -69,20 +104,21 @@ export function MessagesList() {
     }
   }
 
-  return (
-    <div className="pb-8">
-      <div className="px-4 pt-6 pb-5" style={{ background: "#1E3A5F" }}>
-        <h1 className="text-white font-bold mb-1" style={{ fontSize: "20px" }}>
-          Messages
-        </h1>
-        <p className="text-white/60 text-sm">
-          {conversations.data?.non_lus
-            ? `${conversations.data.non_lus} message${conversations.data.non_lus > 1 ? "s" : ""} non lu${conversations.data.non_lus > 1 ? "s" : ""}`
-            : "Vos discussions avec les candidats et propriétaires"}
-        </p>
-      </div>
+  const nonLus = conversations.data?.non_lus ?? 0;
 
-      <div className="px-4 pt-5 space-y-3">
+  return (
+    <div className="pb-6">
+      <EnTetePage titre="Messages" droite={<BoutonNotifications />}>
+        <p className="m-0 -mt-2" style={{ fontSize: 14, color: "rgba(255,255,255,0.78)" }}>
+          {nonLus
+            ? `${nonLus} message${nonLus > 1 ? "s" : ""} non lu${nonLus > 1 ? "s" : ""}`
+            : estLocataire
+              ? "Vos échanges avec les propriétaires"
+              : "Vos échanges avec les candidats"}
+        </p>
+      </EnTetePage>
+
+      <div className="px-4 pt-4 flex flex-col gap-2.5">
         {conversations.chargement ? (
           <SqueletteCartes nombre={2} />
         ) : conversations.erreur ? (
@@ -91,96 +127,26 @@ export function MessagesList() {
           <ListeVide
             titre="Aucune discussion"
             description={
-              user?.role === "tenant"
+              estLocataire
                 ? "Une discussion s'ouvre dès qu'un propriétaire accepte votre candidature."
                 : "Une discussion s'ouvre dès que vous acceptez une candidature."
             }
-            icone={<MessageSquare size={26} style={{ color: "#94A3B8" }} />}
+            icone={<MessageSquare size={26} style={{ color: "#64748B" }} />}
             action={
-              user?.role === "tenant"
+              estLocataire
                 ? { label: "Voir les annonces", to: "/tenant/listings" }
                 : { label: "Voir les candidats", to: "/owner/matches" }
             }
           />
         ) : (
-          liste.map((conversation) => {
-            const nonLus = (conversation.nb_non_lus ?? 0) > 0;
-            return (
-              <Link
-                key={conversation.id}
-                to={`/messages/${conversation.match_id}`}
-                className="flex items-center gap-3 p-4 rounded-2xl transition-transform active:scale-[0.98]"
-                style={{
-                  background: "white",
-                  boxShadow: "0 2px 12px rgba(30,58,95,0.07)",
-                  border: nonLus ? "1.5px solid #FED7AA" : "1.5px solid transparent",
-                }}
-              >
-                <Avatar
-                  nom={conversation.interlocuteur?.full_name}
-                  url={conversation.interlocuteur?.avatar_url}
-                  taille={48}
-                />
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-0.5">
-                    <span
-                      className="font-bold text-sm truncate"
-                      style={{ color: "#1E293B" }}
-                    >
-                      {conversation.interlocuteur?.full_name ?? "Interlocuteur"}
-                    </span>
-                    <span className="text-xs text-gray-400 flex-shrink-0">
-                      {formatRelatif(conversation.last_message_at)}
-                    </span>
-                  </div>
-
-                  {conversation.interlocuteur?.proprietaire_verifie && (
-                    <div className="mb-1">
-                      <BadgeProprietaireVerifie utilisateur={conversation.interlocuteur} />
-                    </div>
-                  )}
-
-                  {conversation.listing && (
-                    <p className="text-xs text-gray-400 truncate mb-1">
-                      {conversation.listing.title} ·{" "}
-                      {formatMontantCourt(conversation.listing.prix, conversation.listing.devise)}/mois
-                    </p>
-                  )}
-
-                  <div className="flex items-center justify-between gap-2">
-                    <p
-                      className="text-sm truncate"
-                      style={{
-                        color: nonLus ? "#1E293B" : "#94A3B8",
-                        fontWeight: nonLus ? 600 : 400,
-                      }}
-                    >
-                      {conversation.dernier_message?.contenu ?? "Démarrez la discussion"}
-                    </p>
-                    {conversation.ecriture_fermee && (
-                      <span
-                        className="inline-flex items-center gap-1 h-5 px-2 rounded-full font-semibold flex-shrink-0"
-                        style={{ background: "#F1F5F9", color: "#475569", fontSize: "11px" }}
-                        title="Discussion fermée : l'historique reste consultable"
-                      >
-                        <Lock size={10} aria-hidden="true" />
-                        Fermée
-                      </span>
-                    )}
-                    {nonLus && (
-                      <span
-                        className="min-w-[20px] h-5 px-1.5 rounded-full text-white flex items-center justify-center font-bold flex-shrink-0"
-                        style={{ background: "#F97316", fontSize: "11px" }}
-                      >
-                        {conversation.nb_non_lus}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </Link>
-            );
-          })
+          liste.map((conversation) => (
+            <CarteDiscussion
+              key={conversation.id}
+              conversation={conversation}
+              moi={user?.id}
+              statut={statuts.get(conversation.match_id)}
+            />
+          ))
         )}
 
         <MessageErreur message={erreurSuite} />
@@ -190,7 +156,7 @@ export function MessagesList() {
             onClick={afficherPlus}
             disabled={suiteEnCours}
             aria-busy={suiteEnCours}
-            className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold disabled:opacity-60"
+            className="w-full h-12 inline-flex items-center justify-center gap-2 rounded-2xl text-sm font-bold disabled:opacity-60"
             style={{ background: "white", color: "#1E3A5F", border: "1.5px solid #E2E8F0" }}
           >
             {suiteEnCours && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
@@ -199,5 +165,98 @@ export function MessagesList() {
         )}
       </div>
     </div>
+  );
+}
+
+function CarteDiscussion({
+  conversation,
+  moi,
+  statut,
+}: {
+  conversation: Conversation;
+  moi?: string;
+  statut?: MatchStatus;
+}) {
+  const nbNonLus = conversation.nb_non_lus ?? 0;
+  const nonLus = nbNonLus > 0;
+  const { listing, interlocuteur, dernier_message: dernier } = conversation;
+  const deMoi = dernier && dernier.sender_id === moi;
+
+  return (
+    <Link
+      to={`/messages/${conversation.match_id}`}
+      viewTransition={transitionPage()}
+      className="flex gap-3 items-center bg-white no-underline"
+      style={{
+        padding: 14,
+        borderRadius: 20,
+        color: "#1E293B",
+        boxShadow: "0 4px 14px rgba(15,32,64,0.06)",
+      }}
+    >
+      <span className="w-14 h-14 rounded-2xl overflow-hidden shrink-0" style={{ background: "#E2E8F0" }}>
+        <PhotoAnnonce
+          url={urlFichier(listing?.images?.[0])}
+          tailles="56px"
+          alt=""
+          width={LARGEUR_REPLI}
+          height={HAUTEUR_REPLI}
+          className="w-full h-full object-cover"
+          loading="lazy"
+          decoding="async"
+        />
+      </span>
+
+      <span className="grow min-w-0">
+        <span className="flex justify-between gap-2">
+          <span className="truncate" style={{ fontSize: 15, fontWeight: nonLus ? 800 : 700 }}>
+            {listing?.title ?? interlocuteur?.full_name ?? "Discussion"}
+          </span>
+          <span
+            className="shrink-0"
+            style={{ fontSize: 12, fontWeight: nonLus ? 700 : 400, color: nonLus ? "#C2410C" : "#475569" }}
+          >
+            {formatHeureMessage(conversation.last_message_at)}
+          </span>
+        </span>
+
+        <span className="flex justify-between gap-2 mt-1 items-center">
+          <span
+            className="truncate"
+            style={{ fontSize: 13, fontWeight: nonLus ? 600 : 400, color: nonLus ? "#1E293B" : "#475569" }}
+          >
+            {dernier ? `${deMoi ? "Vous : " : ""}${dernier.contenu}` : "Démarrez la discussion"}
+          </span>
+          {nonLus && (
+            <span
+              className="min-w-5 h-5 px-1.5 rounded-full text-white flex items-center justify-center font-extrabold shrink-0"
+              style={{ background: "#F97316", fontSize: 11 }}
+              aria-label={`${nbNonLus} non lu${nbNonLus > 1 ? "s" : ""}`}
+            >
+              {nbNonLus}
+            </span>
+          )}
+        </span>
+
+        <span className="flex flex-wrap items-center gap-1.5 mt-1.5">
+          {statut && <PastilleStatut statut={statut} />}
+          {conversation.ecriture_fermee && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full font-bold"
+              style={{ padding: "2px 8px", background: "#F1F5F9", color: "#475569", fontSize: 11 }}
+              title="Discussion fermée : l'historique reste consultable"
+            >
+              <Lock size={10} aria-hidden="true" />
+              Fermée
+            </span>
+          )}
+          <span className="truncate" style={{ fontSize: 12, color: "#475569" }}>
+            {interlocuteur?.full_name ?? "Interlocuteur"}
+            {listing && ` · ${formatMontantCourt(listing.prix, listing.devise)}/mois`}
+          </span>
+          {interlocuteur?.proprietaire_verifie && <BadgeProprietaireVerifie utilisateur={interlocuteur} />}
+        </span>
+      </span>
+    </Link>
   );
 }

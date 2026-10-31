@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Mon Passeport Locataire</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#C2410C}a:hover{color:#9A3412}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; background: #F0F4FA; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #1E293B; overflow: hidden;">
+
+  <header style="background: #1E3A5F; color: #ffffff; padding: 56px 20px 20px; display: flex; flex-direction: column; gap: 16px;">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <h1 style="margin: 0; font-size: 20px; font-weight: 800;">Mon Passeport Locataire</h1>
+      <button type="button" aria-label="Paramètres" style="width: 44px; height: 44px; margin-right: -8px; border: none; background: transparent; color: #ffffff; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
+      </button>
+    </div>
+    <div style="display: flex; align-items: center; gap: 14px;">
+      <div style="width: 60px; height: 60px; border-radius: 50%; background: #F97316; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; flex-shrink: 0;">AD</div>
+      <div>
+        <div style="font-size: 18px; font-weight: 800;">Aminata Diallo</div>
+        <span style="display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; padding: 4px 10px; border-radius: 999px; background: #DCFCE7; color: #047857; font-size: 12px; font-weight: 800;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg>Solvable</span>
+      </div>
+    </div>
+    <div style="display: flex; gap: 6px;" aria-label="Niveau 3 sur 4">
+      <span style="flex-grow: 1; height: 6px; border-radius: 999px; background: #F97316;"></span>
+      <span style="flex-grow: 1; height: 6px; border-radius: 999px; background: #F97316;"></span>
+      <span style="flex-grow: 1; height: 6px; border-radius: 999px; background: #F97316;"></span>
+      <span style="flex-grow: 1; height: 6px; border-radius: 999px; background: rgba(255,255,255,0.2);"></span>
+    </div>
+  </header>
+
+  <div style="padding: 14px 20px 0;">
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 4px; border-radius: 14px; background: #ffffff;" role="tablist" aria-label="Sections du profil">
+      <button type="button" role="tab" aria-selected="true" style="height: 40px; border: none; border-radius: 11px; background: #F97316; color: #ffffff; font-family: inherit; font-size: 13px; font-weight: 800; cursor: pointer;">Dossier</button>
+      <button type="button" role="tab" aria-selected="false" style="height: 40px; border: none; border-radius: 11px; background: transparent; color: #475569; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;">Ma recherche</button>
+      <button type="button" role="tab" aria-selected="false" style="height: 40px; border: none; border-radius: 11px; background: transparent; color: #475569; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;">Compte</button>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; padding: 14px 20px 0; display: flex; flex-direction: column; gap: 10px; overflow: hidden;">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 18px; background: #ffffff;">
+      <span style="width: 40px; height: 40px; border-radius: 12px; background: #DCFCE7; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#047857" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span>
+      <div style="flex-grow: 1;"><div style="font-size: 14px; font-weight: 700;">Téléphone</div><div style="font-size: 12px; color: #475569;">Vérifié par SMS</div></div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 18px; background: #ffffff;">
+      <span style="width: 40px; height: 40px; border-radius: 12px; background: #DCFCE7; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#047857" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span>
+      <div style="flex-grow: 1;"><div style="font-size: 14px; font-weight: 700;">CNI — recto et verso</div><div style="font-size: 12px; color: #475569;">Validée</div></div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 18px; background: #ffffff;">
+      <span style="width: 40px; height: 40px; border-radius: 12px; background: #DCFCE7; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#047857" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span>
+      <div style="flex-grow: 1;"><div style="font-size: 14px; font-weight: 700;">Justificatif de revenus</div><div style="font-size: 12px; color: #475569;">Validé</div></div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 18px; background: #ffffff; border: 1.5px dashed #FDBA74;">
+      <span style="width: 40px; height: 40px; border-radius: 12px; background: #FFF7ED; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C2410C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"></path></svg></span>
+      <div style="flex-grow: 1;"><div style="font-size: 14px; font-weight: 700;">Avis d'un ancien bailleur</div><div style="font-size: 12px; color: #475569;">Pour passer Recommandé</div></div>
+      <button type="button" style="height: 36px; padding: 0 12px; border: none; border-radius: 10px; background: #F97316; color: #ffffff; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;">Ajouter</button>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 18px; background: #ffffff;">
+      <span style="width: 40px; height: 40px; border-radius: 12px; background: #EFF6FF; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M19 8v6M22 11h-6"></path></svg></span>
+      <div style="flex-grow: 1;"><div style="font-size: 14px; font-weight: 700;">Garant <span style="font-weight: 500; color: #475569;">(facultatif)</span></div><div style="font-size: 12px; color: #475569;">Renforce votre dossier</div></div>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+    </div>
+  </div>
+
+  <nav aria-label="Navigation principale" style="display: flex; background: #1E3A5F; padding: 8px 4px 22px;">
+    <a href="Accueil.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 600;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path></svg>Accueil</a>
+    <a href="Annonces.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 600;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>Annonces</a>
+    <a href="#candidatures" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 600;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Candidatures</a>
+    <a href="Messages.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 600; position: relative;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span style="position: absolute; top: 2px; left: 50%; margin-left: 6px; min-width: 16px; height: 16px; border-radius: 999px; background: #F97316; color: #ffffff; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center;">2</span>Messages</a>
+    <a href="Profil.dc.html" aria-current="page" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: #F97316; font-size: 11px; font-weight: 700;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path></svg>Profil</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

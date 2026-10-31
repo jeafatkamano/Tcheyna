@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Annonces</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#C2410C}a:hover{color:#9A3412}
+input::placeholder{color:#64748B}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; background: #F0F4FA; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #1E293B; overflow: hidden;">
+
+  <header style="background: #1E3A5F; color: #ffffff; padding: 56px 20px 18px; display: flex; flex-direction: column; gap: 14px;">
+    <h1 style="margin: 0; font-size: 24px; font-weight: 800;">Annonces</h1>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 4px; border-radius: 14px; background: rgba(255,255,255,0.1);" role="tablist" aria-label="Type de recherche">
+      <button type="button" role="tab" aria-selected="true" style="height: 40px; border: none; border-radius: 11px; background: #ffffff; color: #1E3A5F; font-family: inherit; font-size: 14px; font-weight: 800; cursor: pointer;">Louer</button>
+      <button type="button" role="tab" aria-selected="false" style="height: 40px; border: none; border-radius: 11px; background: transparent; color: rgba(255,255,255,0.85); font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;">Acheter</button>
+    </div>
+    <div style="display: flex; gap: 10px;">
+      <div style="flex-grow: 1; position: relative;">
+        <svg style="position: absolute; left: 14px; top: 15px;" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+        <input aria-label="Rechercher" type="search" placeholder="Quartier, type de bien…" style="width: 100%; height: 48px; box-sizing: border-box; padding: 0 14px 0 42px; border-radius: 14px; border: none; background: #ffffff; color: #1E293B; font-family: inherit; font-size: 15px; outline: none;">
+      </div>
+      <button type="button" aria-label="Filtres (2 actifs)" style="position: relative; width: 48px; height: 48px; border: none; border-radius: 14px; background: #F97316; color: #ffffff; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16"></path><path d="M7 12h10"></path><path d="M10 18h4"></path></svg>
+        <span style="position: absolute; top: -4px; right: -4px; width: 18px; height: 18px; border-radius: 50%; background: #ffffff; color: #C2410C; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center;">2</span>
+      </button>
+    </div>
+  </header>
+
+  <div style="display: flex; gap: 8px; padding: 14px 20px 4px; overflow: hidden;">
+    <span style="flex-shrink: 0; padding: 8px 12px; border-radius: 999px; background: #1E3A5F; color: #ffffff; font-size: 13px; font-weight: 700;">Groupe électrogène</span>
+    <span style="flex-shrink: 0; padding: 8px 12px; border-radius: 999px; background: #1E3A5F; color: #ffffff; font-size: 13px; font-weight: 700;">Eau courante</span>
+    <span style="flex-shrink: 0; padding: 8px 12px; border-radius: 999px; background: #ffffff; color: #1E3A5F; font-size: 13px; font-weight: 600; border: 1px solid #CBD5E1;">Climatisation</span>
+    <span style="flex-shrink: 0; padding: 8px 12px; border-radius: 999px; background: #ffffff; color: #1E3A5F; font-size: 13px; font-weight: 600; border: 1px solid #CBD5E1;">Parking</span>
+  </div>
+
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 20px 6px;">
+    <span style="font-size: 13px; color: #475569;"><strong style="color: #1E293B;">24 biens</strong> à Conakry</span>
+    <span style="font-size: 13px; font-weight: 700; color: #1E3A5F; display: flex; align-items: center; gap: 4px;">Meilleur match
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+    </span>
+  </div>
+
+  <div style="flex-grow: 1; padding: 6px 20px 0; display: flex; flex-direction: column; gap: 14px; overflow: hidden;">
+    <a href="Annonce.dc.html" style="display: block; border-radius: 22px; background: #ffffff; overflow: hidden; text-decoration: none; color: #1E293B; box-shadow: 0 6px 18px rgba(15,32,64,0.08);">
+      <div style="height: 168px; background: linear-gradient(140deg, #F6D3B0 0%, #E9A66A 100%); position: relative;">
+        <span style="position: absolute; top: 12px; left: 12px; display: flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 999px; background: #1E3A5F; color: #ffffff; font-size: 12px; font-weight: 700;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg>Certifiée</span>
+        <span style="position: absolute; top: 8px; right: 8px; width: 40px; height: 40px; border-radius: 50%; background: #ffffff; display: flex; align-items: center; justify-content: center;" aria-label="Retirer des favoris">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#F97316" stroke="#F97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"></path></svg>
+        </span>
+        <span style="position: absolute; bottom: 12px; left: 12px; padding: 5px 10px; border-radius: 999px; background: #ffffff; color: #047857; font-size: 12px; font-weight: 800;">87 % compatible</span>
+      </div>
+      <div style="padding: 14px 16px; display: flex; justify-content: space-between; gap: 12px;">
+        <div>
+          <div style="font-size: 16px; font-weight: 700;">Appartement lumineux</div>
+          <div style="font-size: 13px; color: #475569; margin-top: 3px;">Kipé, Ratoma · 3 pièces · 85 m²</div>
+        </div>
+        <div style="text-align: right; flex-shrink: 0;">
+          <div style="font-size: 16px; font-weight: 800; color: #1E3A5F;">3,5 M GNF</div>
+          <div style="font-size: 12px; color: #475569;">/mois</div>
+        </div>
+      </div>
+    </a>
+
+    <a href="Annonce.dc.html" style="display: block; border-radius: 22px; background: #ffffff; overflow: hidden; text-decoration: none; color: #1E293B; box-shadow: 0 6px 18px rgba(15,32,64,0.08);">
+      <div style="height: 168px; background: linear-gradient(140deg, #CFE0F2 0%, #8FB2D9 100%); position: relative;">
+        <span style="position: absolute; top: 8px; right: 8px; width: 40px; height: 40px; border-radius: 50%; background: #ffffff; display: flex; align-items: center; justify-content: center;" aria-label="Ajouter aux favoris">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"></path></svg>
+        </span>
+        <span style="position: absolute; bottom: 12px; left: 12px; padding: 5px 10px; border-radius: 999px; background: #ffffff; color: #047857; font-size: 12px; font-weight: 800;">81 % compatible</span>
+      </div>
+      <div style="padding: 14px 16px; display: flex; justify-content: space-between; gap: 12px;">
+        <div>
+          <div style="font-size: 16px; font-weight: 700;">Studio meublé</div>
+          <div style="font-size: 13px; color: #475569; margin-top: 3px;">Camayenne, Dixinn · 1 pièce · 32 m²</div>
+        </div>
+        <div style="text-align: right; flex-shrink: 0;">
+          <div style="font-size: 16px; font-weight: 800; color: #1E3A5F;">1,8 M GNF</div>
+          <div style="font-size: 12px; color: #475569;">/mois</div>
+        </div>
+      </div>
+    </a>
+  </div>
+
+  <nav aria-label="Navigation principale" style="display: flex; background: #1E3A5F; padding: 8px 4px 22px;">
+    <a href="Accueil.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 600;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path></svg>Accueil</a>
+    <a href="Annonces.dc.html" aria-current="page" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: #F97316; font-size: 11px; font-weight: 700;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>Annonces</a>
+    <a href="#candidatures" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 600;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Candidatures</a>
+    <a href="Messages.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 600; position: relative;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span style="position: absolute; top: 2px; left: 50%; margin-left: 6px; min-width: 16px; height: 16px; border-radius: 999px; background: #F97316; color: #ffffff; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center;">2</span>Messages</a>
+    <a href="Profil.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 600;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path></svg>Profil</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

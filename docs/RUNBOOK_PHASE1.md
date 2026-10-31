@@ -54,13 +54,35 @@ Render → service `tcheyna-api` → Environment.
 | `DATABASE_URL` | URL PostgreSQL de Supabase | Bloquant |
 | `TRUSTED_PROXY_HOPS` | `1` (répartiteur Render) | Défaut du code : 1 |
 | `RATELIMIT_STORAGE_URI` | `memory://` tant qu'il n'y a pas de Redis | Défaut du code : `memory://` |
-| `CORS_ORIGINS` | URL exacte du site (`https://…onrender.com`, sans `/` final) | Le site ne peut plus appeler l'API |
+| `CORS_ORIGINS` | `https://tcheyna.onrender.com,https://localhost` : l'adresse du site **et** `https://localhost`, origine de l'application Android (sans `/` final, séparées par une virgule) | Le site, ou l'application Android, ne peut plus appeler l'API (voir ci-dessous) |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Renseignés | Les téléversements sont refusés |
 | `CINETPAY_*`, `AT_*` | Renseignés si les paiements et SMS sont réels | Paiements en attente, OTP renvoyé par l'API |
 
 Si le service a été créé par le Blueprint (`render.yaml`), Render a généré les
 trois clés ; vérifie seulement qu'elles existent. S'il a été créé à la main,
 c'est cette étape qui évite un déploiement qui ne démarre pas.
+
+**Origine manquante dans `CORS_ORIGINS`** (incident du 28 au 30/10/2026 :
+l'APK ne pouvait ni inscrire ni connecter). Ce que l'on observe :
+
+- la requête de contrôle `OPTIONS` répond **200**, mais **sans** en-tête
+  `Access-Control-Allow-Origin` ;
+- la WebView (ou le navigateur) bloque alors la vraie requête, et l'écran
+  affiche une erreur réseau ;
+- aucun `POST /api/auth/*` n'arrive dans les journaux de `tcheyna-api` : seul
+  le `OPTIONS` y figure.
+
+Contrôle, en PowerShell (`curl.exe`, pas l'alias `curl` de PowerShell) :
+
+```powershell
+curl.exe -s -o NUL -D - -X OPTIONS https://tcheyna-api.onrender.com/api/auth/login -H "Origin: https://localhost" -H "Access-Control-Request-Method: POST"
+```
+
+La réponse doit contenir `access-control-allow-origin: https://localhost`
+(majuscules ou minuscules, selon le proxy).
+Refais-le avec `-H "Origin: https://tcheyna.onrender.com"` pour le site. Si la
+ligne manque, corrige `CORS_ORIGINS` dans Render → `tcheyna-api` →
+Environment, enregistre (Render redéploie), puis relance le contrôle.
 
 ## 2. Sauvegarde complète
 

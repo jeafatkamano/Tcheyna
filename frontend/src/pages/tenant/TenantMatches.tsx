@@ -14,15 +14,11 @@ import {
 import { BadgeProprietaireVerifie } from "../../components/BadgeVerification";
 import { Erreur, ListeVide, MessageErreur, SqueletteCartes } from "../../components/Etats";
 import { useAction, useApi } from "../../hooks/useApi";
+import { STATUTS_CANDIDATURE } from "../../lib/statutsCandidature";
 import { formatDateHeure, formatMontant, formatMontantCourt, formatRelatif } from "../../lib/format";
 
-const STATUTS: Record<MatchStatus, { label: string; couleur: string; fond: string }> = {
-  pending: { label: "En attente", couleur: "#D97706", fond: "#FEF3C7" },
-  accepted: { label: "Acceptée", couleur: "#059669", fond: "#D1FAE5" },
-  rejected: { label: "Non retenue", couleur: "#DC2626", fond: "#FEE2E2" },
-  completed: { label: "Location conclue", couleur: "#1D4ED8", fond: "#DBEAFE" },
-  cancelled: { label: "Retirée", couleur: "#64748B", fond: "#F1F5F9" },
-};
+// Libellés et couleurs partagés avec la liste des discussions (lot 3.15b).
+const STATUTS = STATUTS_CANDIDATURE;
 
 const FILTRES = [
   { valeur: undefined, label: "Toutes" },

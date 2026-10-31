@@ -19,12 +19,15 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, Outlet, useLocation, useNavigate } from "react-router";
+import { Link, Outlet, useLocation, useMatches, useNavigate } from "react-router";
 
 import { messagesAPI, notificationsAPI } from "../api";
 import { useAuth } from "../context/AuthContext";
+import { enregistrerFermable } from "../lib/fermables";
+import { transitionPage } from "../lib/transitions";
 import { Avatar } from "./Avatar";
 import { BadgeVerification } from "./BadgeVerification";
+import { CoqueContext, type PoigneeRoute } from "./coque";
 import { Chargement } from "./Etats";
 
 const NAV_LOCATAIRE = [
@@ -65,7 +68,15 @@ export function Layout() {
   const [menuOuvertSur, setMenuOuvertSur] = useState<string | null>(null);
   const menuOuvert = menuOuvertSur === location.pathname;
   const setMenuOuvert = (ouvert: boolean) => setMenuOuvertSur(ouvert ? location.pathname : null);
+  // Page qui dessine son propre en-tête (handle de la route) : pas de barre haute.
+  const enTetePropre = useMatches().some((m) => (m.handle as PoigneeRoute | undefined)?.enTetePropre);
   const [messagesNonLus, setMessagesNonLus] = useState(0);
+
+  // Menu ouvert : le bouton retour d'Android le ferme avant de changer de page.
+  useEffect(() => {
+    if (!menuOuvert) return;
+    return enregistrerFermable(() => setMenuOuvertSur(null));
+  }, [menuOuvert]);
   const [notifsNonLues, setNotifsNonLues] = useState(0);
 
   // Les compteurs sont rafraîchis à chaque navigation : suffisant sans
@@ -116,169 +127,181 @@ export function Layout() {
     chemin === "/admin" ? location.pathname === chemin : location.pathname.startsWith(chemin);
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#F0F4FA" }}>
-      {/* Barre haute */}
-      <header
-        className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 shadow-sm"
-        // Fond sous la barre d'état (bord à bord, index.css), contenu en dessous.
-        style={{ background: "#1E3A5F", paddingTop: "calc(0.75rem + var(--inset-haut))" }}
-      >
-        <div className="flex items-center gap-2">
-          <button
-            className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-            onClick={() => setMenuOuvert(true)}
-            aria-label="Ouvrir le menu"
+    <CoqueContext.Provider value={{ ouvrirMenu: () => setMenuOuvert(true), notifsNonLues, messagesNonLus }}>
+      <div className="min-h-screen flex flex-col" style={{ background: "#F0F4FA" }}>
+        {/* Barre haute, sauf sur les pages qui ont leur propre en-tête */}
+        {!enTetePropre && (
+          <header
+            className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 shadow-sm"
+            // Fond sous la barre d'état (bord à bord, index.css), contenu en dessous.
+            style={{ background: "#1E3A5F", paddingTop: "calc(0.75rem + var(--inset-haut))" }}
           >
-            <Menu size={20} />
-          </button>
-          <Link to={nav[0].path} className="text-white font-bold tracking-tight" style={{ fontSize: "20px" }}>
-            tcheyna
-          </Link>
-        </div>
-
-        <div className="flex items-center gap-1">
-          <Link
-            to="/notifications"
-            className="relative p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-            aria-label={`Notifications${notifsNonLues ? ` (${notifsNonLues} non lues)` : ""}`}
-          >
-            <Bell size={20} />
-            {notifsNonLues > 0 && (
-              <span
-                className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full text-white flex items-center justify-center font-bold"
-                style={{ background: "#F97316", fontSize: "10px" }}
-              >
-                {notifsNonLues > 9 ? "9+" : notifsNonLues}
-              </span>
-            )}
-          </Link>
-          <Link
-            to={estAdmin ? "/admin" : estLocataire ? "/tenant/profile" : "/owner/profile"}
-            className="ml-1"
-            aria-label="Mon profil"
-          >
-            <Avatar nom={user.full_name} url={user.avatar_url} taille={32} forme="rond" surFonce />
-          </Link>
-        </div>
-      </header>
-
-      {/* Menu latéral */}
-      {menuOuvert && (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setMenuOuvert(false)} />
-          <div
-            className="relative w-72 max-w-full h-full flex flex-col shadow-xl"
-            style={{
-              background: "#1E3A5F",
-              paddingTop: "var(--inset-haut)",
-              paddingBottom: "var(--inset-bas)",
-            }}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
-              <span className="text-white font-bold text-xl tracking-tight">tcheyna</span>
+            <div className="flex items-center gap-2">
               <button
-                className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10"
-                onClick={() => setMenuOuvert(false)}
-                aria-label="Fermer le menu"
+                className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                onClick={() => setMenuOuvert(true)}
+                aria-label="Ouvrir le menu"
               >
-                <X size={20} />
+                <Menu size={20} />
               </button>
-            </div>
-
-            <div className="px-5 py-4 border-b border-white/10">
-              <div className="flex items-center gap-3">
-                <Avatar nom={user.full_name} url={user.avatar_url} taille={48} forme="rond" surFonce />
-                <div className="min-w-0">
-                  <p className="text-white font-semibold truncate">{user.full_name}</p>
-                  <p className="text-white/60 text-sm">{libelleRole}</p>
-                </div>
-              </div>
-              {!estAdmin && (
-                <div className="mt-3">
-                  <BadgeVerification level={user.trust_level} size="sm" />
-                </div>
-              )}
-            </div>
-
-            <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-              {[...nav, ...liensSecondaires].map((item) => {
-                const actif = estActif(item.path);
-                return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors"
-                    style={{
-                      background: actif ? "rgba(249,115,22,0.2)" : "transparent",
-                      color: actif ? "#F97316" : "rgba(255,255,255,0.7)",
-                    }}
-                  >
-                    <item.icon size={20} />
-                    <span className="font-medium">{item.label}</span>
-                    {actif && <ChevronRight size={16} className="ml-auto" />}
-                  </Link>
-                );
-              })}
-            </nav>
-
-            <div className="px-3 py-4 border-t border-white/10 space-y-1">
-              <Link
-                to={estLocataire ? "/tenant/profile" : "/owner/profile"}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-              >
-                <Settings size={20} />
-                <span className="font-medium">Paramètres du compte</span>
+              <Link to={nav[0].path} className="text-white font-bold tracking-tight" style={{ fontSize: "20px" }}>
+                tcheyna
               </Link>
-              <button
-                onClick={() => {
-                  deconnecter();
-                  navigate("/");
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-              >
-                <LogOut size={20} />
-                <span className="font-medium">Déconnexion</span>
-              </button>
             </div>
-          </div>
-        </div>
-      )}
 
-      <main className="flex-1" style={{ paddingBottom: "calc(6rem + var(--inset-bas))" }}>
-        <Outlet />
-      </main>
-
-      {/* Navigation basse : au-dessus de la barre de gestes du téléphone. */}
-      <nav
-        className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t border-white/10 shadow-lg"
-        style={{ background: "#1E3A5F", paddingBottom: "var(--inset-bas)" }}
-      >
-        {nav.map((item) => {
-          const actif = estActif(item.path);
-          const badge = item.compteur === "messages" ? messagesNonLus : 0;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className="relative flex flex-col items-center gap-1 py-3 px-2 flex-1 transition-colors"
-              style={{ color: actif ? "#F97316" : "rgba(255,255,255,0.55)" }}
-            >
-              <span className="relative">
-                <item.icon size={22} />
-                {badge > 0 && (
+            <div className="flex items-center gap-1">
+              <Link
+                to="/notifications"
+                className="relative p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                aria-label={`Notifications${notifsNonLues ? ` (${notifsNonLues} non lues)` : ""}`}
+              >
+                <Bell size={20} />
+                {notifsNonLues > 0 && (
                   <span
-                    className="absolute -top-1 -right-2 min-w-[16px] h-4 px-1 rounded-full text-white flex items-center justify-center font-bold"
-                    style={{ background: "#F97316", fontSize: "9px" }}
+                    className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full text-white flex items-center justify-center font-bold"
+                    style={{ background: "#F97316", fontSize: "10px" }}
                   >
-                    {badge > 9 ? "9+" : badge}
+                    {notifsNonLues > 9 ? "9+" : notifsNonLues}
                   </span>
                 )}
-              </span>
-              <span style={{ fontSize: "10px", fontWeight: 500 }}>{item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
-    </div>
+              </Link>
+              <Link
+                to={estAdmin ? "/admin" : estLocataire ? "/tenant/profile" : "/owner/profile"}
+                className="ml-1"
+                aria-label="Mon profil"
+              >
+                <Avatar nom={user.full_name} url={user.avatar_url} taille={32} forme="rond" surFonce />
+              </Link>
+            </div>
+          </header>
+        )}
+
+        {/* Menu latéral */}
+        {menuOuvert && (
+          <div className="fixed inset-0 z-50 flex">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setMenuOuvert(false)} />
+            <div
+              className="relative w-72 max-w-full h-full flex flex-col shadow-xl"
+              style={{
+                background: "#1E3A5F",
+                paddingTop: "var(--inset-haut)",
+                paddingBottom: "var(--inset-bas)",
+              }}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+                <span className="text-white font-bold text-xl tracking-tight">tcheyna</span>
+                <button
+                  className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10"
+                  onClick={() => setMenuOuvert(false)}
+                  aria-label="Fermer le menu"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="px-5 py-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <Avatar nom={user.full_name} url={user.avatar_url} taille={48} forme="rond" surFonce />
+                  <div className="min-w-0">
+                    <p className="text-white font-semibold truncate">{user.full_name}</p>
+                    <p className="text-white/60 text-sm">{libelleRole}</p>
+                  </div>
+                </div>
+                {!estAdmin && (
+                  <div className="mt-3">
+                    <BadgeVerification level={user.trust_level} size="sm" />
+                  </div>
+                )}
+              </div>
+
+              <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+                {[...nav, ...liensSecondaires].map((item) => {
+                  const actif = estActif(item.path);
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors"
+                      style={{
+                        background: actif ? "rgba(249,115,22,0.2)" : "transparent",
+                        color: actif ? "#F97316" : "rgba(255,255,255,0.7)",
+                      }}
+                    >
+                      <item.icon size={20} />
+                      <span className="font-medium">{item.label}</span>
+                      {actif && <ChevronRight size={16} className="ml-auto" />}
+                    </Link>
+                  );
+                })}
+              </nav>
+
+              <div className="px-3 py-4 border-t border-white/10 space-y-1">
+                <Link
+                  to={estLocataire ? "/tenant/profile" : "/owner/profile"}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <Settings size={20} />
+                  <span className="font-medium">Paramètres du compte</span>
+                </Link>
+                <button
+                  onClick={() => {
+                    deconnecter();
+                    navigate("/");
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <LogOut size={20} />
+                  <span className="font-medium">Déconnexion</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <main className="flex-1" style={{ paddingBottom: "calc(72px + var(--inset-bas))" }}>
+          <Outlet />
+        </main>
+
+        {/* Navigation basse (maquette, lot 3.15b) : au-dessus de la barre de gestes. */}
+        <nav
+          aria-label="Navigation principale"
+          className="fixed bottom-0 left-0 right-0 z-30 flex"
+          style={{ background: "#1E3A5F", padding: "8px 4px", paddingBottom: "calc(8px + var(--inset-bas))" }}
+        >
+          {nav.map((item) => {
+            const actif = estActif(item.path);
+            const badge = item.compteur === "messages" ? messagesNonLus : 0;
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                viewTransition={transitionPage()}
+                aria-current={actif ? "page" : undefined}
+                className="relative flex-1 min-w-0 min-h-11 flex flex-col items-center justify-center gap-1 py-1.5"
+                style={{
+                  // Libellé actif en orange clair : l'orange de la maquette
+                  // n'atteint pas 4,5:1 sur le bleu nuit pour un texte de 11 px.
+                  color: actif ? "#FB923C" : "rgba(255,255,255,0.7)",
+                }}
+              >
+                <item.icon size={22} color={actif ? "#F97316" : "currentColor"} aria-hidden="true" />
+                {badge > 0 && (
+                  <span
+                    className="absolute min-w-4 h-4 px-1 rounded-full text-white flex items-center justify-center font-extrabold"
+                    style={{ top: 2, left: "50%", marginLeft: 6, background: "#F97316", fontSize: 10 }}
+                  >
+                    {badge > 9 ? "9+" : badge}
+                    <span className="sr-only"> non lus</span>
+                  </span>
+                )}
+                <span className="truncate max-w-full" style={{ fontSize: 11, fontWeight: actif ? 700 : 600 }}>
+                  {item.label}
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
+    </CoqueContext.Provider>
   );
 }

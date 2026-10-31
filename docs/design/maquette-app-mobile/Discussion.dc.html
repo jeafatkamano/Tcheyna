@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Discussion</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#C2410C}a:hover{color:#9A3412}
+input::placeholder{color:#64748B}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; background: #F0F4FA; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #1E293B; overflow: hidden;">
+
+  <header style="background: #1E3A5F; color: #ffffff; padding: 56px 12px 14px; display: flex; align-items: center; gap: 10px;">
+    <a href="Messages.dc.html" aria-label="Retour aux messages" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #ffffff; text-decoration: none; flex-shrink: 0;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"></path><path d="m11 18-6-6 6-6"></path></svg>
+    </a>
+    <span style="width: 42px; height: 42px; border-radius: 14px; background: linear-gradient(140deg, #F6D3B0 0%, #E9A66A 100%); flex-shrink: 0;"></span>
+    <div style="flex-grow: 1; min-width: 0;">
+      <div style="font-size: 16px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Appartement lumineux</div>
+      <div style="font-size: 12px; color: rgba(255,255,255,0.78);">Propriétaire · Kipé, Ratoma</div>
+    </div>
+    <a href="Annonce.dc.html" aria-label="Voir l'annonce" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #ffffff; text-decoration: none; flex-shrink: 0;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg>
+    </a>
+  </header>
+
+  <div style="flex-grow: 1; padding: 16px 16px 8px; display: flex; flex-direction: column; gap: 10px; overflow: hidden;">
+    <div style="align-self: center; padding: 6px 12px; border-radius: 999px; background: #DCFCE7; color: #047857; font-size: 12px; font-weight: 700;">Candidature acceptée · la discussion est ouverte</div>
+
+    <div style="align-self: flex-end; max-width: 270px; padding: 11px 14px; border-radius: 18px 18px 6px 18px; background: #1E3A5F; color: #ffffff; font-size: 14px; line-height: 1.45;">Bonjour, l'appartement est-il toujours disponible ?<div style="font-size: 11px; color: rgba(255,255,255,0.7); text-align: right; margin-top: 4px;">10:31 · Lu</div></div>
+
+    <div style="align-self: flex-start; max-width: 270px; padding: 11px 14px; border-radius: 18px 18px 18px 6px; background: #ffffff; color: #1E293B; font-size: 14px; line-height: 1.45; box-shadow: 0 2px 8px rgba(15,32,64,0.06);">Oui ! Visite possible samedi à 10 h.<div style="font-size: 11px; color: #64748B; margin-top: 4px;">10:42</div></div>
+
+    <div style="align-self: stretch; margin-top: 4px; padding: 14px; border-radius: 18px; background: #ffffff; display: flex; align-items: center; gap: 12px; border: 1.5px solid #FED7AA;">
+      <span style="width: 44px; height: 44px; border-radius: 14px; background: #FFF7ED; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C2410C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"></rect><path d="M16 2.5v4M8 2.5v4M3 10h18"></path></svg>
+      </span>
+      <div style="flex-grow: 1;">
+        <div style="font-size: 12px; font-weight: 600; color: #475569;">Visite proposée</div>
+        <div style="font-size: 15px; font-weight: 800; color: #1E3A5F;">Samedi · 10:00</div>
+      </div>
+      <button type="button" style="height: 40px; padding: 0 14px; border: none; border-radius: 12px; background: #F97316; color: #ffffff; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;">Confirmer</button>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 8px; padding: 4px 16px 10px; overflow: hidden;">
+    <button type="button" style="flex-shrink: 0; height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #CBD5E1; background: #ffffff; color: #1E3A5F; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;">Merci, à samedi !</button>
+    <button type="button" style="flex-shrink: 0; height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #CBD5E1; background: #ffffff; color: #1E3A5F; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;">Proposer un autre créneau</button>
+  </div>
+
+  <div style="background: #ffffff; padding: 10px 12px 26px; display: flex; align-items: center; gap: 10px; border-top: 1px solid #E2E8F0;">
+    <button type="button" aria-label="Joindre une photo" style="width: 44px; height: 44px; border: none; border-radius: 50%; background: #F0F4FA; color: #1E3A5F; display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+    </button>
+    <input aria-label="Message" type="text" placeholder="Écrivez votre message…" style="flex-grow: 1; min-width: 0; height: 46px; box-sizing: border-box; padding: 0 16px; border-radius: 999px; border: 1.5px solid #E2E8F0; background: #F8FAFC; color: #1E293B; font-family: inherit; font-size: 15px; outline: none;">
+    <button type="button" aria-label="Envoyer" style="width: 46px; height: 46px; border: none; border-radius: 50%; background: #F97316; color: #ffffff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg>
+    </button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

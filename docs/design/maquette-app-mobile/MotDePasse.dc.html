@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Mot de passe oublié</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#FDBA74}a:hover{color:#FFF7ED}
+input::placeholder{color:rgba(255,255,255,0.5)}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; padding: 56px 24px 32px; display: flex; flex-direction: column; background: linear-gradient(170deg, #0F2040 0%, #1E3A5F 100%); color: #ffffff; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; overflow: hidden;">
+
+  <div style="display: flex; align-items: center; height: 44px;">
+    <a href="Connexion.dc.html" aria-label="Retour à la connexion" style="width: 44px; height: 44px; margin-left: -10px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); text-decoration: none;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"></path><path d="m11 18-6-6 6-6"></path></svg>
+    </a>
+  </div>
+
+  <div style="margin-top: 24px; width: 72px; height: 72px; border-radius: 22px; background: rgba(249,115,22,0.16); display: flex; align-items: center; justify-content: center;">
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"></circle><path d="m10.8 12.2 9.2-9.2"></path><path d="m17 6 3 3"></path><path d="m14.5 8.5 2 2"></path></svg>
+  </div>
+
+  <div style="margin-top: 24px; display: flex; flex-direction: column; gap: 10px;">
+    <h1 style="margin: 0; font-size: 30px; font-weight: 800; line-height: 1.15; letter-spacing: -0.5px;">Mot de passe oublié</h1>
+    <p style="margin: 0; font-size: 16px; line-height: 1.55; color: rgba(255,255,255,0.78);">Recevez par SMS un code pour choisir un nouveau mot de passe.</p>
+  </div>
+
+  <form style="margin-top: 32px; display: flex; flex-direction: column; gap: 8px;">
+    <label for="tel" style="font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.85);">Numéro de téléphone</label>
+    <div style="display: flex; height: 56px; border-radius: 16px; background: rgba(255,255,255,0.07); border: 2px solid #F97316; overflow: hidden;">
+      <span style="display: flex; align-items: center; padding: 0 14px; font-size: 15px; font-weight: 700; border-right: 1.5px solid rgba(255,255,255,0.2);">+224</span>
+      <input id="tel" type="tel" placeholder="622 52 92 52" style="flex-grow: 1; min-width: 0; height: 100%; box-sizing: border-box; padding: 0 14px; border: none; background: transparent; color: #ffffff; font-family: inherit; font-size: 15px; outline: none;">
+    </div>
+  </form>
+
+  <div style="margin-top: 20px; display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 16px; background: rgba(255,255,255,0.05);">
+    <svg style="flex-shrink: 0; margin-top: 2px;" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FDBA74" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg>
+    <span style="font-size: 14px; line-height: 1.5; color: rgba(255,255,255,0.85);">Seul un numéro <strong style="color: #ffffff;">vérifié</strong> permet de récupérer votre compte.</span>
+  </div>
+
+  <div style="flex-grow: 1;"></div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px;">
+    <button type="button" style="height: 56px; border: none; border-radius: 16px; background: #F97316; color: #ffffff; font-family: inherit; font-size: 16px; font-weight: 700; box-shadow: 0 10px 24px rgba(249,115,22,0.35); cursor: pointer;">Recevoir le code</button>
+    <div style="text-align: center; font-size: 14px; color: rgba(255,255,255,0.78);">Vous vous en souvenez ? <a href="Connexion.dc.html" style="font-weight: 700;">Se connecter</a></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

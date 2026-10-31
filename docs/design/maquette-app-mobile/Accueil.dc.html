@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Accueil locataire</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#C2410C}a:hover{color:#9A3412}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; background: #F0F4FA; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #1E293B; overflow: hidden;">
+
+  <header style="background: #1E3A5F; color: #ffffff; padding: 56px 20px 72px; border-radius: 0 0 28px 28px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <div style="width: 48px; height: 48px; border-radius: 50%; background: #F97316; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 800; flex-shrink: 0;">AD</div>
+      <div style="flex-grow: 1; min-width: 0;">
+        <div style="font-size: 14px; color: rgba(255,255,255,0.78);">Bonjour,</div>
+        <div style="font-size: 20px; font-weight: 800;">Aminata</div>
+      </div>
+      <a href="#notifications" aria-label="Notifications (2 non lues)" style="position: relative; width: 44px; height: 44px; border-radius: 14px; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; color: #ffffff; text-decoration: none;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+        <span style="position: absolute; top: 8px; right: 9px; width: 9px; height: 9px; border-radius: 50%; background: #F97316; border: 2px solid #1E3A5F;"></span>
+      </a>
+    </div>
+  </header>
+
+  <div style="flex-grow: 1; padding: 0 20px; margin-top: -52px; display: flex; flex-direction: column; gap: 16px;">
+    <a href="Profil.dc.html" style="display: flex; align-items: center; gap: 16px; padding: 18px; border-radius: 22px; background: #ffffff; box-shadow: 0 10px 30px rgba(15,32,64,0.12); text-decoration: none; color: #1E293B;">
+      <div style="width: 76px; height: 76px; border-radius: 50%; background: conic-gradient(#F97316 0 72%, #E2E8F0 72% 100%); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <div style="width: 60px; height: 60px; border-radius: 50%; background: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 800; color: #1E3A5F;">72%</div>
+      </div>
+      <div style="min-width: 0;">
+        <div style="font-size: 15px; font-weight: 800; color: #1E3A5F;">Score de dossier</div>
+        <div style="font-size: 13px; color: #475569; margin-top: 4px; line-height: 1.4;">Prochaine étape : un avis d'ancien bailleur</div>
+        <div style="font-size: 13px; font-weight: 700; color: #C2410C; margin-top: 6px;">Compléter mon dossier →</div>
+      </div>
+    </a>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+      <a href="Annonces.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: 18px; background: #ffffff; text-decoration: none; color: #1E3A5F; font-size: 14px; font-weight: 700;">
+        <span style="width: 36px; height: 36px; border-radius: 12px; background: #FFF7ED; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C2410C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg></span>
+        Rechercher
+      </a>
+      <a href="#candidatures" style="display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: 18px; background: #ffffff; text-decoration: none; color: #1E3A5F; font-size: 14px; font-weight: 700;">
+        <span style="width: 36px; height: 36px; border-radius: 12px; background: #EFF6FF; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3 8-8"></path><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"></path></svg></span>
+        Candidatures
+      </a>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+      <h2 style="margin: 0; font-size: 18px; font-weight: 800; color: #1E293B;">Pour vous</h2>
+      <a href="Annonces.dc.html" style="font-size: 14px; font-weight: 700; text-decoration: none; padding: 8px 0;">Tout voir →</a>
+    </div>
+
+    <div style="display: flex; gap: 12px; margin-right: -20px;">
+      <a href="Annonce.dc.html" style="width: 220px; flex-shrink: 0; border-radius: 20px; background: #ffffff; overflow: hidden; text-decoration: none; color: #1E293B; box-shadow: 0 6px 18px rgba(15,32,64,0.08);">
+        <div style="height: 112px; background: linear-gradient(140deg, #F6D3B0 0%, #E9A66A 100%); position: relative;">
+          <span style="position: absolute; top: 10px; left: 10px; padding: 4px 8px; border-radius: 999px; background: #1E3A5F; color: #ffffff; font-size: 11px; font-weight: 700;">Certifiée</span>
+          <span style="position: absolute; top: 10px; right: 10px; padding: 4px 8px; border-radius: 999px; background: #ffffff; color: #047857; font-size: 11px; font-weight: 800;">87 %</span>
+        </div>
+        <div style="padding: 12px 14px;">
+          <div style="font-size: 14px; font-weight: 700;">Appartement lumineux</div>
+          <div style="font-size: 12px; color: #475569; margin-top: 2px;">Kipé, Ratoma · 3 pièces</div>
+          <div style="font-size: 15px; font-weight: 800; color: #1E3A5F; margin-top: 8px;">3,5 M GNF <span style="font-size: 12px; font-weight: 500; color: #475569;">/mois</span></div>
+        </div>
+      </a>
+      <a href="Annonce.dc.html" style="width: 220px; flex-shrink: 0; border-radius: 20px; background: #ffffff; overflow: hidden; text-decoration: none; color: #1E293B; box-shadow: 0 6px 18px rgba(15,32,64,0.08);">
+        <div style="height: 112px; background: linear-gradient(140deg, #CFE0F2 0%, #8FB2D9 100%); position: relative;">
+          <span style="position: absolute; top: 10px; right: 10px; padding: 4px 8px; border-radius: 999px; background: #ffffff; color: #047857; font-size: 11px; font-weight: 800;">81 %</span>
+        </div>
+        <div style="padding: 12px 14px;">
+          <div style="font-size: 14px; font-weight: 700;">Studio meublé</div>
+          <div style="font-size: 12px; color: #475569; margin-top: 2px;">Camayenne, Dixinn · 1 pièce</div>
+          <div style="font-size: 15px; font-weight: 800; color: #1E3A5F; margin-top: 8px;">1,8 M GNF <span style="font-size: 12px; font-weight: 500; color: #475569;">/mois</span></div>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <nav aria-label="Navigation principale" style="display: flex; background: #1E3A5F; padding: 8px 4px 22px;">
+    <a href="Accueil.dc.html" aria-current="page" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: #F97316; font-size: 11px; font-weight: 700;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path></svg>Accueil</a>
+    <a href="Annonces.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 600;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>Annonces</a>
+    <a href="#candidatures" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 600;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Candidatures</a>
+    <a href="Messages.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 600; position: relative;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span style="position: absolute; top: 2px; left: 50%; margin-left: 6px; min-width: 16px; height: 16px; border-radius: 999px; background: #F97316; color: #ffffff; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center;">2</span>Messages</a>
+    <a href="Profil.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; text-decoration: none; color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 600;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path></svg>Profil</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
