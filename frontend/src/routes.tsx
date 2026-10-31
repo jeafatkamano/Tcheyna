@@ -9,6 +9,7 @@ import { Suspense, type ComponentType, type ReactNode } from "react";
 
 import type { Role } from "./api";
 import { Chargement, Erreur, ErreurRoute } from "./components/Etats";
+import type { PoigneeRoute } from "./components/coque";
 import { Layout } from "./components/Layout";
 import { RedirectIfAuth } from "./components/RedirectIfAuth";
 import { EcranMarque } from "./components/Marque";
@@ -112,6 +113,9 @@ function EspaceProtege({ roles }: { roles?: Role[] }) {
 
 // ─── Plan de routes ──────────────────────────────────────────
 
+/** Page qui dessine son propre en-tête : Layout masque sa barre haute (lot 3.15a). */
+const EN_TETE_PROPRE: PoigneeRoute = { enTetePropre: true };
+
 const ROUTES: RouteObject[] = [
   // Site : page d'accueil. Application : espace, présentation ou connexion.
   { path: "/", Component: Entree },
@@ -171,8 +175,8 @@ const ROUTES: RouteObject[] = [
     element: <EspaceProtege roles={["tenant"]} />,
     children: [
       { index: true, element: <Navigate to="/tenant/dashboard" replace /> },
-      { path: "dashboard", element: aLaDemande(TenantDashboard) },
-      { path: "listings", element: aLaDemande(ListingsPage) },
+      { path: "dashboard", element: aLaDemande(TenantDashboard), handle: EN_TETE_PROPRE },
+      { path: "listings", element: aLaDemande(ListingsPage), handle: EN_TETE_PROPRE },
       { path: "matches", element: aLaDemande(TenantMatches) },
       { path: "favoris", element: aLaDemande(FavorisPage) },
       { path: "profile", element: aLaDemande(TenantProfile) },
@@ -185,11 +189,11 @@ const ROUTES: RouteObject[] = [
     element: <EspaceProtege roles={["landlord", "agency"]} />,
     children: [
       { index: true, element: <Navigate to="/owner/dashboard" replace /> },
-      { path: "dashboard", element: aLaDemande(OwnerDashboard) },
-      { path: "listings", element: aLaDemande(OwnerListings) },
+      { path: "dashboard", element: aLaDemande(OwnerDashboard), handle: EN_TETE_PROPRE },
+      { path: "listings", element: aLaDemande(OwnerListings), handle: EN_TETE_PROPRE },
       { path: "listings/nouveau", element: aLaDemande(OwnerListingForm) },
       { path: "listings/:id", element: aLaDemande(OwnerListingForm) },
-      { path: "matches", element: aLaDemande(OwnerMatches) },
+      { path: "matches", element: aLaDemande(OwnerMatches), handle: EN_TETE_PROPRE },
       { path: "profile", element: aLaDemande(OwnerProfile) },
     ],
   },

@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import { listingsAPI, urlFichier, type Listing } from "../../api";
 import { BadgeRetiree, EtatResoumission, RemiseEnLigne } from "../../components/CycleAnnonce";
+import { EnTetePage } from "../../components/EnTetePage";
 import { Erreur, ListeVide, MessageSucces, SqueletteCartes } from "../../components/Etats";
 import { StatutPastille } from "../../components/ListingCard";
 import { ModalePaiement } from "../../components/ModalePaiement";
@@ -34,21 +35,20 @@ export function OwnerListings() {
 
   return (
     <div className="pb-8">
-      <div className="px-4 pt-6 pb-5" style={{ background: "#1E3A5F" }}>
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-white font-bold" style={{ fontSize: "20px" }}>
-            Mes biens
-          </h1>
+      {/* En-tête partagé (lot 3.15a) */}
+      <EnTetePage
+        titre="Mes biens"
+        droite={
           <Link
             to="/owner/listings/nouveau"
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+            className="h-11 flex items-center gap-1.5 px-4 rounded-[14px] text-sm font-bold text-white"
             style={{ background: "#F97316" }}
           >
-            <Plus size={16} />
+            <Plus size={16} aria-hidden="true" />
             Publier
           </Link>
-        </div>
-
+        }
+      >
         {stats && (
           <div className="grid grid-cols-3 gap-2">
             {[
@@ -58,18 +58,20 @@ export function OwnerListings() {
             ].map((s) => (
               <div
                 key={s.label}
-                className="rounded-xl p-3 text-center"
-                style={{ background: "rgba(255,255,255,0.08)" }}
+                className="p-3 text-center"
+                style={{ background: "rgba(255,255,255,0.08)", borderRadius: 18 }}
               >
                 <span className="text-white font-bold text-xl block">{s.valeur}</span>
-                <span className="text-white/50 text-xs">{s.label}</span>
+                <span className="text-xs" style={{ color: "rgba(255,255,255,0.78)" }}>
+                  {s.label}
+                </span>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </EnTetePage>
 
-      <div className="px-4 pt-5 space-y-4">
+      <div className="px-5 pt-5 space-y-4">
         <MessageSucces message={succes} />
 
         {annonces.chargement ? (

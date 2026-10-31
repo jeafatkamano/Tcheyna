@@ -11,8 +11,9 @@ import { useRef, useState } from "react";
 import { Link } from "react-router";
 
 import { listingsAPI, matchesAPI } from "../../api";
-import { Avatar } from "../../components/Avatar";
 import { BadgeVerification, ScoreCircle } from "../../components/BadgeVerification";
+import { Avatar } from "../../components/Avatar";
+import { BoutonMenuAvatar, BoutonNotifications, EnTetePage } from "../../components/EnTetePage";
 import { Erreur, ListeVide, MessageSucces, SqueletteCartes } from "../../components/Etats";
 import { ListingCard } from "../../components/ListingCard";
 import { BandeauTelephoneAVerifier } from "../../components/VerificationPublication";
@@ -50,19 +51,25 @@ export function OwnerDashboard() {
 
   return (
     <div className="pb-8">
-      {/* En-tête */}
-      <div className="px-4 pt-6 pb-8" style={{ background: "#1E3A5F" }}>
-        <div className="flex items-center gap-4 mb-6">
-          <Avatar nom={user?.full_name} url={user?.avatar_url} taille={48} surFonce />
+      {/* En-tête (mêmes éléments que l'accueil du locataire, lot 3.15a) */}
+      <EnTetePage
+        arrondi
+        gauche={<BoutonMenuAvatar nom={user?.full_name} url={user?.avatar_url} />}
+        titre={
           <div className="min-w-0">
-            <p className="text-white/60 text-sm">Bonjour 👋</p>
-            <h1 className="text-white font-bold text-xl truncate">{user?.full_name}</h1>
-            <div className="mt-1">
-              <BadgeVerification level={user?.trust_level ?? 0} size="sm" />
-            </div>
+            <p className="m-0" style={{ fontSize: 14, color: "rgba(255,255,255,0.78)" }}>
+              Bonjour,
+            </p>
+            <h1 className="m-0 font-extrabold truncate" style={{ fontSize: 20 }}>
+              {user?.full_name?.trim().split(/\s+/)[0]}
+            </h1>
           </div>
+        }
+        droite={<BoutonNotifications />}
+      >
+        <div>
+          <BadgeVerification level={user?.trust_level ?? 0} size="sm" />
         </div>
-
         <div className="grid grid-cols-4 gap-2">
           {[
             { label: "Annonces", valeur: stats?.actives ?? 0, icone: Users, couleur: "#F97316" },
@@ -72,18 +79,20 @@ export function OwnerDashboard() {
           ].map((s) => (
             <div
               key={s.label}
-              className="rounded-2xl p-3 flex flex-col items-center text-center"
-              style={{ background: "rgba(255,255,255,0.08)" }}
+              className="p-3 flex flex-col items-center text-center"
+              style={{ background: "rgba(255,255,255,0.08)", borderRadius: 18 }}
             >
               <s.icone size={17} style={{ color: s.couleur }} />
               <span className="text-white font-bold text-lg mt-1">{s.valeur}</span>
-              <span className="text-white/50 text-xs leading-tight">{s.label}</span>
+              <span className="text-xs leading-tight" style={{ color: "rgba(255,255,255,0.78)" }}>
+                {s.label}
+              </span>
             </div>
           ))}
         </div>
-      </div>
+      </EnTetePage>
 
-      <div className="px-4 space-y-5 -mt-3 relative z-10">
+      <div className="px-5 pt-5 space-y-5">
         {telephoneAVerifier && (
           <BandeauTelephoneAVerifier onVerifie={apresVerificationTelephone} />
         )}
@@ -152,7 +161,7 @@ export function OwnerDashboard() {
             <Link
               to="/owner/matches"
               className="text-sm font-semibold flex items-center gap-1"
-              style={{ color: "#F97316" }}
+              style={{ color: "#C2410C" }}
             >
               Tous voir <ChevronRight size={14} />
             </Link>
