@@ -8,8 +8,10 @@ Deux threads ne travaillent **jamais** dans le même couloir en même temps. Le 
 | L2 Annonces et matching | `backend/app/routes/listings.py`, `matches.py`, `favorites.py`, `reviews.py`, `services/matching.py` |
 | L3 Paiements | `backend/app/routes/payments.py` |
 | L4 Messagerie et notifications | `backend/app/routes/messages.py`, `notifications.py`, `services/notifications.py` |
-| L5 Web | `frontend/src/pages/**`, `frontend/src/components/**`, `frontend/src/hooks/**` |
+| L5 Web | `frontend/src/pages/**`, `frontend/src/components/**`, `frontend/src/hooks/**`, `frontend/src/styles/**`, `frontend/src/lib/**`, `frontend/src/pwa/**`, `frontend/src/routes.tsx`, `frontend/public/**`, `frontend/android/**` (sauf Gradle et signature, voir ci-dessous) |
 | L6 Infra et qualité | `.github/`, `render.yaml`, `scripts/`, `docs/` (hors `BACKLOG.md`), tests transverses |
+
+Dans `frontend/android/`, la construction et la signature n'appartiennent pas à L5 et ne sont attribuées à aucun couloir : `*.gradle`, `gradle.properties`, `gradle/`, `gradlew`, `gradlew.bat`, ainsi que tout fichier ou réglage de signature (`signingConfigs`, magasin de clés). Un lot qui doit les toucher le dit dans sa PR.
 
 ## Socle partagé (un seul thread à la fois)
 
