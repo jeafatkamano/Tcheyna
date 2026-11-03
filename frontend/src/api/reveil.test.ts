@@ -80,6 +80,17 @@ describe("préchauffage", () => {
     await vi.runAllTimersAsync();
   });
 
+  it("un 503 du proxy Render ne prouve pas que le serveur est éveillé", async () => {
+    fetchSimule.mockResolvedValue(new Response("", { status: 503 }));
+    await client.api.get("/listings/", { reprises: 0 }).catch(() => undefined);
+    fetchSimule.mockClear();
+    fetchSimule.mockResolvedValue(new Response(null, { status: 200 }));
+
+    await client.prechaufferServeur();
+
+    expect(appels("/health")).toHaveLength(1);
+  });
+
   it("annonce le réveil au-delà de 2 s seulement, puis l'éteint", async () => {
     const sante = santeEnAttente();
     fetchSimule.mockReturnValue(sante.promesse);
@@ -199,5 +210,16 @@ describe("surveillance", () => {
     document.dispatchEvent(new Event("visibilitychange"));
     await vi.advanceTimersByTimeAsync(0);
     expect(appels("/health")).toHaveLength(2);
+  });
+
+  it("un second appel n'empile pas d'écouteurs", async () => {
+    fetchSimule.mockResolvedValue(new Response(null, { status: 200 }));
+    const ajout = vi.spyOn(document, "addEventListener");
+
+    client.surveillerReveilServeur();
+    client.surveillerReveilServeur();
+
+    expect(ajout.mock.calls.filter(([type]) => type === "visibilitychange")).toHaveLength(1);
+    await vi.runAllTimersAsync();
   });
 });

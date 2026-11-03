@@ -148,10 +148,15 @@ export const reveilServeur = {
   enCours: () => reveilsEnCours > 0,
 };
 
-/** Dernière réponse reçue du serveur (horodatage), quel que soit son statut. */
+/** Dernière réponse reçue de l'application (horodatage). */
 let dernierContact = 0;
 
-function noterContact() {
+/**
+ * Un 502/503/504 peut venir du proxy de Render pendant que l'application dort
+ * encore : il ne prouve pas que le serveur est éveillé.
+ */
+function noterContact(statut?: number) {
+  if (statut !== undefined && statut >= 502 && statut <= 504) return;
   dernierContact = Date.now();
 }
 
@@ -200,7 +205,8 @@ export function prechaufferServeur(): Promise<void> {
     credentials: "omit",
     signal: controleur.signal,
   })
-    .then(noterContact, () => undefined)
+    // Réponse opaque (no-cors) : statut illisible, son arrivée suffit.
+    .then(() => noterContact(), () => undefined)
     .finally(() => {
       clearTimeout(minuterie);
       clearTimeout(minuterieAnnonce);
@@ -231,7 +237,11 @@ function apresReveil(signal?: AbortSignal | null): Promise<void> {
  * personne lit l'écran ou saisit ses identifiants pendant ce temps), puis à
  * chaque retour au premier plan ou du réseau après 10 min de silence.
  */
+let surveillanceArmee = false;
+
 export function surveillerReveilServeur() {
+  if (surveillanceArmee) return;
+  surveillanceArmee = true;
   void prechaufferServeur();
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") void prechaufferServeur();
@@ -281,7 +291,7 @@ async function fetchBorne(
   let texte: string;
   try {
     res = await fetch(url, { ...init, signal: controleur.signal });
-    noterContact();
+    noterContact(res.status);
     texte = await res.text();
   } catch {
     if (signalAppelant?.aborted) throw erreurAnnulation();
@@ -612,7 +622,7 @@ function envoyerXhr(
       if (e.lengthComputable && e.total > 0) onProgression?.(e.loaded / e.total);
     };
     xhr.onload = () => {
-      noterContact();
+      noterContact(xhr.status);
       nettoyer();
       resolve({ statut: xhr.status, texte: xhr.responseText });
     };
