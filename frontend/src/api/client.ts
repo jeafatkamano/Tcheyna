@@ -5,13 +5,19 @@
  * Gère l'en-tête d'authentification, le rafraîchissement silencieux du jeton et
  * la remontée des messages d'erreur du backend (qui sont déjà en français).
  *
- * Pensé pour le terrain (3G instable, serveur Render qui dort 30 à 60 s) :
+ * Pensé pour le terrain (3G instable, serveur Render gratuit qui s'endort
+ * après 15 min sans requête et met jusqu'à une minute et demie à repartir) :
  *   • chaque tentative est bornée, lecture du corps comprise : 15 s pour un
  *     GET, 60 s pour une écriture (comme `gunicorn --timeout 60`) ;
  *   • un GET qui échoue pour une raison réseau (coupure, délai, 502/503/504)
  *     est rejoué deux fois, après 1 s puis 3 s. Jamais un POST, un PUT ni un
  *     DELETE : ils peuvent avoir abouti côté serveur malgré l'erreur, et les
  *     rejouer créerait un doublon (annonce, message, paiement) ;
+ *   • serveur endormi (lot 3.18) : la reprise qui suit un délai dépassé ou
+ *     un 502/503/504 attend jusqu'à 90 s, car Render garde la requête le
+ *     temps du réveil ; et l'application réveille le serveur dès son
+ *     ouverture (`surveillerReveilServeur`), une écriture attendant la fin de
+ *     ce réveil avant de partir ;
  *   • une coupure pendant le rafraîchissement du jeton ne déconnecte pas :
  *     seul un refus explicite du serveur (401/403) met fin à la session, et
  *     sa raison est transmise à la page de connexion ;
@@ -28,6 +34,17 @@ export const DELAI_REQUETE_MS = 15_000;
  * 60` : une écriture n'est jamais rejouée, mieux vaut attendre sa réponse.
  */
 export const DELAI_ECRITURE_MS = 60_000;
+/**
+ * Durée maximale de la tentative qui suit un délai dépassé ou un 502/503/504,
+ * et du réveil du serveur : le réveil du plan gratuit de Render a dépassé la
+ * minute en production (31/10–02/11/2026), Render garde la requête pendant ce
+ * temps et y répond dès que le serveur est prêt.
+ */
+export const DELAI_REVEIL_MS = 90_000;
+/** Après ce silence, le serveur est peut-être endormi (Render : 15 min). */
+export const INACTIVITE_AVANT_REVEIL_MS = 10 * 60_000;
+/** Un réveil plus court que ce seuil reste muet : pas d'éclair de message. */
+export const SEUIL_ANNONCE_REVEIL_MS = 2_000;
 /** Pauses avant chaque reprise d'un GET (une entrée par reprise). */
 export const PAUSES_REPRISE_MS = [1_000, 3_000];
 /**
@@ -63,7 +80,7 @@ export const MESSAGE_RESEAU =
  */
 export const MESSAGE_SERVEUR_ENDORMI =
   "Le serveur ne répond pas encore. Réessayez dans un instant.";
-export const MESSAGE_REVEIL = "Le serveur démarre, cela peut prendre jusqu'à une minute…";
+export const MESSAGE_REVEIL = "Le serveur démarre, cela peut prendre jusqu'à une minute et demie…";
 
 const CLE_ACCESS = "tcheyna_access_token";
 const CLE_REFRESH = "tcheyna_refresh_token";
@@ -131,6 +148,97 @@ export const reveilServeur = {
   enCours: () => reveilsEnCours > 0,
 };
 
+/** Dernière réponse reçue du serveur (horodatage), quel que soit son statut. */
+let dernierContact = 0;
+
+function noterContact() {
+  dernierContact = Date.now();
+}
+
+/**
+ * Adresse de santé de l'API (`/health`, hors du préfixe `/api`). Nulle quand
+ * l'API est servie par le même hôte via un proxy (`/api` en développement) :
+ * il n'y a alors pas de serveur endormi à réveiller.
+ */
+export function urlSante(base: string): string | null {
+  if (!/^https?:\/\//i.test(base)) return null;
+  try {
+    return `${new URL(base).origin}/health`;
+  } catch {
+    return null;
+  }
+}
+
+const URL_SANTE = urlSante(BASE_URL);
+
+/** Réveil en cours : les écritures l'attendent avant de partir. */
+let reveilEnAttente: Promise<void> | null = null;
+
+/**
+ * Réveille le serveur s'il n'a rien répondu depuis 10 min : un simple GET
+ * de `/health`, sans jeton ni corps. Le mode `no-cors` suffit (seule compte
+ * l'arrivée d'une réponse) et n'exige aucune règle CORS sur `/health`.
+ * Ne rejette jamais ; un seul réveil à la fois.
+ */
+export function prechaufferServeur(): Promise<void> {
+  if (!URL_SANTE) return Promise.resolve();
+  if (reveilEnAttente) return reveilEnAttente;
+  if (Date.now() - dernierContact < INACTIVITE_AVANT_REVEIL_MS) return Promise.resolve();
+
+  const controleur = new AbortController();
+  const minuterie = setTimeout(() => controleur.abort(), DELAI_REVEIL_MS);
+  // Réveil qui dure : on l'annonce (écran de marque, indicateurs de chargement).
+  let annonce = false;
+  const minuterieAnnonce = setTimeout(() => {
+    annonce = true;
+    compterReveil(1);
+  }, SEUIL_ANNONCE_REVEIL_MS);
+
+  reveilEnAttente = fetch(URL_SANTE, {
+    mode: "no-cors",
+    cache: "no-store",
+    credentials: "omit",
+    signal: controleur.signal,
+  })
+    .then(noterContact, () => undefined)
+    .finally(() => {
+      clearTimeout(minuterie);
+      clearTimeout(minuterieAnnonce);
+      if (annonce) compterReveil(-1);
+      reveilEnAttente = null;
+    });
+  return reveilEnAttente;
+}
+
+/** Attend la fin d'un réveil en cours, sauf annulation par l'appelant. */
+function apresReveil(signal?: AbortSignal | null): Promise<void> {
+  const attente = reveilEnAttente;
+  if (!attente) return Promise.resolve();
+  if (!signal) return attente;
+  if (signal.aborted) return Promise.reject(erreurAnnulation());
+  return new Promise((resolve, reject) => {
+    const annuler = () => reject(erreurAnnulation());
+    signal.addEventListener("abort", annuler, { once: true });
+    void attente.then(() => {
+      signal.removeEventListener("abort", annuler);
+      resolve();
+    });
+  });
+}
+
+/**
+ * À appeler une fois au démarrage : réveille le serveur tout de suite (la
+ * personne lit l'écran ou saisit ses identifiants pendant ce temps), puis à
+ * chaque retour au premier plan ou du réseau après 10 min de silence.
+ */
+export function surveillerReveilServeur() {
+  void prechaufferServeur();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void prechaufferServeur();
+  });
+  window.addEventListener("online", () => void prechaufferServeur());
+}
+
 function erreurAnnulation() {
   return new DOMException("Requête annulée", "AbortError");
 }
@@ -173,6 +281,7 @@ async function fetchBorne(
   let texte: string;
   try {
     res = await fetch(url, { ...init, signal: controleur.signal });
+    noterContact();
     texte = await res.text();
   } catch {
     if (signalAppelant?.aborted) throw erreurAnnulation();
@@ -326,7 +435,7 @@ interface Options extends RequestInit {
   reprises?: number;
 }
 
-async function executer(endpoint: string, options: Options): Promise<Reponse> {
+async function executer(endpoint: string, options: Options, delaiImpose?: number): Promise<Reponse> {
   // `optionnel` et `reprises` ne sont pas des options de fetch, qui les ignore.
   const { signal, ...init } = options;
   const jeton = tokens.access();
@@ -342,17 +451,19 @@ async function executer(endpoint: string, options: Options): Promise<Reponse> {
   // Lecture : 15 s. Écriture : 60 s, comme `gunicorn --timeout 60` ; couper
   // plus tôt laisserait croire à un échec une écriture qui aboutit. Pièces et
   // avatar (8 Mo, non compressés) : délai proportionné au poids.
-  const delai = estFormData
-    ? delaiEnvoi(poidsFormulaire(init.body as FormData))
-    : methode === "GET"
-      ? DELAI_REQUETE_MS
-      : DELAI_ECRITURE_MS;
+  const delai =
+    delaiImpose ??
+    (estFormData
+      ? delaiEnvoi(poidsFormulaire(init.body as FormData))
+      : methode === "GET"
+        ? DELAI_REQUETE_MS
+        : DELAI_ECRITURE_MS);
   return fetchBorne(`${BASE_URL}${endpoint}`, { ...init, headers }, signal, delai);
 }
 
 /** Une tentative : requête, puis au besoin rafraîchissement et seconde exécution. */
-async function tentative<T>(endpoint: string, options: Options): Promise<T> {
-  let res = await executer(endpoint, options);
+async function tentative<T>(endpoint: string, options: Options, delaiImpose?: number): Promise<T> {
+  let res = await executer(endpoint, options, delaiImpose);
   const sessionEnJeu = !horsSession(endpoint);
 
   // Jeton expiré : on tente un rafraîchissement, puis on rejoue une seule fois.
@@ -388,15 +499,26 @@ export async function request<T>(endpoint: string, options: Options = {}): Promi
   // Seul un GET se rejoue sans risque : voir l'en-tête du fichier.
   const pauses = methode === "GET" ? PAUSES_REPRISE_MS.slice(0, options.reprises ?? 2) : [];
 
+  // Une écriture ne se rejoue pas : elle attend qu'un réveil en cours aboutisse
+  // plutôt que de risquer ses 60 s contre un serveur encore endormi.
+  // (Sans réveil en cours, rien n'est attendu : la requête part dans le même tour.)
+  if (methode !== "GET" && reveilEnAttente) await apresReveil(options.signal);
+
   let enReveil = false;
+  // La reprise qui suit le premier signe de réveil attend jusqu'à 90 s : Render
+  // garde la requête jusqu'à ce que le serveur réponde. Une seule fois, pour
+  // qu'un serveur réellement bloqué ne fasse pas attendre trois minutes.
+  let delaiLong = false;
   try {
     for (let essai = 0; ; essai++) {
       try {
-        return await tentative<T>(endpoint, options);
+        return await tentative<T>(endpoint, options, delaiLong ? DELAI_REVEIL_MS : undefined);
       } catch (err) {
+        const premierReveil = !enReveil && serveurEnCause(err);
+        delaiLong = premierReveil;
         const pause = pauses[essai];
         if (pause === undefined || !estPassagere(err)) throw err;
-        if (!enReveil && serveurEnCause(err)) {
+        if (premierReveil) {
           enReveil = true;
           compterReveil(1);
         }
@@ -437,6 +559,7 @@ export async function envoyerFichier<T>(
   form: FormData,
   options: OptionsEnvoi = {},
 ): Promise<T> {
+  if (reveilEnAttente) await apresReveil(options.signal);
   let reponse = await envoyerXhr(endpoint, form, options);
 
   if (reponse.statut === 401 && tokens.refresh()) {
@@ -489,6 +612,7 @@ function envoyerXhr(
       if (e.lengthComputable && e.total > 0) onProgression?.(e.loaded / e.total);
     };
     xhr.onload = () => {
+      noterContact();
       nettoyer();
       resolve({ statut: xhr.status, texte: xhr.responseText });
     };

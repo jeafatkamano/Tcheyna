@@ -8,6 +8,10 @@
  * Au démarrage, une coupure réseau ou un serveur endormi ne vaut pas
  * déconnexion : les jetons sont gardés et `erreurSession` propose de
  * réessayer. Seul un refus du serveur (401/403/404) efface la session.
+ * Tant que l'erreur reste affichée, la vérification est relancée sans bruit
+ * (lot 3.18) : au retour du réseau, au retour de l'application au premier
+ * plan, et toutes les 20 s ; l'écran se débloque seul dès que le serveur
+ * répond, sans attendre que la personne touche « Réessayer ».
  *
  * `deconnecter()` demande au serveur de révoquer les jetons (toutes les
  * sessions du compte), puis efface la session locale sans attendre sa
@@ -66,6 +70,9 @@ async function verifierSession(): Promise<VerificationSession> {
  * reconnexion.
  */
 const DELAI_DECONNEXION_MS = 5_000;
+
+/** Intervalle des nouvelles vérifications silencieuses après un échec. */
+export const REESSAI_SESSION_MS = 20_000;
 
 /**
  * Révoque les jetons côté serveur (POST /auth/logout). Les jetons sont lus par
@@ -134,6 +141,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setChargement(true);
     void verifierSession().then(appliquerVerification);
   }, [appliquerVerification]);
+
+  // Session impossible à vérifier : nouvelles tentatives silencieuses. L'écran
+  // d'erreur reste en place ; seul un verdict du serveur (session valide ou
+  // refusée) le remplace, pour ne pas faire clignoter un chargement.
+  useEffect(() => {
+    if (!erreurSession || user) return;
+    let actif = true;
+    let enCours = false;
+    const essayer = async () => {
+      if (enCours || document.visibilityState === "hidden" || !tokens.access()) return;
+      enCours = true;
+      const resultat = await verifierSession();
+      enCours = false;
+      if (actif && !("erreur" in resultat)) appliquerVerification(resultat);
+    };
+    const surVisibilite = () => {
+      if (document.visibilityState === "visible") void essayer();
+    };
+    const surRetourReseau = () => void essayer();
+    const minuterie = setInterval(() => void essayer(), REESSAI_SESSION_MS);
+    document.addEventListener("visibilitychange", surVisibilite);
+    window.addEventListener("online", surRetourReseau);
+    return () => {
+      actif = false;
+      clearInterval(minuterie);
+      document.removeEventListener("visibilitychange", surVisibilite);
+      window.removeEventListener("online", surRetourReseau);
+    };
+  }, [erreurSession, user, appliquerVerification]);
 
   const appliquerSession = useCallback((data: ReponseAuth) => {
     tokens.set(data.access_token, data.refresh_token);
