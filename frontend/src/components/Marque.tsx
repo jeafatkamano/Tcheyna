@@ -4,6 +4,9 @@
  * Valeurs de la maquette (docs/design/maquette-app-mobile/Main.dc.html) :
  * « t » en 800, point orange de 8 px pour un corps de 28 px.
  */
+import { useSyncExternalStore } from "react";
+
+import { MESSAGE_REVEIL, reveilServeur } from "../api";
 
 /** Dégradé des écrans sombres de l'application. */
 export const DEGRADE_NUIT = "linear-gradient(170deg, #0F2040 0%, #1E3A5F 100%)";
@@ -27,16 +30,26 @@ export function Monogramme({ taille = 28 }: { taille?: number }) {
   );
 }
 
-/** Écran plein, fond bleu nuit et « t. » centré : attente sans éclair d'une autre page. */
+/**
+ * Écran plein, fond bleu nuit et « t. » centré : attente sans éclair d'une
+ * autre page. Si le serveur se réveille (jusqu'à une minute et demie sur le
+ * plan gratuit), une ligne le dit : sans elle, l'application paraît bloquée.
+ */
 export function EcranMarque() {
+  const reveil = useSyncExternalStore(reveilServeur.subscribe, reveilServeur.enCours);
   return (
     <div
-      className="min-h-dvh flex items-center justify-center text-white"
+      className="sous-barre-etat min-h-dvh flex flex-col items-center justify-center gap-6 px-8 text-white"
       style={{ background: DEGRADE_NUIT }}
       role="status"
-      aria-label="Chargement"
+      aria-label={reveil ? MESSAGE_REVEIL : "Chargement"}
     >
       <Monogramme taille={56} />
+      {reveil && (
+        <p className="text-sm text-center" style={{ color: "rgba(255,255,255,0.7)" }} aria-live="polite">
+          {MESSAGE_REVEIL}
+        </p>
+      )}
     </div>
   );
 }

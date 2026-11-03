@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { tokens } from "../api";
-import { AuthProvider, useAuth } from "./AuthContext";
+import { AuthProvider, REESSAI_SESSION_MS, useAuth } from "./AuthContext";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -247,5 +247,81 @@ describe("déconnexion", () => {
 
     expect(fetchSimule).not.toHaveBeenCalled();
     sessionLocaleEffacee();
+  });
+});
+
+describe("session impossible à vérifier (lot 3.18)", () => {
+  /** /auth/me : coupure réseau pour les `pannes` premiers appels, puis l'utilisateur. */
+  function meEnPanne(pannes: number) {
+    let appelsMe = 0;
+    fetchSimule.mockImplementation(async (url) => {
+      const chemin = String(url);
+      urlsAppelees.push(chemin);
+      if (chemin.endsWith("/auth/me")) {
+        appelsMe += 1;
+        if (appelsMe <= pannes) throw new TypeError("Failed to fetch");
+        return json(UTILISATEUR);
+      }
+      throw new Error(`Appel inattendu : ${chemin}`);
+    });
+    return () => appelsMe;
+  }
+
+  it("se débloque seule dès que le serveur répond, sans toucher « Réessayer »", async () => {
+    // Démarrage : 2 échecs (essai + reprise), puis le réseau revient.
+    meEnPanne(2);
+    tokens.set("acces-valide", "refresh-valide");
+    await monter();
+    await attendre(5_000);
+    expect(ctx.erreurSession).not.toBeNull();
+    expect(ctx.user).toBeNull();
+
+    await attendre(REESSAI_SESSION_MS);
+
+    expect(ctx.user?.id).toBe("u1");
+    expect(ctx.erreurSession).toBeNull();
+    expect(ctx.chargement).toBe(false);
+  });
+
+  it("un nouvel échec silencieux laisse l'écran d'erreur en place, sans chargement", async () => {
+    meEnPanne(Number.POSITIVE_INFINITY);
+    tokens.set("acces-valide", "refresh-valide");
+    await monter();
+    await attendre(5_000);
+    const message = ctx.erreurSession;
+
+    await attendre(REESSAI_SESSION_MS + 5_000);
+
+    expect(ctx.erreurSession).toBe(message);
+    expect(ctx.chargement).toBe(false);
+    expect(tokens.access()).toBe("acces-valide");
+  });
+
+  it("réessaie aussitôt au retour du réseau", async () => {
+    meEnPanne(2);
+    tokens.set("acces-valide", "refresh-valide");
+    await monter();
+    await attendre(5_000);
+    expect(ctx.erreurSession).not.toBeNull();
+
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+    });
+    await attendre();
+
+    expect(ctx.user?.id).toBe("u1");
+  });
+
+  it("ne réessaie plus une fois la session rétablie", async () => {
+    const appelsMe = meEnPanne(2);
+    tokens.set("acces-valide", "refresh-valide");
+    await monter();
+    await attendre(5_000);
+    await attendre(REESSAI_SESSION_MS);
+    const apres = appelsMe();
+
+    await attendre(REESSAI_SESSION_MS * 3);
+
+    expect(appelsMe()).toBe(apres);
   });
 });

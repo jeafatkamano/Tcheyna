@@ -308,11 +308,25 @@ ORDER BY p.statut, p.created_at;
 
 ## 9. Réveil du plan gratuit (D9, en attendant ta décision)
 
-Le service gratuit s'endort après 15 minutes sans requête ; le réveil prend
-30 à 60 s, long en 3G. En attendant D9 :
+Le service gratuit s'endort après 15 minutes sans requête. En production
+(31/10–02/11/2026), le réveil a dépassé 45 s : environ 20 s de démarrage du
+conteneur avant même que gunicorn écoute, puis le chargement de l'application.
+L'application abandonnait alors au bout de 31 s et affichait « Le serveur ne
+répond pas encore » (journaux du 02/11 à 01:54 : préflights reçus, GET jamais
+arrivés, le téléphone avait déjà coupé).
 
-- UptimeRobot → New monitor → HTTP(s) → URL `https://<api>.onrender.com/health`,
-  intervalle 5 minutes.
+Depuis le lot 3.18, l'application tolère ce réveil : elle réveille le serveur
+dès l'ouverture (`GET /health`), la reprise qui suit un délai dépassé attend
+jusqu'à 90 s, une écriture (connexion, inscription) attend la fin du réveil,
+et l'écran d'erreur se débloque seul. Le réveil reste long pour la personne
+qui ouvre l'application la première après 15 min de silence. Pour qu'il
+n'arrive plus, en attendant D9 :
+
+- UptimeRobot → New monitor → HTTP(s) → URL `https://tcheyna-api.onrender.com/health`,
+  intervalle 5 minutes. **Vérification** : dans les journaux Render de
+  `tcheyna-api`, une ligne `GET /health` toutes les 5 minutes et plus aucune
+  ligne `Starting gunicorn` en dehors des déploiements. Au 03/11/2026, ce
+  moniteur n'était pas en place (deux démarrages à froid le 02/11).
 - Un seul service tenu éveillé consomme environ 744 h par mois, sous le quota
   gratuit de 750 h de l'espace Render. Un second service éveillé en
   permanence le dépasserait : ne surveille que l'API (le site statique ne

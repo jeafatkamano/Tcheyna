@@ -46,6 +46,7 @@ export {
   MESSAGE_REVEIL,
   MESSAGE_SERVEUR_ENDORMI,
   reveilServeur,
+  surveillerReveilServeur,
   tokens,
   urlFichier,
 } from "./client";

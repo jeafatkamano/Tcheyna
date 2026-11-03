@@ -11,12 +11,14 @@ import {
   CLE_MOTIF_DECONNEXION,
   DELAI_ECRITURE_MS,
   DELAI_REQUETE_MS,
+  DELAI_REVEIL_MS,
   delaiEnvoi,
   envoyerFichier,
   MESSAGE_RESEAU,
   MESSAGE_SERVEUR_ENDORMI,
   reveilServeur,
   tokens,
+  urlSante,
 } from "./client";
 
 const fetchSimule = vi.fn<typeof fetch>();
@@ -239,7 +241,7 @@ describe("délai", () => {
     expect(fetchSimule).toHaveBeenCalledTimes(2);
   });
 
-  it("borne chaque tentative d'un GET (3 × 15 s au pire, plus les pauses)", async () => {
+  it("borne chaque tentative d'un GET (15 s, 90 s puis 15 s au pire, plus les pauses)", async () => {
     fetchSimule.mockImplementation(sansReponse);
 
     const r = await jusquauBout(api.get("/listings/"));
@@ -640,5 +642,60 @@ describe("réveil du serveur", () => {
     const r = await jusquauBout(api.get("/listings/"));
 
     expect((r as { erreur: ApiError }).erreur.message).toBe(MESSAGE_SERVEUR_ENDORMI);
+  });
+});
+
+describe("serveur endormi (lot 3.18)", () => {
+  it("la reprise qui suit un délai dépassé attend jusqu'à 90 s", async () => {
+    // Render garde la requête pendant le réveil : la couper à 15 s puis la
+    // renvoyer ne fait que perdre sa place.
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    let appels = 0;
+    fetchSimule.mockImplementation((url, init) => {
+      appels += 1;
+      if (appels === 1) return sansReponse(url, init);
+      // Le serveur répond au bout de 70 s : au-delà des 15 s ordinaires.
+      return new Promise<Response>((resolve, reject) => {
+        const minuterie = setTimeout(() => resolve(json({ ok: 1 })), 70_000);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(minuterie);
+          reject(new DOMException("annulée", "AbortError"));
+        });
+      });
+    });
+
+    const r = await jusquauBout(authAPI.moi());
+
+    expect(r).toEqual({ ok: true, valeur: { ok: 1 } });
+    expect(fetchSimule).toHaveBeenCalledTimes(2);
+  });
+
+  it("le délai long ne sert qu'une fois : un serveur bloqué n'immobilise pas trois minutes", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    fetchSimule.mockImplementation(sansReponse);
+    const debut = Date.now();
+
+    const r = await jusquauBout(api.get("/listings/"));
+
+    expect(r.ok).toBe(false);
+    expect(fetchSimule).toHaveBeenCalledTimes(3);
+    expect(Date.now() - debut).toBe(DELAI_REQUETE_MS + 1_000 + DELAI_REVEIL_MS + 3_000 + DELAI_REQUETE_MS);
+  });
+
+  it("une coupure du téléphone garde le délai ordinaire", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    fetchSimule.mockRejectedValueOnce(new TypeError("Failed to fetch")).mockImplementation(sansReponse);
+    const debut = Date.now();
+
+    const r = await jusquauBout(authAPI.moi());
+
+    expect(r.ok).toBe(false);
+    expect(Date.now() - debut).toBe(1_000 + DELAI_REQUETE_MS);
+  });
+
+  it("adresse de santé : origine de l'API, rien derrière un proxy", () => {
+    expect(urlSante("https://tcheyna-api.onrender.com/api")).toBe("https://tcheyna-api.onrender.com/health");
+    expect(urlSante("/api")).toBeNull();
+    expect(urlSante("")).toBeNull();
   });
 });
